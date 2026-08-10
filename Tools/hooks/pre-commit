@@ -1,0 +1,8 @@
+#!/bin/sh
+# Committed hook — activate once with:  git config core.hooksPath Tools/hooks
+#
+# Unlike .git/hooks/, this survives a fresh clone. It stays inactive until the
+# config line above is run, which is deliberate: guard-meta-files fails while
+# there is no Assets/ folder, so the hook is switched on only after the Unity
+# project exists. See docs/UNITY-SETUP-CHECKLIST.md.
+node Tools/check.mjs || exit 1
