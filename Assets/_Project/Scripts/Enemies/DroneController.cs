@@ -67,8 +67,17 @@ namespace CoD.Enemies
         /// player entirely — the attack silently doing nothing, which reads as the
         /// enemy being broken rather than as a near miss. Each drone contributes
         /// two colliders (hull + Core), so 16 covered barely eight bodies.
+        ///
+        /// 64 was still not enough, and the horde-load test caught it: the query
+        /// is not layer-filtered down to things carrying Health, so a blast near
+        /// the ground also collects the floor, the walls and every cover box it
+        /// reaches. Under a full arena that overflows, and the truncation warning
+        /// fired for real. Raised rather than mask-tightened because the mask
+        /// comes from the attack configs and narrowing it would be a silent
+        /// behaviour change; a bigger buffer can only make the result MORE
+        /// complete. 256 colliders is 2 KB per drone, ~82 KB across the alive cap.
         /// </remarks>
-        private readonly Collider[] _overlapBuffer = new Collider[64];
+        private readonly Collider[] _overlapBuffer = new Collider[256];
 
         // Instance events, never static — Domain Reload is off, and a static event
         // would still be holding the previous Play session's subscribers.
