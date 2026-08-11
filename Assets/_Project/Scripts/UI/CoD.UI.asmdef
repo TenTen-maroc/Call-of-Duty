@@ -1,0 +1,19 @@
+{
+    "name": "CoD.UI",
+    "rootNamespace": "CoD.UI",
+    "references": [
+        "CoD.Core",
+        "CoD.Weapons",
+        "CoD.Player",
+        "Unity.InputSystem"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

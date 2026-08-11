@@ -1,0 +1,17 @@
+{
+    "name": "CoD.Player",
+    "rootNamespace": "CoD.Player",
+    "references": [
+        "CoD.Core",
+        "Unity.InputSystem"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

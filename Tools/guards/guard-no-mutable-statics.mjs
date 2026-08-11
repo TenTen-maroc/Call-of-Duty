@@ -35,7 +35,11 @@ const ALLOW = /guard-ok/i
 // A line is a method/constructor signature if an identifier is immediately
 // followed by '(' BEFORE any '=' — `static void Foo()` yes, but
 // `static List<int> x = new();` no (its '(' comes after '=').
-const LOOKS_LIKE_METHOD = /\bstatic\b[^=;{]*\w\s*\(/
+// The class also accepts '>' and ']': a generic method puts its type list
+// right before the paren — `static T LoadOrCreate<T>(path)` — and requiring
+// \w there reported every generic static helper as a mutable field. The '='
+// exclusion is what still catches `static List<int> x = new();`.
+const LOOKS_LIKE_METHOD = /\bstatic\b[^=;{]*[\w>\]]\s*\(/
 
 // Computed property: `static int X => ...` — read-only, allowed. Detected as
 // '=>' with no plain assignment '=' before it.

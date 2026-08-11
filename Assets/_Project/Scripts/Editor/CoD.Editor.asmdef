@@ -1,0 +1,22 @@
+{
+    "name": "CoD.Editor",
+    "rootNamespace": "CoD.EditorTools",
+    "references": [
+        "CoD.Core",
+        "CoD.Player",
+        "CoD.Weapons",
+        "CoD.UI",
+        "Unity.InputSystem"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}
