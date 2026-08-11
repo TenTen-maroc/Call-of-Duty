@@ -89,7 +89,16 @@ namespace CoD.EditorTools
                 foreach (PlayerInput input in root.GetComponentsInChildren<PlayerInput>(true))
                     Check(input, "_actions", stillNull);
                 foreach (Hitmarker marker in root.GetComponentsInChildren<Hitmarker>(true))
+                {
                     Check(marker, "_weapon", stillNull);
+                    Check(marker, "_hitClip", stillNull);
+                    Check(marker, "_killClip", stillNull);
+                }
+                foreach (Crosshair crosshair in root.GetComponentsInChildren<Crosshair>(true))
+                {
+                    Check(crosshair, "_weapon", stillNull);
+                    Check(crosshair, "_centreDot", stillNull);
+                }
             }
 
             Debug.Log($"GreyBoxVerify: repaired {repaired}, unresolved {stillNull.Count}\n{report}");

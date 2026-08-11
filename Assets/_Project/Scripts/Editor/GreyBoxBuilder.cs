@@ -432,6 +432,38 @@ namespace CoD.EditorTools
                 bars[i] = image;
             }
 
+            // Crosshair: centre dot plus four arms that open with bloom.
+            GameObject crossRoot = new("Crosshair", typeof(RectTransform));
+            crossRoot.transform.SetParent(canvasObject.transform, false);
+            crossRoot.GetComponent<RectTransform>().anchoredPosition = Vector2.zero;
+
+            Graphic[] arms = new Graphic[4];
+            for (int i = 0; i < 4; i++)
+            {
+                bool vertical = i < 2; // order matches Crosshair.Directions: up, down, left, right
+                GameObject arm = new("Arm" + i, typeof(RectTransform));
+                arm.transform.SetParent(crossRoot.transform, false);
+                Image image = arm.AddComponent<Image>();
+                image.color = new Color(1f, 1f, 1f, 0.85f);
+                image.raycastTarget = false;
+                arm.GetComponent<RectTransform>().sizeDelta = vertical
+                    ? new Vector2(2f, 7f)
+                    : new Vector2(7f, 2f);
+                arms[i] = image;
+            }
+
+            GameObject dot = new("CentreDot", typeof(RectTransform));
+            dot.transform.SetParent(crossRoot.transform, false);
+            Image dotImage = dot.AddComponent<Image>();
+            dotImage.color = new Color(1f, 1f, 1f, 0.85f);
+            dotImage.raycastTarget = false;
+            dot.GetComponent<RectTransform>().sizeDelta = new Vector2(2f, 2f);
+
+            Crosshair crosshair = canvasObject.AddComponent<Crosshair>();
+            SetRef(crosshair, "_weapon", weapon);
+            SetRef(crosshair, "_centreDot", dotImage);
+            SetArrayRef(crosshair, "_arms", arms);
+
             AudioSource hudAudio = canvasObject.AddComponent<AudioSource>();
             hudAudio.playOnAwake = false;
 

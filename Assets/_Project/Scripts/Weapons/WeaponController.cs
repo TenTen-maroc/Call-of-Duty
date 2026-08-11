@@ -54,6 +54,13 @@ namespace CoD.Weapons
 
         public WeaponRuntime? Runtime => _runtime;
         public float AdsProgress => _adsProgress;
+
+        /// <summary>
+        /// The cone actually used for the next shot, movement and stance included.
+        /// Public so the crosshair can show bloom — otherwise accuracy degrades
+        /// invisibly and the player has no idea why they are missing.
+        /// </summary>
+        public float EffectiveSpreadDegrees => CurrentSpreadDegrees();
         public bool IsAiming => _adsProgress > 0.5f;
 
         /// <summary>Sandbox cheats flip these. The console that sets them is dev-build gated.</summary>
