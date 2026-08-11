@@ -41,6 +41,7 @@ namespace CoD.Enemies
         private DroneAttackState _attack;
         private float _nextRepathAt;
         private float _speedMultiplier = 1f;
+        private float _waveSpeedMultiplier = 1f;
         private bool _active;
 
         /// <summary>
@@ -93,6 +94,15 @@ namespace CoD.Enemies
         /// <summary>Called by the spawner immediately after the pool hands the instance over.</summary>
         public void Initialize(DroneConfig config, Transform target, ObjectPool pool,
             DroneRegistry registry, IAttackTokenSource tokens)
+            => Initialize(config, target, pool, registry, tokens, WaveScaling.None);
+
+        /// <summary>
+        /// Spawn-time setup with the wave's difficulty multipliers folded in. The
+        /// multipliers are applied HERE, to the instance, and never written back
+        /// to the config — that is the whole reason this parameter exists.
+        /// </summary>
+        public void Initialize(DroneConfig config, Transform target, ObjectPool pool,
+            DroneRegistry registry, IAttackTokenSource tokens, WaveScaling scaling)
         {
             _config = config;
             _target = target;
@@ -101,12 +111,14 @@ namespace CoD.Enemies
             _tokens = tokens;
             _attack = default;
             _speedMultiplier = 1f;
+            _waveSpeedMultiplier = 1f;
             _nextRepathAt = 0f;
             SetTelegraph(0f);
 
             // HP comes from the drone's own config, not a shared HealthConfig —
             // one source of truth per archetype.
-            if (_health != null) _health.ConfigureMax(config.maxHealth);
+            if (_health != null) _health.ConfigureMax(config.maxHealth * scaling.HealthMultiplier);
+            _waveSpeedMultiplier = scaling.SpeedMultiplier;
 
             if (_agent != null)
             {
@@ -142,7 +154,7 @@ namespace CoD.Enemies
             if (_agent == null || _target == null || _config == null) return;
             if (!_agent.enabled || !_agent.isOnNavMesh) return;
 
-            _agent.speed = _config.moveSpeed * _speedMultiplier;
+            _agent.speed = _config.moveSpeed * _speedMultiplier * _waveSpeedMultiplier;
             if (now < _nextRepathAt) return;
             _nextRepathAt = now + _config.repathInterval;
 
@@ -248,7 +260,14 @@ namespace CoD.Enemies
             ReleaseAttackToken(ref _attack);
             _registry?.Unregister(this);
 
-            if (raiseDied) Died?.Invoke(this, info);
+            if (raiseDied)
+            {
+                Died?.Invoke(this, info);
+                // The registry is the hub the wave runner listens to, so score and
+                // money are paid for EVERY kill — including drones the sandbox
+                // console spawned, which the runner never saw being created.
+                _registry?.NotifyKilled(this, info);
+            }
             Despawned?.Invoke(this);
 
             // Clear the subscriber lists. The instance goes back to the pool, and

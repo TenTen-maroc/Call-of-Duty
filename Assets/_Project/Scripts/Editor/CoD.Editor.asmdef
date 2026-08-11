@@ -5,6 +5,7 @@
         "CoD.Core",
         "CoD.Enemies",
         "CoD.Player",
+        "CoD.Waves",
         "CoD.Weapons",
         "CoD.UI",
         "Unity.InputSystem",

@@ -160,4 +160,22 @@ writeWav('Player_Hurt.wav', build(0.6, (t) => {
   return (thud + ring + grit) * 0.6
 }))
 
+// ---------- shop (wave milestone) ----------
+
+// Purchase: a short affirmative two-tone. Buying has to feel like a reward even
+// before the stat does anything.
+writeWav('Shop_Buy.wav', build(0.3, (t) => {
+  const first = t < 0.09 ? Math.sin(2 * Math.PI * 660 * t) * Math.exp(-t * 24) : 0
+  const dt = t - 0.09
+  const second = dt > 0 ? Math.sin(2 * Math.PI * 990 * dt) * Math.exp(-dt * 14) : 0
+  return (first + second) * 0.45
+}))
+
+// Refused: low, short, unmistakably NOT the buy sound. Silence on a refused
+// purchase reads as an input that did not register.
+writeWav('Shop_Refused.wav', build(0.18, (t) => {
+  const tone = Math.sin(2 * Math.PI * 160 * t) * Math.exp(-t * 20)
+  return tone * 0.5
+}))
+
 console.log('\nPlaceholders only — replace with real recordings when the feel work starts.')

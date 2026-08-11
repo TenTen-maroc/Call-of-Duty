@@ -19,6 +19,8 @@ namespace CoD.Player
     {
         [SerializeField] private GameConfig? _config = null;
         [SerializeField] private PlayerInput? _input = null;
+        [Tooltip("Optional. When present, MoveSpeed passives scale walking, sprinting and crouch-walking.")]
+        [SerializeField] private RunContext? _run = null;
         [Tooltip("Layers the crouch/stand check treats as blocking geometry.")]
         [SerializeField] private LayerMask _headroomMask = ~0;
 
@@ -29,6 +31,7 @@ namespace CoD.Player
         private float _currentHeight;
         private bool _wantsCrouch;
         private bool _wasGrounded = true;
+        private float _speedMultiplier = 1f;
 
         /// <summary>Read by the weapon (spread, sprint-to-fire) and the camera (FOV, bob).</summary>
         public bool IsSprinting { get; private set; }
@@ -36,6 +39,22 @@ namespace CoD.Player
         public bool IsGrounded { get; private set; }
         public float HorizontalSpeed => _horizontalVelocity.magnitude;
         public float LandingImpact { get; private set; }
+
+        private void OnEnable()
+        {
+            // Passives arrive as a rebuilt sheet, never as a config write. The
+            // motor caches one multiplier rather than reading the sheet per frame.
+            if (_run == null) return;
+            _run.StatsChanged += OnStatsChanged;
+            OnStatsChanged(_run.Stats);
+        }
+
+        private void OnDisable()
+        {
+            if (_run != null) _run.StatsChanged -= OnStatsChanged;
+        }
+
+        private void OnStatsChanged(StatSheet stats) => _speedMultiplier = stats.Effective(Stat.MoveSpeed, 1f);
 
         private void Awake()
         {
@@ -124,9 +143,9 @@ namespace CoD.Player
             // free speed in every direction and the arena shrinks.
             IsSprinting = _input.SprintHeld && !IsCrouched && move.y > 0.1f;
 
-            float targetSpeed = IsCrouched ? _config.crouchSpeed
+            float targetSpeed = (IsCrouched ? _config.crouchSpeed
                 : IsSprinting ? _config.sprintSpeed
-                : _config.walkSpeed;
+                : _config.walkSpeed) * _speedMultiplier;
 
             Vector3 targetVelocity = wish * targetSpeed;
             float accel = IsGrounded ? _config.acceleration : _config.airAcceleration;

@@ -1,6 +1,7 @@
 #nullable enable
 using System;
 using System.Collections.Generic;
+using CoD.Core;
 using UnityEngine;
 
 namespace CoD.Enemies
@@ -21,6 +22,14 @@ namespace CoD.Enemies
 
         /// <summary>Raised after a drone leaves the list, whatever removed it.</summary>
         public event Action<DroneController>? Removed;
+
+        /// <summary>
+        /// Raised only for a drone the PLAYER killed, and raised from the registry
+        /// rather than from each drone so the wave runner subscribes once instead
+        /// of per spawn. That also means sandbox-spawned drones pay out normally:
+        /// the runner never saw them being created, but it sees them die.
+        /// </summary>
+        public event Action<DroneController, DamageInfo>? Killed;
 
         public int AliveCount => _alive.Count;
 
@@ -43,6 +52,9 @@ namespace CoD.Enemies
             if (!_alive.Remove(drone)) return;
             Removed?.Invoke(drone);
         }
+
+        /// <summary>Called by DroneController.Retire for a kill, just before it unregisters.</summary>
+        public void NotifyKilled(DroneController drone, in DamageInfo info) => Killed?.Invoke(drone, info);
 
         /// <summary>Wave cleanup and the sandbox cheat. Backwards, because each despawn removes an entry.</summary>
         public void DespawnAll()

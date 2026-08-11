@@ -1,0 +1,63 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: cc055ae1435617c40a545354f77a9d53, type: 3}
+  m_Name: Shop
+  m_EditorClassIdentifier: 
+  startingMoney: 300
+  offersPerBreak: 4
+  rerollBaseCost: 50
+  rerollCostGrowth: 1.5
+  priceScalingByWave:
+    serializedVersion: 2
+    m_Curve:
+    - serializedVersion: 3
+      time: 1
+      value: 1
+      inSlope: 0
+      outSlope: 0.06896552
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    - serializedVersion: 3
+      time: 30
+      value: 3
+      inSlope: 0.06896552
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    m_PreInfinity: 2
+    m_PostInfinity: 2
+    m_RotationOrder: 4
+  pool:
+  - item: {fileID: 11400000, guid: ca3fd85ba45831243b6278c7fedf33c3, type: 2}
+    weight: 1
+    minWave: 1
+    maxOwned: 4
+  - item: {fileID: 11400000, guid: 125e08381602d6b4bb76ba6b37f41eec, type: 2}
+    weight: 1
+    minWave: 1
+    maxOwned: 3
+  - item: {fileID: 11400000, guid: b065040a1010fe34292a7235be5a19e5, type: 2}
+    weight: 1
+    minWave: 1
+    maxOwned: 3
+  - item: {fileID: 11400000, guid: 60875a570153f4b4faff3616e0db4b22, type: 2}
+    weight: 1
+    minWave: 1
+    maxOwned: 5
+  - item: {fileID: 11400000, guid: a81119811beb7614981d6570045aba6e, type: 2}
+    weight: 1
+    minWave: 1
+    maxOwned: 3

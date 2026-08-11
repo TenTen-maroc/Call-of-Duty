@@ -1,6 +1,7 @@
 #nullable enable
 using CoD.Core;
 using CoD.Enemies;
+using CoD.Waves;
 using CoD.Weapons;
 using UnityEngine;
 using UnityEngine.InputSystem;
@@ -32,6 +33,9 @@ namespace CoD.UI
         [SerializeField] private DroneRegistry? _droneRegistry = null;
         [Tooltip("How many drones the spawn cheat releases at once.")]
         [SerializeField] private int _droneBurstSize = 3;
+        [Tooltip("Wave control and the free-money cheat. Also surfaces the live cap counters.")]
+        [SerializeField] private WaveRunner? _waveRunner = null;
+        [SerializeField] private RunContext? _run = null;
         [SerializeField] private Key _toggleKey = Key.Backquote;
 
         private bool _open;
@@ -60,6 +64,8 @@ namespace CoD.UI
             if (keyboard[Key.Digit5].wasPressedThisFrame) CycleDamageMultiplier();
             if (keyboard[Key.Digit6].wasPressedThisFrame) SpawnDrones();
             if (keyboard[Key.Digit7].wasPressedThisFrame) DespawnDrones();
+            if (keyboard[Key.Digit8].wasPressedThisFrame) SkipWave();
+            if (keyboard[Key.Digit9].wasPressedThisFrame) GiveMoney();
         }
 
         private void Toggle()
@@ -125,6 +131,20 @@ namespace CoD.UI
             GameLog.Info($"despawned {before} drones", this);
         }
 
+        private void SkipWave()
+        {
+            if (_waveRunner == null) return;
+            _waveRunner.SkipWave();
+            GameLog.Info("skipped to the shop", this);
+        }
+
+        private void GiveMoney()
+        {
+            if (_run == null) return;
+            _run.AddMoney(1000);
+            GameLog.Info("money: " + _run.State.Money, this);
+        }
+
         private void CycleDamageMultiplier()
         {
             if (_weapon == null) return;
@@ -139,7 +159,7 @@ namespace CoD.UI
             // IMGUI is fine here: this panel only exists in dev builds, and it
             // costs nothing to maintain compared to a uGUI hierarchy.
             const float width = 260f;
-            GUILayout.BeginArea(new Rect(12f, 12f, width, 240f), GUI.skin.box);
+            GUILayout.BeginArea(new Rect(12f, 12f, width, 320f), GUI.skin.box);
             GUILayout.Label("SANDBOX CONSOLE");
             GUILayout.Label("1  godmode          " + _godMode);
             GUILayout.Label("2  infinite ammo    " + (_weapon != null && _weapon.InfiniteAmmo));
@@ -148,6 +168,15 @@ namespace CoD.UI
             GUILayout.Label("5  damage x         " + (_weapon != null ? _weapon.DamageMultiplier : 1f));
             GUILayout.Label("6  spawn " + _droneBurstSize + " drones");
             GUILayout.Label("7  clear drones     " + (_droneRegistry != null ? _droneRegistry.AliveCount : 0) + " alive");
+            GUILayout.Label("8  skip wave        " + (_waveRunner != null ? _waveRunner.Phase.ToString() : "-"));
+            GUILayout.Label("9  +1000 money      " + (_run != null ? _run.State.Money : 0));
+            // The two caps, live. Both are the kind of rule that silently stops
+            // working: this is how you SEE that 40-alive and 3-attackers hold.
+            GUILayout.Label("alive / cap        " + (_droneRegistry != null ? _droneRegistry.AliveCount : 0));
+            GUILayout.Label("attacking / cap    " +
+                (_waveRunner != null && _waveRunner.Tokens != null
+                    ? _waveRunner.Tokens.Held + " / " + _waveRunner.Tokens.Capacity
+                    : "-"));
             GUILayout.EndArea();
         }
 

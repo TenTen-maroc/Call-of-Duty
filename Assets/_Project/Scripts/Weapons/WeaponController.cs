@@ -21,6 +21,8 @@ namespace CoD.Weapons
         [Header("Data")]
         [SerializeField] private PlayerLoadoutConfig? _loadout = null;
         [SerializeField] private ImpactConfig? _impact = null;
+        [Tooltip("Optional. Supplies the DamageMult and ReloadSpeed passives; the weapon works without it.")]
+        [SerializeField] private RunContext? _run = null;
 
         [Header("Wiring")]
         [SerializeField] private PlayerInput? _input = null;
@@ -44,6 +46,8 @@ namespace CoD.Weapons
         private float _fovKickUntil;
         private float _muzzleLightUntil;
         private bool _wasSprinting;
+        private float _statDamageMultiplier = 1f;
+        private float _statReloadSpeed = 1f;
 
         // Pre-sized buffer: RaycastNonAlloc never allocates, which matters once
         // hundreds of shots per minute are flying.
@@ -78,6 +82,26 @@ namespace CoD.Weapons
             }
             _runtime = new WeaponRuntime(config);
             if (_muzzleLight != null) _muzzleLight.enabled = false;
+        }
+
+        private void OnEnable()
+        {
+            // Cached on change rather than read per shot: the sheet only moves
+            // when something is bought, and that is once per shop break.
+            if (_run == null) return;
+            _run.StatsChanged += OnStatsChanged;
+            OnStatsChanged(_run.Stats);
+        }
+
+        private void OnDisable()
+        {
+            if (_run != null) _run.StatsChanged -= OnStatsChanged;
+        }
+
+        private void OnStatsChanged(StatSheet stats)
+        {
+            _statDamageMultiplier = stats.Effective(Stat.DamageMult, 1f);
+            _statReloadSpeed = stats.Effective(Stat.ReloadSpeed, 1f);
         }
 
         private void Update()
@@ -254,7 +278,9 @@ namespace CoD.Weapons
 
         private void ResolveHit(WeaponConfig config, in RaycastHit hit, Vector3 direction)
         {
-            float damage = config.DamageAtDistance(hit.distance) * DamageMultiplier;
+            // Three multipliers, three owners: falloff is the weapon, the stat
+            // sheet is what the player bought, DamageMultiplier is the cheat.
+            float damage = config.DamageAtDistance(hit.distance) * DamageMultiplier * _statDamageMultiplier;
 
             // A weakpoint collider relays to its owner's Health, and the bonus is
             // applied HERE and only here: WeaponConfig.headshotMultiplier is the
@@ -369,7 +395,7 @@ namespace CoD.Weapons
         {
             if (_runtime == null) return;
             _runtime.BurstShotsRemaining = 0;
-            if (!_runtime.BeginReload(now)) return;
+            if (!_runtime.BeginReload(now, _statReloadSpeed)) return;
             if (_audioClose != null && _runtime.Config.reloadClip != null)
             {
                 _audioClose.PlayOneShot(_runtime.Config.reloadClip);

@@ -24,6 +24,8 @@ namespace CoD.Weapons
         public float NextShotAllowedAt;
         public float LastShotAt;
         public float ReloadEndsAt;
+        /// <summary>How long the CURRENT reload takes, after ReloadSpeed passives. Stored so cancelling measures against the same number it started with.</summary>
+        public float ReloadDuration;
         public bool IsReloading;
         public int BurstShotsRemaining;
 
@@ -40,12 +42,21 @@ namespace CoD.Weapons
         public bool IsFull => CurrentAmmo >= Config.magazineSize;
 
         /// <summary>Returns true when a reload actually started this call.</summary>
-        public bool BeginReload(float now)
+        public bool BeginReload(float now) => BeginReload(now, 1f);
+
+        /// <summary>
+        /// `speedMultiplier` comes from the StatSheet — higher is faster, so the
+        /// duration is divided by it. The multiplier is applied HERE, to this
+        /// runtime, never by editing the config's reloadTime.
+        /// </summary>
+        public bool BeginReload(float now, float speedMultiplier)
         {
             if (IsReloading || IsFull || !HasReserve) return false;
             IsReloading = true;
             BurstShotsRemaining = 0;
-            ReloadEndsAt = now + (IsMagazineEmpty ? Config.reloadEmptyTime : Config.reloadTime);
+            ReloadDuration = (IsMagazineEmpty ? Config.reloadEmptyTime : Config.reloadTime)
+                             / Mathf.Max(0.1f, speedMultiplier);
+            ReloadEndsAt = now + ReloadDuration;
             return true;
         }
 
@@ -57,7 +68,8 @@ namespace CoD.Weapons
         public bool TryCancelReload(float now)
         {
             if (!IsReloading) return false;
-            float total = IsMagazineEmpty ? Config.reloadEmptyTime : Config.reloadTime;
+            float total = ReloadDuration > 0f ? ReloadDuration
+                : (IsMagazineEmpty ? Config.reloadEmptyTime : Config.reloadTime);
             float elapsed = total - (ReloadEndsAt - now);
             if (elapsed >= total * Config.reloadCommitPoint)
             {

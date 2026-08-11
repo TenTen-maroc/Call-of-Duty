@@ -23,9 +23,17 @@ raises events; the UI decides what to draw.
   what being hurt looks and sounds like: a red flash, one of four screen-edge
   wedges pointing at whatever hit you, a pulsing tint under 35% health, and a hurt
   sound. Listens to the player's `Health.Damaged`.
+- **[WaveHud.cs](../../Assets/_Project/Scripts/UI/WaveHud.cs)** — wave number,
+  enemies remaining, money, and the centre banner that counts the next wave in.
+  Rebuilds a label only when its number changes.
+- **[ShopPanel.cs](../../Assets/_Project/Scripts/UI/ShopPanel.cs)** — the
+  between-wave shop. 1-4 buy, R rerolls, Space continues.
+- **[GameOverPanel.cs](../../Assets/_Project/Scripts/UI/GameOverPanel.cs)** —
+  round reached against the best on record, R to run it again.
 - **[CheatConsole.cs](../../Assets/_Project/Scripts/UI/CheatConsole.cs)** —
-  backquote toggles; 1-7 for godmode, infinite ammo, slow-mo, spawn dummy, damage
-  multiplier, spawn a drone burst, and clear all drones. Entirely inside
+  backquote toggles; 1-9 for godmode, infinite ammo, slow-mo, spawn dummy, damage
+  multiplier, spawn a drone burst, clear drones, skip the wave, and +1000 money.
+  It also shows the live alive-count and attacker-token counters. Entirely inside
   `#if UNITY_EDITOR || DEVELOPMENT_BUILD`, so a shipping build cannot be cheated
   by someone who found the key.
 
@@ -67,6 +75,8 @@ raises events; the UI decides what to draw.
 - [weapons.md](weapons.md) — the event source for the hitmarker and crosshair.
 - [drones.md](drones.md) — what the damage feedback is reacting to, and what the
   console's drone cheats drive.
+- [waves.md](waves.md) — the phase machine every panel listens to.
+- [shop.md](shop.md) — what the shop panel is drawing.
 
 ## Gotchas
 

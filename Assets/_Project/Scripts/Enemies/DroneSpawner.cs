@@ -44,18 +44,22 @@ namespace CoD.Enemies
             return _registry.AliveCount < _difficulty.maxAliveDrones;
         }
 
-        public int SpawnBurst(DroneConfig config, int count)
+        public int SpawnBurst(DroneConfig config, int count) => SpawnBurst(config, count, WaveScaling.None);
+
+        public int SpawnBurst(DroneConfig config, int count, WaveScaling scaling)
         {
             int spawned = 0;
             for (int i = 0; i < count; i++)
             {
-                if (Spawn(config) == null) break;
+                if (Spawn(config, scaling) == null) break;
                 spawned++;
             }
             return spawned;
         }
 
-        public DroneController? Spawn(DroneConfig config)
+        public DroneController? Spawn(DroneConfig config) => Spawn(config, WaveScaling.None);
+
+        public DroneController? Spawn(DroneConfig config, WaveScaling scaling)
         {
             if (_pool == null || _registry == null || _target == null)
             {
@@ -78,7 +82,7 @@ namespace CoD.Enemies
                 return null;
             }
 
-            drone.Initialize(config, _target, _pool, _registry, _tokens);
+            drone.Initialize(config, _target, _pool, _registry, _tokens, scaling);
             return drone;
         }
 

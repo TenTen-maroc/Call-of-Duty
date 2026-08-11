@@ -5,6 +5,7 @@ using CoD.Core;
 using CoD.Enemies;
 using CoD.Player;
 using CoD.UI;
+using CoD.Waves;
 using CoD.Weapons;
 using Unity.AI.Navigation;
 using UnityEditor;
@@ -47,6 +48,7 @@ namespace CoD.EditorTools
             DroneConfig? rusher = Load<DroneConfig>("Assets/_Project/Data/Drones/Drone_Rusher.asset");
             NavMeshData? navMesh = AssetDatabase.LoadAssetAtPath<NavMeshData>(
                 "Assets/_Project/Scenes/NavMesh_GreyBox.asset");
+            ShopConfig? shop = Load<ShopConfig>("Assets/_Project/Data/Game/Shop.asset");
 
             foreach (GameObject root in scene.GetRootGameObjects())
             {
@@ -81,6 +83,13 @@ namespace CoD.EditorTools
                 }
                 foreach (NavMeshSurface surface in root.GetComponentsInChildren<NavMeshSurface>(true))
                     repaired += Ensure(surface, "m_NavMeshData", navMesh, report, ref missing);
+                foreach (RunContext context in root.GetComponentsInChildren<RunContext>(true))
+                    repaired += Ensure(context, "_config", game, report, ref missing);
+                foreach (WaveRunner waveRunner in root.GetComponentsInChildren<WaveRunner>(true))
+                {
+                    repaired += Ensure(waveRunner, "_difficulty", difficulty, report, ref missing);
+                    repaired += Ensure(waveRunner, "_shopConfig", shop, report, ref missing);
+                }
             }
 
             if (repaired > 0)
@@ -150,6 +159,46 @@ namespace CoD.EditorTools
                 }
                 foreach (NavMeshSurface surface in root.GetComponentsInChildren<NavMeshSurface>(true))
                     Check(surface, "m_NavMeshData", stillNull);
+                foreach (RunContext context in root.GetComponentsInChildren<RunContext>(true))
+                {
+                    Check(context, "_config", stillNull);
+                    Check(context, "_playerHealth", stillNull);
+                }
+                foreach (WaveRunner waveRunner in root.GetComponentsInChildren<WaveRunner>(true))
+                {
+                    Check(waveRunner, "_run", stillNull);
+                    Check(waveRunner, "_spawner", stillNull);
+                    Check(waveRunner, "_registry", stillNull);
+                    Check(waveRunner, "_difficulty", stillNull);
+                    Check(waveRunner, "_shopConfig", stillNull);
+                    Check(waveRunner, "_playerHealth", stillNull);
+                    // An empty wave list is a run that never spawns anything, and
+                    // reads in the Inspector exactly like a full one.
+                    CheckArray(waveRunner, "_waves", stillNull);
+                }
+                foreach (WaveHud waveHud in root.GetComponentsInChildren<WaveHud>(true))
+                {
+                    Check(waveHud, "_runner", stillNull);
+                    Check(waveHud, "_run", stillNull);
+                    Check(waveHud, "_bannerLabel", stillNull);
+                }
+                foreach (ShopPanel shopPanel in root.GetComponentsInChildren<ShopPanel>(true))
+                {
+                    Check(shopPanel, "_runner", stillNull);
+                    Check(shopPanel, "_run", stillNull);
+                    Check(shopPanel, "_root", stillNull);
+                    Check(shopPanel, "_offersLabel", stillNull);
+                }
+                foreach (GameOverPanel overPanel in root.GetComponentsInChildren<GameOverPanel>(true))
+                {
+                    Check(overPanel, "_runner", stillNull);
+                    Check(overPanel, "_run", stillNull);
+                    Check(overPanel, "_root", stillNull);
+                }
+                foreach (PlayerMotor motor in root.GetComponentsInChildren<PlayerMotor>(true))
+                    Check(motor, "_run", stillNull);
+                foreach (WeaponController weapon in root.GetComponentsInChildren<WeaponController>(true))
+                    Check(weapon, "_run", stillNull);
             }
 
             // The drone assets themselves. A DroneConfig with no prefab is the

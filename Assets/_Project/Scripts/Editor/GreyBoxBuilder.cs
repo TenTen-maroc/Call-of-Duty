@@ -3,6 +3,7 @@ using CoD.Core;
 using CoD.Enemies;
 using CoD.Player;
 using CoD.UI;
+using CoD.Waves;
 using CoD.Weapons;
 using Unity.AI.Navigation;
 using UnityEditor;
@@ -33,6 +34,9 @@ namespace CoD.EditorTools
         private const string DataWeapons = "Assets/_Project/Data/Weapons";
         private const string DataDrones = "Assets/_Project/Data/Drones";
         private const string DataAttacks = "Assets/_Project/Data/Attacks";
+        private const string DataWaves = "Assets/_Project/Data/Waves";
+        private const string DataShop = "Assets/_Project/Data/Shop";
+        private const string DataPassives = "Assets/_Project/Data/Passives";
         private const string Materials = "Assets/_Project/Art/Materials";
         private const string Prefabs = "Assets/_Project/Prefabs";
         private const string Scenes = "Assets/_Project/Scenes";
@@ -102,6 +106,16 @@ namespace CoD.EditorTools
 
             var drones = new DroneAssets(rusher, dronePrefab, explosion, droneDeath, difficulty);
 
+            // The run layer: passives, the shop that sells them, and the ten
+            // authored waves the endless ramp takes over from.
+            PassiveConfig[] passives = BuildPassives();
+            ShopItemConfig[] shopItems = BuildShopItems(passives);
+            ShopConfig shopConfig = LoadOrCreate<ShopConfig>(DataGame + "/Shop.asset", ConfigureShop);
+            EnsureShopPool(shopConfig, shopItems);
+            WaveConfig[] waves = BuildWaves(rusher);
+            EnsureEndlessMix(difficulty, rusher);
+            var runAssets = new RunAssets(shopConfig, waves);
+
             SetRef(impact, "decalPrefab", decal);
             SetRef(impact, "particlePrefab", sparks);
             EditorUtility.SetDirty(impact);
@@ -115,7 +129,7 @@ namespace CoD.EditorTools
             EditorUtility.SetDirty(rifle);
 
             BuildGreyBoxScene(game, loadout, impact, grey, wall, targetMat, gunmetal, gunAccent,
-                dummy, decal, sparks, flash, casing, drones);
+                dummy, decal, sparks, flash, casing, drones, runAssets);
             BuildBootScene();
             RegisterScenes();
 
@@ -169,6 +183,19 @@ namespace CoD.EditorTools
                 Explosion = explosion;
                 DeathVfx = deathVfx;
                 Difficulty = difficulty;
+            }
+        }
+
+        /// <summary>The wave/shop milestone's assets, grouped for the same reason DroneAssets is.</summary>
+        private readonly struct RunAssets
+        {
+            public readonly ShopConfig Shop;
+            public readonly WaveConfig[] Waves;
+
+            public RunAssets(ShopConfig shop, WaveConfig[] waves)
+            {
+                Shop = shop;
+                Waves = waves;
             }
         }
 
@@ -248,6 +275,181 @@ namespace CoD.EditorTools
             config.scoreValue = 10;
             config.moneyReward = 12;
             config.deathVfxLifetime = 0.9f;
+        }
+
+        private static void ConfigureShop(ShopConfig config)
+        {
+            // 300 buys roughly one item after the first wave, which is the pacing
+            // target: the first break is a real decision, not a formality.
+            config.startingMoney = 300;
+            config.offersPerBreak = 4;
+            config.rerollBaseCost = 50;
+            config.rerollCostGrowth = 1.5f;
+            config.priceScalingByWave = AnimationCurve.Linear(1f, 1f, 30f, 3f);
+        }
+
+        /// <summary>
+        /// The five starting passives. Each one is a single row of (stat, kind,
+        /// value) — that is the whole upgrade system, and adding a sixth is an
+        /// asset rather than code.
+        /// </summary>
+        private static PassiveConfig[] BuildPassives()
+        {
+            return new[]
+            {
+                MakePassive("Passive_MaxHP", "passive_max_hp", "Reinforced Plating",
+                    "+25 max health, topped up on purchase",
+                    Stat.MaxHealth, StatModifierKind.FlatAdd, 25f, 4),
+                MakePassive("Passive_MoveSpeed", "passive_move_speed", "Servo Legs",
+                    "+10% movement speed",
+                    Stat.MoveSpeed, StatModifierKind.Multiplier, 1.10f, 3),
+                MakePassive("Passive_Reload", "passive_reload", "Quick Hands",
+                    "+25% reload speed",
+                    Stat.ReloadSpeed, StatModifierKind.Multiplier, 1.25f, 3),
+                MakePassive("Passive_Damage", "passive_damage", "Hollow Points",
+                    "+15% weapon damage",
+                    Stat.DamageMult, StatModifierKind.Multiplier, 1.15f, 5),
+                MakePassive("Passive_Greed", "passive_greed", "Scrap Magnet",
+                    "+25% money from kills and clears",
+                    Stat.MoneyGainMult, StatModifierKind.Multiplier, 1.25f, 3),
+            };
+        }
+
+        private static PassiveConfig MakePassive(string fileName, string stableId, string displayName,
+            string description, Stat stat, StatModifierKind kind, float value, int maxStacks)
+        {
+            return LoadOrCreate<PassiveConfig>(DataPassives + "/" + fileName + ".asset", passive =>
+            {
+                passive.stableId = stableId;
+                passive.displayName = displayName;
+                passive.description = description;
+                passive.stackable = true;
+                passive.maxStacks = maxStacks;
+                passive.modifiers = new[]
+                {
+                    new PassiveConfig.Modifier { stat = stat, kind = kind, value = value },
+                };
+            });
+        }
+
+        private static ShopItemConfig[] BuildShopItems(PassiveConfig[] passives)
+        {
+            int[] costs = { 150, 175, 160, 220, 200 };
+            var items = new ShopItemConfig[passives.Length];
+            for (int i = 0; i < passives.Length; i++)
+            {
+                PassiveConfig passive = passives[i];
+                int cost = i < costs.Length ? costs[i] : 180;
+                ShopItemConfig item = LoadOrCreate<ShopItemConfig>(
+                    DataShop + "/Shop_" + passive.name.Replace("Passive_", string.Empty) + ".asset",
+                    shopItem =>
+                    {
+                        shopItem.stableId = "shop_" + passive.stableId;
+                        shopItem.displayName = passive.displayName;
+                        shopItem.description = passive.description;
+                        shopItem.cost = cost;
+                        shopItem.kind = ShopItemKind.Passive;
+                    });
+                // Re-linked on every build: a broken payload reference is an offer
+                // the player can buy and receive nothing for.
+                SetRef(item, "passive", passive);
+                items[i] = item;
+            }
+            return items;
+        }
+
+        /// <summary>
+        /// Keeps the pool's references correct without stamping on tuning. A
+        /// changed item count means the composition moved and the array is rebuilt
+        /// with defaults; otherwise only the item references are re-linked, so
+        /// weights and gates edited in the Inspector survive a rebuild.
+        /// </summary>
+        private static void EnsureShopPool(ShopConfig shop, ShopItemConfig[] items)
+        {
+            SerializedObject serialized = new(shop);
+            SerializedProperty pool = serialized.FindProperty("pool");
+            bool rebuild = pool.arraySize != items.Length;
+            if (rebuild) pool.arraySize = items.Length;
+
+            for (int i = 0; i < items.Length; i++)
+            {
+                SerializedProperty element = pool.GetArrayElementAtIndex(i);
+                element.FindPropertyRelative("item").objectReferenceValue = items[i];
+                if (!rebuild) continue;
+                element.FindPropertyRelative("weight").floatValue = 1f;
+                element.FindPropertyRelative("minWave").intValue = 1;
+                element.FindPropertyRelative("maxOwned").intValue =
+                    items[i].passive != null ? items[i].passive!.maxStacks : 0;
+            }
+            serialized.ApplyModifiedProperties();
+            EditorUtility.SetDirty(shop);
+        }
+
+        private static void EnsureEndlessMix(DifficultyConfig difficulty, params DroneConfig[] drones)
+        {
+            SerializedObject serialized = new(difficulty);
+            SerializedProperty mix = serialized.FindProperty("endlessMix");
+            bool rebuild = mix.arraySize != drones.Length;
+            if (rebuild) mix.arraySize = drones.Length;
+
+            for (int i = 0; i < drones.Length; i++)
+            {
+                SerializedProperty element = mix.GetArrayElementAtIndex(i);
+                element.FindPropertyRelative("drone").objectReferenceValue = drones[i];
+                if (!rebuild) continue;
+                // Flat weight for the only archetype there is. The Shooter and
+                // Tank milestone replaces these with curves that rise late.
+                element.FindPropertyRelative("weightByWave").animationCurveValue =
+                    AnimationCurve.Constant(1f, 60f, 1f);
+            }
+            serialized.ApplyModifiedProperties();
+            EditorUtility.SetDirty(difficulty);
+        }
+
+        /// <summary>
+        /// Waves 1-10, hand-authored, because the opening is the part every run
+        /// replays and most runs never get past. Counts climb faster than the
+        /// window they drip through, so later waves overlap instead of queueing.
+        /// </summary>
+        private static WaveConfig[] BuildWaves(DroneConfig rusher)
+        {
+            (int count, float over, int bonus)[] plan =
+            {
+                (3, 6f, 80), (5, 10f, 90), (7, 12f, 100), (9, 14f, 110), (12, 16f, 130),
+                (14, 18f, 140), (16, 18f, 150), (18, 20f, 165), (22, 22f, 180), (26, 24f, 220),
+            };
+
+            var waves = new WaveConfig[plan.Length];
+            for (int i = 0; i < plan.Length; i++)
+            {
+                int number = i + 1;
+                (int count, float over, int bonus) = plan[i];
+                WaveConfig wave = LoadOrCreate<WaveConfig>(
+                    DataWaves + "/Wave_" + number.ToString("00") + ".asset", config =>
+                    {
+                        config.waveNumber = number;
+                        config.durationTarget = 45f;
+                        config.moneyBonusOnClear = bonus;
+                        config.entries = new[]
+                        {
+                            new WaveConfig.Entry { count = count, spawnOverSeconds = over, startDelay = 0f },
+                        };
+                    });
+
+                // Entry drone references are re-linked every build, for the same
+                // reason shop payloads are.
+                SerializedObject serialized = new(wave);
+                SerializedProperty entries = serialized.FindProperty("entries");
+                for (int e = 0; e < entries.arraySize; e++)
+                {
+                    entries.GetArrayElementAtIndex(e).FindPropertyRelative("drone").objectReferenceValue = rusher;
+                }
+                serialized.ApplyModifiedProperties();
+                EditorUtility.SetDirty(wave);
+
+                waves[i] = wave;
+            }
+            return waves;
         }
 
         // ---------- prefabs ----------
@@ -529,7 +731,7 @@ namespace CoD.EditorTools
         private static void BuildGreyBoxScene(GameConfig game, PlayerLoadoutConfig loadout, ImpactConfig impact,
             Material floorMat, Material wallMat, Material targetMat, Material gunmetal, Material gunAccent,
             GameObject dummyPrefab, GameObject decal, GameObject sparks, GameObject flash, GameObject casing,
-            DroneAssets drones)
+            DroneAssets drones, RunAssets runAssets)
         {
             Scene scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
 
@@ -572,13 +774,33 @@ namespace CoD.EditorTools
                 (decal, 48), (sparks, 24), (flash, 4), (casing, 24), (dummyPrefab, 8),
                 (drones.Prefab, 24), (drones.Explosion, 8), (drones.DeathVfx, 8));
 
+            // The run layer is created BEFORE the player, because the player's
+            // motor and weapon subscribe to its StatsChanged event and a
+            // serialized reference cannot point at an object that does not exist
+            // yet. Its own back-references are filled in once the player does.
+            GameObject runObject = new("Run");
+            RunContext run = runObject.AddComponent<RunContext>();
+            WaveRunner runner = runObject.AddComponent<WaveRunner>();
+            SetRef(run, "_config", game);
+
             (WeaponController weapon, PlayerLook look, Health playerHealth, Transform muzzle,
                 Transform playerTransform, Transform cameraTransform) =
-                BuildPlayerRig(game, loadout, impact, pool, gunmetal, gunAccent);
+                BuildPlayerRig(game, loadout, impact, pool, gunmetal, gunAccent, run);
 
             BuildTargets(dummyPrefab, targetMat);
             (DroneSpawner spawner, DroneRegistry registry) = BuildDroneRig(drones, pool, playerTransform);
-            BuildHud(weapon, playerHealth, game, pool, dummyPrefab, muzzle, spawner, registry, cameraTransform);
+
+            SetRef(run, "_playerHealth", playerHealth);
+            SetRef(runner, "_run", run);
+            SetRef(runner, "_spawner", spawner);
+            SetRef(runner, "_registry", registry);
+            SetRef(runner, "_difficulty", drones.Difficulty);
+            SetRef(runner, "_shopConfig", runAssets.Shop);
+            SetRef(runner, "_playerHealth", playerHealth);
+            SetArrayRef(runner, "_waves", runAssets.Waves);
+
+            BuildHud(weapon, playerHealth, game, pool, dummyPrefab, muzzle, spawner, registry, cameraTransform,
+                run, runner);
 
             EditorSceneManager.MarkSceneDirty(scene);
             EditorSceneManager.SaveScene(scene, GreyBoxScenePath);
@@ -716,7 +938,7 @@ namespace CoD.EditorTools
 
         private static (WeaponController, PlayerLook, Health, Transform, Transform, Transform) BuildPlayerRig(
             GameConfig game, PlayerLoadoutConfig loadout, ImpactConfig impact, ObjectPool pool,
-            Material gunmetal, Material gunAccent)
+            Material gunmetal, Material gunAccent, RunContext run)
         {
             GameObject player = new("Player");
             player.transform.position = new Vector3(0f, 0.1f, -12f);
@@ -737,6 +959,7 @@ namespace CoD.EditorTools
             PlayerMotor motor = player.AddComponent<PlayerMotor>();
             SetRef(motor, "_config", game);
             SetRef(motor, "_input", input);
+            SetRef(motor, "_run", run);   // MoveSpeed passives
 
             Health health = player.AddComponent<Health>();
             // The player's max HP comes from GameConfig, the one asset that owns
@@ -816,6 +1039,7 @@ namespace CoD.EditorTools
             WeaponController weapon = player.AddComponent<WeaponController>();
             SetRef(weapon, "_loadout", loadout);
             SetRef(weapon, "_impact", impact);
+            SetRef(weapon, "_run", run);   // DamageMult and ReloadSpeed passives
             SetRef(weapon, "_input", input);
             SetRef(weapon, "_look", look);
             SetRef(weapon, "_motor", motor);
@@ -849,7 +1073,8 @@ namespace CoD.EditorTools
 
         private static void BuildHud(WeaponController weapon, Health playerHealth, GameConfig game,
             ObjectPool pool, GameObject dummyPrefab, Transform spawnOrigin,
-            DroneSpawner spawner, DroneRegistry registry, Transform cameraTransform)
+            DroneSpawner spawner, DroneRegistry registry, Transform cameraTransform,
+            RunContext run, WaveRunner runner)
         {
             GameObject canvasObject = new("HUD");
             Canvas canvas = canvasObject.AddComponent<Canvas>();
@@ -976,6 +1201,7 @@ namespace CoD.EditorTools
             SetRef(hud, "_lowAmmoTint", lowAmmoImage);
 
             BuildDamageFeedback(canvasObject, game, playerHealth, cameraTransform, hudAudio);
+            BuildRunUi(canvasObject, run, runner, hudAudio);
 
             CheatConsole console = canvasObject.AddComponent<CheatConsole>();
             SetRef(console, "_config", game);
@@ -986,6 +1212,8 @@ namespace CoD.EditorTools
             SetRef(console, "_spawnOrigin", spawnOrigin);
             SetRef(console, "_droneSpawner", spawner);
             SetRef(console, "_droneRegistry", registry);
+            SetRef(console, "_waveRunner", runner);
+            SetRef(console, "_run", run);
         }
 
         /// <summary>
@@ -1038,6 +1266,98 @@ namespace CoD.EditorTools
             SetRef(feedback, "_hurtClip", LoadClip("Player_Hurt"));
         }
 
+        /// <summary>
+        /// Wave readout, shop and game-over screen. All plain Text: the shop is
+        /// keyboard-driven (1-4 buy, R reroll, Space continue), which avoids
+        /// needing an EventSystem, an input module and cursor lock/unlock around
+        /// every break for a four-line list.
+        /// </summary>
+        private static void BuildRunUi(GameObject canvasObject, RunContext run, WaveRunner runner,
+            AudioSource audio)
+        {
+            Text wave = BuildLabel(canvasObject, "WaveLabel", new Vector2(90f, -60f),
+                TextAnchor.UpperLeft, new Vector2(0f, 1f), 34);
+            Text enemies = BuildLabel(canvasObject, "EnemiesLabel", new Vector2(90f, -104f),
+                TextAnchor.UpperLeft, new Vector2(0f, 1f), 26);
+            Text money = BuildLabel(canvasObject, "MoneyLabel", new Vector2(-90f, -60f),
+                TextAnchor.UpperRight, new Vector2(1f, 1f), 34);
+            Text banner = BuildLabel(canvasObject, "BannerLabel", new Vector2(0f, 150f),
+                TextAnchor.MiddleCenter, new Vector2(0.5f, 0.5f), 46);
+            banner.rectTransform.sizeDelta = new Vector2(900f, 70f);
+
+            WaveHud hud = canvasObject.AddComponent<WaveHud>();
+            SetRef(hud, "_runner", runner);
+            SetRef(hud, "_run", run);
+            SetRef(hud, "_waveLabel", wave);
+            SetRef(hud, "_enemiesLabel", enemies);
+            SetRef(hud, "_moneyLabel", money);
+            SetRef(hud, "_bannerLabel", banner);
+
+            // ---- shop ----
+            GameObject shopRoot = new("ShopPanel", typeof(RectTransform));
+            shopRoot.transform.SetParent(canvasObject.transform, false);
+            StretchFull(shopRoot);
+            Image shopBackdrop = shopRoot.AddComponent<Image>();
+            shopBackdrop.color = new Color(0.04f, 0.045f, 0.05f, 0.86f);
+            shopBackdrop.raycastTarget = false;
+
+            Text shopTitle = BuildLabel(shopRoot, "Title", new Vector2(0f, -110f),
+                TextAnchor.UpperCenter, new Vector2(0.5f, 1f), 40);
+            shopTitle.rectTransform.sizeDelta = new Vector2(1200f, 60f);
+            Text shopOffers = BuildLabel(shopRoot, "Offers", new Vector2(0f, -200f),
+                TextAnchor.UpperLeft, new Vector2(0.5f, 1f), 30);
+            shopOffers.rectTransform.sizeDelta = new Vector2(1100f, 460f);
+            Text shopFooter = BuildLabel(shopRoot, "Footer", new Vector2(0f, 120f),
+                TextAnchor.LowerCenter, new Vector2(0.5f, 0f), 28);
+            shopFooter.rectTransform.sizeDelta = new Vector2(1100f, 60f);
+
+            ShopPanel shop = canvasObject.AddComponent<ShopPanel>();
+            SetRef(shop, "_runner", runner);
+            SetRef(shop, "_run", run);
+            SetRef(shop, "_root", shopRoot);
+            SetRef(shop, "_titleLabel", shopTitle);
+            SetRef(shop, "_offersLabel", shopOffers);
+            SetRef(shop, "_footerLabel", shopFooter);
+            SetRef(shop, "_audio", audio);
+            SetRef(shop, "_buyClip", LoadClip("Shop_Buy"));
+            SetRef(shop, "_refusedClip", LoadClip("Shop_Refused"));
+
+            // ---- game over ----
+            GameObject overRoot = new("GameOverPanel", typeof(RectTransform));
+            overRoot.transform.SetParent(canvasObject.transform, false);
+            StretchFull(overRoot);
+            Image overBackdrop = overRoot.AddComponent<Image>();
+            overBackdrop.color = new Color(0.12f, 0.01f, 0.01f, 0.88f);
+            overBackdrop.raycastTarget = false;
+
+            Text overTitle = BuildLabel(overRoot, "Title", new Vector2(0f, 90f),
+                TextAnchor.MiddleCenter, new Vector2(0.5f, 0.5f), 72);
+            overTitle.rectTransform.sizeDelta = new Vector2(900f, 100f);
+            Text overDetail = BuildLabel(overRoot, "Detail", new Vector2(0f, -60f),
+                TextAnchor.MiddleCenter, new Vector2(0.5f, 0.5f), 34);
+            overDetail.rectTransform.sizeDelta = new Vector2(900f, 220f);
+
+            GameOverPanel gameOver = canvasObject.AddComponent<GameOverPanel>();
+            SetRef(gameOver, "_runner", runner);
+            SetRef(gameOver, "_run", run);
+            SetRef(gameOver, "_root", overRoot);
+            SetRef(gameOver, "_titleLabel", overTitle);
+            SetRef(gameOver, "_detailLabel", overDetail);
+
+            // Both panels start hidden; their components toggle them by phase.
+            shopRoot.SetActive(false);
+            overRoot.SetActive(false);
+        }
+
+        private static void StretchFull(GameObject target)
+        {
+            RectTransform rect = target.GetComponent<RectTransform>();
+            rect.anchorMin = Vector2.zero;
+            rect.anchorMax = Vector2.one;
+            rect.offsetMin = Vector2.zero;
+            rect.offsetMax = Vector2.zero;
+        }
+
         private static Image BuildFullScreenImage(GameObject parent, string name, Color color)
         {
             GameObject overlay = new(name, typeof(RectTransform));
@@ -1055,13 +1375,17 @@ namespace CoD.EditorTools
         }
 
         private static Text BuildLabel(GameObject parent, string name, Vector2 position,
-            TextAnchor alignment, Vector2 anchor)
+            TextAnchor alignment, Vector2 anchor) =>
+            BuildLabel(parent, name, position, alignment, anchor, 34);
+
+        private static Text BuildLabel(GameObject parent, string name, Vector2 position,
+            TextAnchor alignment, Vector2 anchor, int fontSize)
         {
             GameObject label = new(name, typeof(RectTransform));
             label.transform.SetParent(parent.transform, false);
             Text text = label.AddComponent<Text>();
             text.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
-            text.fontSize = 34;
+            text.fontSize = fontSize;
             text.alignment = alignment;
             text.color = new Color(0.92f, 0.92f, 0.92f, 0.85f);
             text.text = name;
@@ -1100,7 +1424,8 @@ namespace CoD.EditorTools
             string[] folders =
             {
                 "Assets/_Project/Art", Materials, "Assets/_Project/Audio",
-                "Assets/_Project/Data", DataGame, DataWeapons, DataDrones, DataAttacks, Audio,
+                "Assets/_Project/Data", DataGame, DataWeapons, DataDrones, DataAttacks,
+                DataWaves, DataShop, DataPassives, Audio,
                 Prefabs, Scenes,
             };
             foreach (string folder in folders)

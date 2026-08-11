@@ -16,11 +16,11 @@ obvious, emphasise the non-obvious.
 | [pooling.md](pooling.md) | The object pool every spawn goes through | ✅ Phase 3 |
 | [ui.md](ui.md) | Crosshair, hitmarker, HUD, cheat console | ✅ Phase 3 |
 | [drones.md](drones.md) | `DroneConfig`, `AttackModule`, NavMesh pathing, attack tokens | ✅ Rusher |
-| `waves.md` | `WaveConfig`, `WaveRunner`, `DifficultyConfig` caps and the endless ramp | Waves milestone |
-| `shop.md` | `ShopConfig`, `ShopItemConfig`, `PassiveConfig`, `StatSheet` rebuild | Shop milestone |
-| `save.md` | Versioned JSON, `schemaVersion` migration, atomic write, `.bak` | Waves milestone |
+| [waves.md](waves.md) | `WaveConfig`, `WaveRunner`, `DifficultyConfig` caps and the endless ramp | Waves |
+| [shop.md](shop.md) | `ShopConfig`, `ShopItemConfig`, `PassiveConfig`, `StatSheet` rebuild | Shop |
+| [save.md](save.md) | Versioned JSON, `schemaVersion` migration, atomic write, `.bak` | Save |
 
-The five that exist describe code that now **runs**. Each states at the top what
+Every doc here describes code that now **runs**. Each states at the top what
 has actually been verified in play and what has only been compiled — those are
 different claims and the docs keep them apart.
 
