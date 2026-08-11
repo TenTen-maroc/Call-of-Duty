@@ -31,6 +31,7 @@ namespace CoD.EditorTools
         private const string Materials = "Assets/_Project/Art/Materials";
         private const string Prefabs = "Assets/_Project/Prefabs";
         private const string Scenes = "Assets/_Project/Scenes";
+        private const string Audio = "Assets/_Project/Audio";
 
         private const string GreyBoxScenePath = Scenes + "/10_GreyBox.unity";
         private const string BootScenePath = Scenes + "/00_Boot.unity";
@@ -71,6 +72,10 @@ namespace CoD.EditorTools
 
             SetRef(rifle, "muzzleFlashPrefab", flash);
             SetRef(rifle, "shellCasingPrefab", casing);
+            SetRef(rifle, "fireCloseLayer", LoadClip("Fire_AR_Close"));
+            SetRef(rifle, "fireTailLayer", LoadClip("Fire_AR_Tail"));
+            SetRef(rifle, "dryFireClip", LoadClip("DryFire"));
+            SetRef(rifle, "reloadClip", LoadClip("Reload_AR"));
             EditorUtility.SetDirty(rifle);
 
             BuildGreyBoxScene(game, loadout, impact, grey, wall, targetMat, dummy, decal, sparks, flash, casing);
@@ -434,6 +439,8 @@ namespace CoD.EditorTools
             SetRef(hitmarker, "_weapon", weapon);
             SetRef(hitmarker, "_markerRoot", markerRoot.transform);
             SetRef(hitmarker, "_audio", hudAudio);
+            SetRef(hitmarker, "_hitClip", LoadClip("Hitmarker"));
+            SetRef(hitmarker, "_killClip", LoadClip("Hitmarker_Kill"));
             SetArrayRef(hitmarker, "_markerParts", bars);
 
             Text ammo = BuildLabel(canvasObject, "Ammo", new Vector2(-90f, 60f),
@@ -502,7 +509,7 @@ namespace CoD.EditorTools
             string[] folders =
             {
                 "Assets/_Project/Art", Materials, "Assets/_Project/Audio",
-                "Assets/_Project/Data", DataGame, DataWeapons,
+                "Assets/_Project/Data", DataGame, DataWeapons, Audio,
                 Prefabs, Scenes,
             };
             foreach (string folder in folders)
@@ -511,6 +518,34 @@ namespace CoD.EditorTools
                 int split = folder.LastIndexOf('/');
                 AssetDatabase.CreateFolder(folder[..split], folder[(split + 1)..]);
             }
+        }
+
+        /// <summary>
+        /// Loads a placeholder clip and forces the import settings the playbook
+        /// wants for short SFX: mono, uncompressed, decompressed on load. A
+        /// gunshot decoded on the audio thread is a hitch in the one system where
+        /// latency is most audible.
+        /// </summary>
+        private static AudioClip? LoadClip(string fileName)
+        {
+            string path = Audio + "/" + fileName + ".wav";
+            AudioClip? clip = AssetDatabase.LoadAssetAtPath<AudioClip>(path);
+            if (clip == null)
+            {
+                Debug.LogWarning($"Missing placeholder clip '{path}'. Run: node Tools/make-placeholder-audio.mjs");
+                return null;
+            }
+
+            if (AssetImporter.GetAtPath(path) is AudioImporter importer && !importer.forceToMono)
+            {
+                AudioImporterSampleSettings settings = importer.defaultSampleSettings;
+                settings.loadType = AudioClipLoadType.DecompressOnLoad;
+                settings.compressionFormat = AudioCompressionFormat.PCM;
+                importer.forceToMono = true;
+                importer.defaultSampleSettings = settings;
+                importer.SaveAndReimport();
+            }
+            return clip;
         }
 
         private static T LoadOrCreate<T>(string path, System.Action<T> configure) where T : ScriptableObject

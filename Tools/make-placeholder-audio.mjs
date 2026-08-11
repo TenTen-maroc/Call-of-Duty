@@ -1,0 +1,121 @@
+#!/usr/bin/env node
+/**
+ * Generates placeholder gunfeel audio as 16-bit mono WAV files.
+ *
+ * WHY: silence is the worst possible placeholder. A shooter with no hitmarker
+ * click reads as "did that even hit?", and per references/gunfeel.md the
+ * hitmarker sound does more for feel than any amount of weapon polish. These are
+ * deliberately crude synthesised sounds — enough to tune timing, mixing and the
+ * hit/kill distinction against, and to be replaced by real recordings later
+ * without touching a line of code (they are just AudioClip refs on assets).
+ *
+ * Deterministic: a fixed PRNG seed, so re-running produces byte-identical files
+ * and does not churn git or LFS.
+ *
+ * Run:  node Tools/make-placeholder-audio.mjs
+ */
+import { mkdirSync, writeFileSync } from 'node:fs'
+import { dirname, join, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
+
+const outDir = resolve(dirname(fileURLToPath(import.meta.url)), '..', 'Assets', '_Project', 'Audio')
+const RATE = 44100
+
+// Small deterministic PRNG — Math.random() would change the bytes every run.
+function makeRandom(seed) {
+  let state = seed >>> 0
+  return () => {
+    state ^= state << 13; state >>>= 0
+    state ^= state >>> 17
+    state ^= state << 5; state >>>= 0
+    return state / 0xffffffff * 2 - 1
+  }
+}
+
+function writeWav(name, samples) {
+  const data = Buffer.alloc(samples.length * 2)
+  for (let i = 0; i < samples.length; i++) {
+    const clamped = Math.max(-1, Math.min(1, samples[i]))
+    data.writeInt16LE(Math.round(clamped * 32767), i * 2)
+  }
+  const header = Buffer.alloc(44)
+  header.write('RIFF', 0)
+  header.writeUInt32LE(36 + data.length, 4)
+  header.write('WAVE', 8)
+  header.write('fmt ', 12)
+  header.writeUInt32LE(16, 16)      // PCM chunk size
+  header.writeUInt16LE(1, 20)       // format = PCM
+  header.writeUInt16LE(1, 22)       // mono
+  header.writeUInt32LE(RATE, 24)
+  header.writeUInt32LE(RATE * 2, 28)
+  header.writeUInt16LE(2, 32)
+  header.writeUInt16LE(16, 34)
+  header.write('data', 36)
+  header.writeUInt32LE(data.length, 40)
+
+  const path = join(outDir, name)
+  writeFileSync(path, Buffer.concat([header, data]))
+  console.log(`  ${name.padEnd(24)} ${(samples.length / RATE * 1000).toFixed(0)} ms`)
+}
+
+const build = (seconds, fn) => {
+  const count = Math.floor(RATE * seconds)
+  const out = new Float32Array(count)
+  for (let i = 0; i < count; i++) out[i] = fn(i / RATE, i, count)
+  return out
+}
+
+mkdirSync(outDir, { recursive: true })
+console.log('placeholder audio ->', outDir)
+
+// Close layer: the mechanical crack. Noise transient over a short body thump.
+const rndFire = makeRandom(20260811)
+writeWav('Fire_AR_Close.wav', build(0.14, (t) => {
+  const crack = rndFire() * Math.exp(-t * 90)
+  const body = Math.sin(2 * Math.PI * 130 * t) * Math.exp(-t * 38) * 0.7
+  const click = Math.sin(2 * Math.PI * 1800 * t) * Math.exp(-t * 260) * 0.25
+  return (crack + body + click) * 0.72
+}))
+
+// Tail layer: the distance/reverb answer. Quieter, longer, no transient — two
+// layers is what stops a gunshot sounding cheap.
+const rndTail = makeRandom(77712)
+writeWav('Fire_AR_Tail.wav', build(0.55, (t) => {
+  const decay = Math.exp(-t * 7)
+  const rumble = Math.sin(2 * Math.PI * 85 * t) * 0.35
+  return (rndTail() * 0.5 + rumble) * decay * 0.3
+}))
+
+// Hitmarker: short, bright, unmistakable.
+writeWav('Hitmarker.wav', build(0.06, (t) => {
+  const env = Math.exp(-t * 150)
+  return (Math.sin(2 * Math.PI * 2100 * t) * 0.8 + Math.sin(2 * Math.PI * 3200 * t) * 0.2) * env * 0.5
+}))
+
+// Kill: deliberately lower, longer and fatter than the hit. Players learn the
+// difference in seconds and it makes clearing a wave legible with no UI.
+writeWav('Hitmarker_Kill.wav', build(0.22, (t) => {
+  const env = Math.exp(-t * 22)
+  const tone = Math.sin(2 * Math.PI * 420 * t) * 0.6 + Math.sin(2 * Math.PI * 280 * t) * 0.4
+  const snap = Math.sin(2 * Math.PI * 1400 * t) * Math.exp(-t * 120) * 0.3
+  return (tone * env + snap) * 0.55
+}))
+
+// Dry fire: the absence cue. Tiny, mechanical, no tone.
+const rndDry = makeRandom(4242)
+writeWav('DryFire.wav', build(0.05, (t) => {
+  const env = Math.exp(-t * 200)
+  return (rndDry() * 0.35 + Math.sin(2 * Math.PI * 2600 * t) * 0.4) * env * 0.45
+}))
+
+// Reload: two mechanical clacks, magazine out then in.
+const rndReload = makeRandom(9001)
+writeWav('Reload_AR.wav', build(1.6, (t) => {
+  const clack = (at) => {
+    const dt = t - at
+    return dt < 0 ? 0 : (rndReload() * 0.6 + Math.sin(2 * Math.PI * 900 * dt) * 0.4) * Math.exp(-dt * 60)
+  }
+  return (clack(0.05) + clack(0.75) + clack(1.25)) * 0.5
+}))
+
+console.log('\nPlaceholders only — replace with real recordings when the feel work starts.')
