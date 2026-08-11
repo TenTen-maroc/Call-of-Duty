@@ -53,7 +53,13 @@ namespace CoD.EditorTools
                     repaired += Ensure(weapon, "_impact", impact, report, ref missing);
                 }
                 foreach (Health h in root.GetComponentsInChildren<Health>(true))
-                    repaired += Ensure(h, "_config", health, report, ref missing);
+                {
+                    // The player's Health reads GameConfig; everything else reads
+                    // a HealthConfig. Repairing the wrong one hides a dead link.
+                    repaired += h.GetComponent<PlayerMotor>() != null
+                        ? Ensure(h, "_playerConfig", game, report, ref missing)
+                        : Ensure(h, "_config", health, report, ref missing);
+                }
                 foreach (CheatConsole console in root.GetComponentsInChildren<CheatConsole>(true))
                     repaired += Ensure(console, "_config", game, report, ref missing);
             }
@@ -85,7 +91,7 @@ namespace CoD.EditorTools
                     Check(weapon, "_muzzle", stillNull);
                 }
                 foreach (Health h in root.GetComponentsInChildren<Health>(true))
-                    Check(h, "_config", stillNull);
+                    Check(h, h.GetComponent<PlayerMotor>() != null ? "_playerConfig" : "_config", stillNull);
                 foreach (PlayerInput input in root.GetComponentsInChildren<PlayerInput>(true))
                     Check(input, "_actions", stillNull);
                 foreach (Hitmarker marker in root.GetComponentsInChildren<Hitmarker>(true))

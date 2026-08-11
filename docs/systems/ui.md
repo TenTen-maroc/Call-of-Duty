@@ -36,7 +36,16 @@ raises events; the UI decides what to draw.
   per-graphic alpha the dark outlines stayed visible while the white bars faded.
 - **`Hud` only rebuilds text when the number changes.** Assigning `Text.text`
   every frame allocates a string every frame and dirties the canvas — one of the
-  quiet framerate leaks in Unity UI.
+  quiet framerate leaks in Unity UI. `IsReloading` is part of the cache key: an
+  auto-reload on empty starts without an ammo change, and without it the
+  `-- / reserve` reload readout never appeared at all.
+- **The hitmarker never downgrades a kill.** A shotgun resolves several pellets
+  in one frame; a plain hit pellet arriving after the kill pellet keeps the kill
+  colour and duration instead of overwriting them.
+- **Godmode actually blocks damage** via `Health.Invulnerable` — the console
+  flips real state on the player's Health, not a flag nothing reads.
+- **Slow-mo restores the project's own `fixedDeltaTime`**, captured in `Awake` —
+  it never assumes Unity's 0.02 default.
 - The hitmarker's kill sound matters more than it looks: per the gunfeel
   reference it does more for feel than any amount of weapon polish.
 

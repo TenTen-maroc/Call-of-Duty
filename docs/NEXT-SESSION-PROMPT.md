@@ -8,7 +8,7 @@ Keep this file updated as milestones land — it is the handoff, not a snapshot.
 
 ---
 
-```
+```text
 /goal Continue Call of Duty — a fixed-arena horde-survival FPS in Unity 6 (URP),
 offline single-player, Windows. Read @CLAUDE.md and @docs/systems/README.md
 before doing anything, then the specific docs/systems file for whatever you touch.
@@ -59,14 +59,18 @@ Extend the builder rather than hand-editing a .unity file. A scene assembled by
 hand cannot be reviewed, re-created, or explained.
 
 CLOSE THESE LOOSE ENDS FIRST
-1. Weakpoint.cs exists and is documented but nothing uses it —
-   WeaponController.ResolveHit still passes isWeakpoint: false. Make the hit path
-   look for a Weakpoint on the collider it hit, resolve to Weakpoint.Owner for
-   the Health, and pass isWeakpoint: true. Then give Target_Dummy a head collider
-   so headshots are testable. WeaponConfig.headshotMultiplier (1.5) and
-   HealthConfig.weakpointMultiplier (2.0) both already exist — decide which one
-   owns the number and delete the other, do not multiply both.
-2. Anything still uncommitted in the working tree.
+1. REBUILD THE GREY BOX before playing: run CoD -> Build Grey Box in the editor
+   (or headless with Unity closed). The 2026-08-11 audit session changed the
+   builder AFTER the committed scenes were generated: Target_Dummy gained a
+   head Weakpoint collider and a TargetRespawn, casings moved to the Ignore
+   Raycast layer, and the player's Health is wired to GameConfig. The committed
+   scenes/prefabs predate those changes; the builder is the source of truth.
+2. Play-test what the audit wired but nobody has run: burst fire (flip
+   AR_Standard's fireMode in the Inspector), headshots on the dummy's head
+   (1.5x, weapon-owned — HealthConfig.weakpointMultiplier was deleted, the
+   weapon's headshotMultiplier is the ONE owner), target respawn after 2.5 s,
+   casing ejection arcs, godmode under fire, and holding the trigger through
+   an empty-mag auto-reload.
 
 THE ROADMAP — ONE PER SESSION, IN THIS ORDER
 

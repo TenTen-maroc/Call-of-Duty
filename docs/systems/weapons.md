@@ -67,10 +67,26 @@ gunshots are the top reason a shooter sounds cheap. See the folder README.
   the shake offset; shake must never move the point of impact.
 - **Sprint-to-fire** is enforced from the moment sprint is *released*
   (`TrackSprintRelease`), not from when the trigger is pulled.
+- **Burst mode is a started-burst-finishes-itself loop**: the trigger press arms
+  `BurstShotsRemaining`, the cadence fires the rest, and `burstPause` lands after
+  the final round. Reloading or starting a sprint abandons a queued burst.
 - **Reload cancelling** past `reloadCommitPoint` keeps the ammo. Firing during a
-  reload attempts the cancel first.
+  reload attempts the cancel first — but **never when the magazine is empty**:
+  cancelling an empty-mag reload gains nothing, and holding the trigger would
+  re-cancel the auto-reload every frame, leaving a gun that never reloads.
 - **Auto-reload on empty** only when reserve remains; otherwise a dry-fire click
-  with a 0.25 s re-trigger delay.
+  with a 0.25 s re-trigger delay. All reloads enter through one
+  `TryBeginReload`, which is also where `reloadClip` plays.
+- **Headshots: the weapon owns the number.** A `Weakpoint` component on a child
+  collider relays hits to its owner's `Health`; the controller multiplies by
+  `WeaponConfig.headshotMultiplier` and flags `DamageInfo.IsWeakpoint`. There is
+  deliberately no second multiplier on the target side — two owners of the same
+  bonus double-dipped every headshot.
+- **Casing ejection overwrites the rigidbody's velocity, never adds to it.** A
+  pooled rigidbody keeps whatever velocity it despawned with; eject speed, up
+  kick and spin are `WeaponConfig` numbers. Casings live on the Ignore Raycast
+  layer so a tumbling casing never eats a bullet, and `_hitMask` defaults to
+  `Physics.DefaultRaycastLayers` to match.
 - `Physics.RaycastNonAlloc` into a pre-sized `RaycastHit[8]`, nearest selected in
   one pass — no allocation and no sort in the firing path.
 - Damage goes through `IDamageable`, so the weapon has no enemy-specific code.
@@ -79,6 +95,16 @@ gunshots are the top reason a shooter sounds cheap. See the folder README.
   Bloom the player cannot see is bloom that only feels like bad luck.
 - The controller pushes its ADS progress into `WeaponSway` rather than the sway
   polling it, so there is one owner of the blend.
+
+## Targets
+
+The grey-box dummy (`Target_Dummy` prefab) is the weapon's test bench: a body
+with `Health` and `HitFlash`, a `Head` child whose collider carries a
+[Weakpoint](../../Assets/_Project/Scripts/Core/Weakpoint.cs) relay, and a
+[TargetRespawn](../../Assets/_Project/Scripts/Core/TargetRespawn.cs) that hides
+a dead target and pops it back up after `HealthConfig.targetRespawnSeconds` —
+so a tuning session never runs out of things to shoot. Drones will NOT respawn;
+they despawn through the pool.
 
 ## Related Systems
 
@@ -94,5 +120,6 @@ gunshots are the top reason a shooter sounds cheap. See the folder README.
 - Feedback prefabs on `WeaponConfig` must be registered in the pool prewarm list
   or the first shot allocates.
 - Verified in play: firing, ammo, HUD and audio. NOT yet verified: damage
-  falloff at range, shotgun pellet spread, and reload cancelling all still need
-  a deliberate test.
+  falloff at range, shotgun pellet spread, reload cancelling, burst mode,
+  headshots on the dummy's head, casing ejection arcs, and target respawn —
+  all newly wired and awaiting a grey-box rebuild plus a play test.

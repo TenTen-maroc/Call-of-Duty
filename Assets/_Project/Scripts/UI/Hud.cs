@@ -27,6 +27,7 @@ namespace CoD.UI
         private int _lastAmmo = -1;
         private int _lastReserve = -1;
         private int _lastHealth = -1;
+        private bool _lastReloading;
 
         private void Update()
         {
@@ -40,9 +41,13 @@ namespace CoD.UI
             WeaponRuntime? runtime = _weapon.Runtime;
             if (runtime == null) return;
 
-            if (runtime.CurrentAmmo == _lastAmmo && runtime.ReserveAmmo == _lastReserve) return;
+            // Reloading is part of the cache key: a reload that starts without an
+            // ammo change (auto-reload on empty) must still flip the label to --.
+            if (runtime.CurrentAmmo == _lastAmmo && runtime.ReserveAmmo == _lastReserve &&
+                runtime.IsReloading == _lastReloading) return;
             _lastAmmo = runtime.CurrentAmmo;
             _lastReserve = runtime.ReserveAmmo;
+            _lastReloading = runtime.IsReloading;
 
             _ammoLabel.text = runtime.IsReloading
                 ? "-- / " + _lastReserve

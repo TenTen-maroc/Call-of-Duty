@@ -39,6 +39,7 @@ namespace CoD.Core
         {
             public PooledObject Instance;
             public float DespawnAt;
+            public uint Generation;
         }
 
         private void Awake()
@@ -60,8 +61,15 @@ namespace CoD.Core
             {
                 if (now < _timed[i].DespawnAt) continue;
                 PooledObject instance = _timed[i].Instance;
+                uint generation = _timed[i].Generation;
                 _timed.RemoveAt(i);
-                if (instance != null) Despawn(instance);
+                // Generation check: if something manually despawned (or despawned
+                // and re-spawned) this instance, the timer is stale and must not
+                // fire — otherwise it kills an unrelated later use of the object.
+                if (instance != null && instance.IsSpawned && instance.SpawnGeneration == generation)
+                {
+                    Despawn(instance);
+                }
             }
         }
 
@@ -74,12 +82,17 @@ namespace CoD.Core
                 _available[prefab] = stack;
             }
 
-            PooledObject instance;
-            if (stack.Count > 0)
+            // Pop past instances something external destroyed (a scene change, a
+            // stray Destroy) rather than crashing on the first dead entry.
+            PooledObject? instance = null;
+            while (stack.Count > 0)
             {
                 instance = stack.Pop();
+                if (instance != null) break;
+                instance = null;
             }
-            else
+
+            if (instance == null)
             {
                 instance = Create(prefab);
                 int live = _liveCount.TryGetValue(prefab, out int existing) ? existing + 1 : 1;
@@ -94,6 +107,7 @@ namespace CoD.Core
 
             Transform t = instance.CachedTransform;
             t.SetPositionAndRotation(position, rotation);
+            instance.MarkSpawned();
             instance.gameObject.SetActive(true);
             return instance;
         }
@@ -102,7 +116,12 @@ namespace CoD.Core
         public PooledObject SpawnForSeconds(GameObject prefab, Vector3 position, Quaternion rotation, float lifetime)
         {
             PooledObject instance = Spawn(prefab, position, rotation);
-            _timed.Add(new TimedDespawn { Instance = instance, DespawnAt = Time.time + lifetime });
+            _timed.Add(new TimedDespawn
+            {
+                Instance = instance,
+                DespawnAt = Time.time + lifetime,
+                Generation = instance.SpawnGeneration,
+            });
             return instance;
         }
 
@@ -114,6 +133,11 @@ namespace CoD.Core
                 GameLog.Error($"'{instance.name}' was despawned but never came from the pool.", instance);
                 return;
             }
+
+            // A double despawn would push the same instance onto the stack twice,
+            // and the pool would later hand one object to two callers at once.
+            if (!instance.IsSpawned) return;
+            instance.MarkDespawned();
 
             instance.gameObject.SetActive(false);
             instance.CachedTransform.SetParent(_root, false);

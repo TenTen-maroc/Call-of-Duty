@@ -40,9 +40,9 @@ namespace CoD.Weapons
         [Tooltip("Only used when fireMode is Burst.")]
         [Range(2, 5)] public int burstCount = 3;
         [Range(0.02f, 0.4f)] public float burstPause = 0.12f;
-        public int magazineSize = 30;
-        public int reserveAmmo = 180;
-        public int pelletsPerShot = 1; // shotgun: 12
+        [Min(1)] public int magazineSize = 30;
+        [Min(0)] public int reserveAmmo = 180;
+        [Min(1)] public int pelletsPerShot = 1; // shotgun: 12
 
         [Header("Handling (seconds)")]
         [Tooltip("Hip to fully aimed. AR 0.25, SMG 0.20, sniper 0.40.")]
@@ -91,6 +91,12 @@ namespace CoD.Weapons
         public GameObject? shellCasingPrefab;
         [Tooltip("Seconds a spent casing survives before returning to the pool.")]
         [Range(0.5f, 10f)] public float casingLifetime = 3f;
+        [Tooltip("Casing ejection: sideways speed along the eject point's right, in m/s.")]
+        [Range(0f, 8f)] public float casingEjectSpeed = 2.4f;
+        [Tooltip("Casing ejection: upward pop, in m/s.")]
+        [Range(0f, 5f)] public float casingEjectUpKick = 1.2f;
+        [Tooltip("Random tumble on an ejected casing, in radians/second.")]
+        [Range(0f, 60f)] public float casingSpinMax = 25f;
         public AudioClip? fireCloseLayer;   // mechanical crack
         public AudioClip? fireTailLayer;    // distance / reverb tail
         public AudioClip? dryFireClip;
@@ -123,6 +129,9 @@ namespace CoD.Weapons
             if (roundsPerMinute <= 0f) roundsPerMinute = 1f;
             if (reloadEmptyTime < reloadTime) reloadEmptyTime = reloadTime;
             if (falloffRange.y <= falloffRange.x) falloffRange.y = falloffRange.x + 1f;
+            if (magazineSize < 1) magazineSize = 1;
+            if (reserveAmmo < 0) reserveAmmo = 0;
+            if (pelletsPerShot < 1) pelletsPerShot = 1;
 
             float ttk = TimeToKill() * 1000f;
             if (ttk > 0f && (ttk < 150f || ttk > 500f))

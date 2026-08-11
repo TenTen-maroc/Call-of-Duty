@@ -45,7 +45,6 @@ namespace CoD.EditorTools
             HealthConfig targetHealth = LoadOrCreate<HealthConfig>(DataGame + "/Health_Target.asset", h =>
             {
                 h.maxHealth = 100f;
-                h.weakpointMultiplier = 2f;
             });
             ImpactConfig impact = LoadOrCreate<ImpactConfig>(DataGame + "/Impact_Default.asset", _ => { });
             WeaponConfig rifle = LoadOrCreate<WeaponConfig>(DataWeapons + "/AR_Standard.asset", ConfigureRifle);
@@ -207,6 +206,9 @@ namespace CoD.EditorTools
         {
             GameObject root = GameObject.CreatePrimitive(PrimitiveType.Cube);
             root.name = "Fx_ShellCasing";
+            // Ignore Raycast: a casing tumbling past the muzzle must never eat a
+            // bullet or catch an impact decal. It keeps its collider for bounces.
+            root.layer = 2;
             root.transform.localScale = new Vector3(0.012f, 0.012f, 0.03f);
             root.GetComponent<MeshRenderer>().sharedMaterial = material;
 
@@ -227,8 +229,29 @@ namespace CoD.EditorTools
             Health health = root.AddComponent<Health>();
             SetRef(health, "_config", healthConfig);
 
+            // The head: a separate collider carrying a Weakpoint relay, so the
+            // hit path can pay the headshot multiplier. Child scale compensates
+            // for the stretched parent, or the head would be a 1.8x tall slab.
+            GameObject head = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            head.name = "Head";
+            head.transform.SetParent(root.transform, false);
+            head.transform.localPosition = new Vector3(0f, 0.58f, 0f);
+            head.transform.localScale = new Vector3(0.35f / 0.8f, 0.35f / 1.8f, 0.35f / 0.8f);
+            head.GetComponent<MeshRenderer>().sharedMaterial = material;
+            Weakpoint weakpoint = head.AddComponent<Weakpoint>();
+            SetRef(weakpoint, "_owner", health);
+
             HitFlash flash = root.AddComponent<HitFlash>();
             SetRef(flash, "_renderer", root.GetComponent<MeshRenderer>());
+
+            // Shooting-range behaviour: dead targets pop back up after a pause
+            // instead of standing in the room forever soaking bullets.
+            TargetRespawn respawn = root.AddComponent<TargetRespawn>();
+            SetRef(respawn, "_config", healthConfig);
+            SetArrayRef(respawn, "_renderers",
+                new Object[] { root.GetComponent<MeshRenderer>(), head.GetComponent<MeshRenderer>() });
+            SetArrayRef(respawn, "_colliders",
+                new Object[] { root.GetComponent<Collider>(), head.GetComponent<Collider>() });
 
             root.AddComponent<PooledObject>();
             return SavePrefab(root, Prefabs + "/Target_Dummy.prefab");
@@ -366,6 +389,9 @@ namespace CoD.EditorTools
             SetRef(motor, "_input", input);
 
             Health health = player.AddComponent<Health>();
+            // The player's max HP comes from GameConfig, the one asset that owns
+            // global player numbers — not from a HealthConfig like props do.
+            SetRef(health, "_playerConfig", game);
 
             GameObject pivot = new("CameraPivot");
             pivot.transform.SetParent(player.transform, false);

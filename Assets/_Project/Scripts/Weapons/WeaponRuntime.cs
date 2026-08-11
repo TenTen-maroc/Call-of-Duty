@@ -39,11 +39,14 @@ namespace CoD.Weapons
         public bool HasReserve => ReserveAmmo > 0;
         public bool IsFull => CurrentAmmo >= Config.magazineSize;
 
-        public void BeginReload(float now)
+        /// <summary>Returns true when a reload actually started this call.</summary>
+        public bool BeginReload(float now)
         {
-            if (IsReloading || IsFull || !HasReserve) return;
+            if (IsReloading || IsFull || !HasReserve) return false;
             IsReloading = true;
+            BurstShotsRemaining = 0;
             ReloadEndsAt = now + (IsMagazineEmpty ? Config.reloadEmptyTime : Config.reloadTime);
+            return true;
         }
 
         /// <summary>

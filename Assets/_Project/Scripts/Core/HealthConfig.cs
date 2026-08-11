@@ -11,7 +11,9 @@ namespace CoD.Core
     public sealed class HealthConfig : ScriptableObject
     {
         [Range(1f, 10000f)] public float maxHealth = 100f;
-        [Tooltip("Damage multiplier for a weakpoint hit. Headshots should pay on drones too.")]
-        [Range(1f, 5f)] public float weakpointMultiplier = 2f;
+        // The headshot bonus lives on WeaponConfig.headshotMultiplier — ONE owner.
+        // A second multiplier here double-dipped every weakpoint hit.
+        [Tooltip("Grey-box dummy targets: seconds a dead target stays down before it resets. Drones despawn instead.")]
+        [Range(0.5f, 30f)] public float targetRespawnSeconds = 2.5f;
     }
 }

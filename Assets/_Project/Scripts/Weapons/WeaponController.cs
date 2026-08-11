@@ -36,7 +36,7 @@ namespace CoD.Weapons
         [SerializeField] private AudioSource? _audioClose = null;
         [SerializeField] private AudioSource? _audioTail = null;
         [Tooltip("What bullets can hit. Leave the player's own layer out of this.")]
-        [SerializeField] private LayerMask _hitMask = ~0;
+        [SerializeField] private LayerMask _hitMask = Physics.DefaultRaycastLayers;
 
         private WeaponRuntime? _runtime;
         private float _adsProgress;
@@ -95,22 +95,31 @@ namespace CoD.Weapons
             UpdateMuzzleLight(now);
             UpdateFovOffset(now);
 
-            if (_input.ReloadPressed) _runtime.BeginReload(now);
+            if (_input.ReloadPressed) TryBeginReload(now);
             if (WantsToFire()) TryFire(now);
         }
 
         private bool WantsToFire()
         {
             if (_input == null || _runtime == null) return false;
-            return _runtime.Config.fireMode == FireMode.FullAuto
-                ? _input.FireHeld
-                : _input.FirePressedThisFrame;
+            return _runtime.Config.fireMode switch
+            {
+                FireMode.FullAuto => _input.FireHeld,
+                // A started burst finishes itself; the trigger only starts one.
+                FireMode.Burst => _input.FirePressedThisFrame || _runtime.BurstShotsRemaining > 0,
+                _ => _input.FirePressedThisFrame,
+            };
         }
 
         private void TrackSprintRelease(float now)
         {
             if (_motor == null) return;
             if (_wasSprinting && !_motor.IsSprinting) _sprintReleasedAt = now;
+            if (!_wasSprinting && _motor.IsSprinting && _runtime != null)
+            {
+                // Sprinting abandons a queued burst rather than parking it.
+                _runtime.BurstShotsRemaining = 0;
+            }
             _wasSprinting = _motor.IsSprinting;
         }
 
@@ -125,7 +134,14 @@ namespace CoD.Weapons
             if (_motor != null && _motor.IsSprinting) return;
             if (now - _sprintReleasedAt < config.sprintToFireTime) return;
 
-            if (_runtime.IsReloading && !_runtime.TryCancelReload(now)) return;
+            if (_runtime.IsReloading)
+            {
+                // Never cancel a reload the magazine needs: with an empty mag the
+                // "cancel" costs the reload and gains nothing, and holding the
+                // trigger would otherwise re-cancel the auto-reload every frame —
+                // an empty gun that never reloads while the player holds fire.
+                if (_runtime.IsMagazineEmpty || !_runtime.TryCancelReload(now)) return;
+            }
 
             if (now < _runtime.NextShotAllowedAt) return;
 
@@ -139,6 +155,13 @@ namespace CoD.Weapons
                 _runtime.CurrentAmmo = config.magazineSize;
             }
 
+            // A press starts a burst; the remaining shots run on cadence alone.
+            if (config.fireMode == FireMode.Burst && _runtime.BurstShotsRemaining <= 0)
+            {
+                if (_input == null || !_input.FirePressedThisFrame) return;
+                _runtime.BurstShotsRemaining = config.burstCount;
+            }
+
             FireOneShot(now);
         }
 
@@ -148,16 +171,20 @@ namespace CoD.Weapons
             WeaponConfig config = _runtime.Config;
 
             int shotIndex = _runtime.ShotsInBurst;
+            _runtime.ConsumeShot(now);
             if (InfiniteAmmo)
             {
-                _runtime.ShotsInBurst++;
-                _runtime.LastShotAt = now;
-                _runtime.NextShotAllowedAt = now + config.SecondsPerShot;
-                _runtime.CurrentSpread = Mathf.Min(config.maxSpread, _runtime.CurrentSpread + config.spreadPerShot);
+                // Same cadence and bloom as a real shot; only the round comes back.
+                _runtime.CurrentAmmo = Mathf.Min(config.magazineSize, _runtime.CurrentAmmo + 1);
             }
-            else
+
+            if (config.fireMode == FireMode.Burst && _runtime.BurstShotsRemaining > 0)
             {
-                _runtime.ConsumeShot(now);
+                _runtime.BurstShotsRemaining--;
+                if (_runtime.BurstShotsRemaining == 0)
+                {
+                    _runtime.NextShotAllowedAt += config.burstPause;
+                }
             }
 
             float spread = CurrentSpreadDegrees();
@@ -229,11 +256,27 @@ namespace CoD.Weapons
         {
             float damage = config.DamageAtDistance(hit.distance) * DamageMultiplier;
 
+            // A weakpoint collider relays to its owner's Health and pays twice:
+            // the weapon's headshot multiplier here, the target's weakpoint
+            // multiplier inside Health. Both are tuning data, both stack.
+            bool isWeakpoint = false;
+            IDamageable? target = null;
+            if (hit.collider.TryGetComponent(out Weakpoint weakpoint) && weakpoint.Owner != null)
+            {
+                target = weakpoint.Owner;
+                damage *= config.headshotMultiplier;
+                isWeakpoint = true;
+            }
+            else if (hit.collider.TryGetComponent(out IDamageable direct))
+            {
+                target = direct;
+            }
+
             bool killed = false;
             bool damaged = false;
-            if (hit.collider.TryGetComponent(out IDamageable target) && target.IsAlive)
+            if (target != null && target.IsAlive)
             {
-                var info = new DamageInfo(damage, hit.point, hit.normal, direction, isWeakpoint: false);
+                var info = new DamageInfo(damage, hit.point, hit.normal, direction, isWeakpoint);
                 target.ApplyDamage(in info);
                 damaged = true;
                 killed = !target.IsAlive;
@@ -315,6 +358,22 @@ namespace CoD.Weapons
             _look.SetFovOffset(adsOffset + kick);
         }
 
+        /// <summary>
+        /// The one reload entry point. Abandons a queued burst first — a player
+        /// who hits reload mid-burst wants the magazine, not two more rounds and
+        /// a click — and plays the reload sound exactly when a reload starts.
+        /// </summary>
+        private void TryBeginReload(float now)
+        {
+            if (_runtime == null) return;
+            _runtime.BurstShotsRemaining = 0;
+            if (!_runtime.BeginReload(now)) return;
+            if (_audioClose != null && _runtime.Config.reloadClip != null)
+            {
+                _audioClose.PlayOneShot(_runtime.Config.reloadClip);
+            }
+        }
+
         private void UpdateReload(float now)
         {
             if (_runtime == null) return;
@@ -324,7 +383,7 @@ namespace CoD.Weapons
             // Auto-reload on empty, so the player never stands there clicking.
             if (_runtime.IsMagazineEmpty && _runtime.HasReserve && !_runtime.IsReloading)
             {
-                _runtime.BeginReload(now);
+                TryBeginReload(now);
             }
         }
 
@@ -347,13 +406,29 @@ namespace CoD.Weapons
 
             if (_pool != null && _muzzle != null && config.muzzleFlashPrefab != null)
             {
-                _pool.SpawnForSeconds(config.muzzleFlashPrefab, _muzzle.position, _muzzle.rotation, 0.08f);
+                // Random roll so back-to-back flashes read as fire, not as the
+                // same sprite blinking.
+                Quaternion roll = _muzzle.rotation * Quaternion.Euler(0f, 0f, UnityEngine.Random.value * 360f);
+                _pool.SpawnForSeconds(config.muzzleFlashPrefab, _muzzle.position, roll, 0.08f);
             }
 
             if (_pool != null && _casingEject != null && config.shellCasingPrefab != null)
             {
-                _pool.SpawnForSeconds(config.shellCasingPrefab, _casingEject.position, _casingEject.rotation,
-                    config.casingLifetime);
+                PooledObject casing = _pool.SpawnForSeconds(config.shellCasingPrefab,
+                    _casingEject.position, _casingEject.rotation, config.casingLifetime);
+
+                // Overwrite, never add: a pooled rigidbody keeps last use's
+                // velocity, and a casing that inherits it flies off like a bullet.
+                Rigidbody? body = casing.CachedRigidbody;
+                if (body != null)
+                {
+                    body.linearVelocity = _casingEject.right * config.casingEjectSpeed
+                        + _casingEject.up * config.casingEjectUpKick;
+                    body.angularVelocity = new Vector3(
+                        (UnityEngine.Random.value - 0.5f) * 2f * config.casingSpinMax,
+                        (UnityEngine.Random.value - 0.5f) * 2f * config.casingSpinMax,
+                        (UnityEngine.Random.value - 0.5f) * 2f * config.casingSpinMax);
+                }
             }
 
             // Two layers: a close mechanical crack plus a distance tail. One-layer

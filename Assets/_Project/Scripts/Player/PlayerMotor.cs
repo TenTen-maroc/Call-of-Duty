@@ -63,7 +63,14 @@ namespace CoD.Player
 
             Vector3 motion = _horizontalVelocity;
             motion.y = _verticalVelocity;
-            _controller.Move(motion * deltaTime);
+            CollisionFlags flags = _controller.Move(motion * deltaTime);
+
+            // Head hit a ceiling mid-jump: kill the upward velocity, or the
+            // controller stays glued to the ceiling for the rest of the arc.
+            if ((flags & CollisionFlags.Above) != 0 && _verticalVelocity > 0f)
+            {
+                _verticalVelocity = 0f;
+            }
 
             _wasGrounded = IsGrounded;
         }

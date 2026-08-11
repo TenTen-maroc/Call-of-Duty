@@ -31,6 +31,13 @@ namespace CoD.UI
         private bool _open;
         private bool _godMode;
         private bool _slowMo;
+        private float _baseFixedDeltaTime = 0.02f;
+
+        private void Awake()
+        {
+            // The project's real physics step, whatever it is — never assume 0.02.
+            _baseFixedDeltaTime = Time.fixedDeltaTime;
+        }
 
         private void Update()
         {
@@ -56,7 +63,11 @@ namespace CoD.UI
         private void ToggleGodMode()
         {
             _godMode = !_godMode;
-            if (_playerHealth != null) _playerHealth.ResetHealth();
+            if (_playerHealth != null)
+            {
+                _playerHealth.Invulnerable = _godMode;
+                _playerHealth.ResetHealth();
+            }
             GameLog.Info("godmode: " + _godMode, this);
         }
 
@@ -73,7 +84,7 @@ namespace CoD.UI
             float scale = _slowMo && _config != null ? _config.slowMoTimeScale : 1f;
             Time.timeScale = scale;
             // Physics must follow the clock, or slow motion desyncs collision.
-            Time.fixedDeltaTime = 0.02f * scale;
+            Time.fixedDeltaTime = _baseFixedDeltaTime * scale;
             GameLog.Info("slow-mo: " + _slowMo, this);
         }
 
@@ -118,7 +129,7 @@ namespace CoD.UI
             // by a scene change.
             if (!_slowMo) return;
             Time.timeScale = 1f;
-            Time.fixedDeltaTime = 0.02f;
+            Time.fixedDeltaTime = _baseFixedDeltaTime;
         }
 #endif
     }

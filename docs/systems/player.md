@@ -14,7 +14,9 @@ Every tunable number comes from `GameConfig`.
 - **[GameConfig.cs](../../Assets/_Project/Scripts/Core/GameConfig.cs)** — player
   health, movement speeds, gravity, jump height, capsule heights, acceleration,
   sensitivity, pitch clamp, FOV, landing dip, slow-mo scale. One asset, in
-  `Assets/_Project/Data/Game/`.
+  `Assets/_Project/Data/Game/`. The player's `Health` reads its max from here
+  (via its `_playerConfig` field, wired by the builder) — props and targets use
+  a `HealthConfig` instead.
 - **[CoD.inputactions](../../Assets/_Project/Settings/CoD.inputactions)** — the
   `Player` map: Move, Look, Fire, Aim, Reload, Jump, Sprint, Crouch. Keyboard and
   mouse, with arrow keys alongside WASD.
@@ -43,7 +45,7 @@ Every tunable number comes from `GameConfig`.
 
 Built by `CoD → Build Grey Box`:
 
-```
+```text
 Player            CharacterController, PlayerInput, PlayerMotor, PlayerLook, Health, WeaponController
 └ CameraPivot     pitch, set by PlayerLook
   └ Main Camera   Camera, AudioListener, CameraShake, 2x AudioSource
@@ -64,6 +66,8 @@ Player            CharacterController, PlayerInput, PlayerMotor, PlayerLook, Hea
 - **Sprint is forward-only and cancelled by crouch**, otherwise it is free speed
   in every direction and the arena effectively shrinks.
 - A `-2` downward bias while grounded keeps `isGrounded` true on slopes and steps.
+- **Hitting a ceiling zeroes upward velocity** (`CollisionFlags.Above`), or the
+  controller stays glued to the ceiling for the rest of the jump arc.
 - `LandingImpact` scales with impact velocity, so a hop and a drop read
   differently.
 - **FOV is VERTICAL in Unity.** 62 ≈ 95 horizontal at 16:9. Typing 95 gives a

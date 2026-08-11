@@ -12,6 +12,8 @@ namespace CoD.Core
     public sealed class Health : MonoBehaviour, IDamageable
     {
         [SerializeField] private HealthConfig? _config = null;
+        [Tooltip("Player only. When set, max health comes from GameConfig.playerMaxHealth — the one asset that owns global player numbers.")]
+        [SerializeField] private GameConfig? _playerConfig = null;
 
         private float _current;
 
@@ -21,8 +23,12 @@ namespace CoD.Core
 
         public bool IsAlive => _current > 0f;
         public float Current => _current;
-        public float Max => _config != null ? _config.maxHealth : 100f;
+        public float Max => _playerConfig != null ? _playerConfig.playerMaxHealth
+            : _config != null ? _config.maxHealth : 100f;
         public float Normalized => Max <= 0f ? 0f : Mathf.Clamp01(_current / Max);
+
+        /// <summary>Godmode. State flipped by the sandbox console, never saved.</summary>
+        public bool Invulnerable { get; set; }
 
         private void Awake() => ResetHealth();
 
@@ -32,11 +38,13 @@ namespace CoD.Core
 
         public float ApplyDamage(in DamageInfo info)
         {
-            if (!IsAlive) return 0f;
+            if (!IsAlive || Invulnerable) return 0f;
 
-            float multiplier = info.IsWeakpoint && _config != null ? _config.weakpointMultiplier : 1f;
-            float requested = info.Amount * multiplier;
-            float applied = Mathf.Min(requested, _current);
+            // info.Amount already includes the weakpoint bonus: the WEAPON owns
+            // the headshot multiplier (WeaponConfig.headshotMultiplier), so the
+            // same number is never applied twice. IsWeakpoint stays on the info
+            // purely for feedback — distinct hit sounds and markers later.
+            float applied = Mathf.Min(info.Amount, _current);
             _current -= applied;
 
             Damaged?.Invoke(this, info);

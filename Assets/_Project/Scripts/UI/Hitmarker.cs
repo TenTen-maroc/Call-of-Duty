@@ -39,6 +39,7 @@ namespace CoD.UI
         [SerializeField] private Transform? _markerRoot = null;
         private float _visibleUntil;
         private float _duration = 0.1f;
+        private bool _showingKill;
 
         private void Awake()
         {
@@ -59,6 +60,11 @@ namespace CoD.UI
         private void OnHit(bool killed)
         {
             if (_markerParts.Length == 0) return;
+
+            // A shotgun resolves several pellets in one frame: never let a plain
+            // hit pellet overwrite the kill confirmation from a sibling pellet.
+            if (!killed && _showingKill && Time.time < _visibleUntil) return;
+            _showingKill = killed;
 
             _duration = killed ? _killDuration : _hitDuration;
             _visibleUntil = Time.time + _duration;
