@@ -30,6 +30,16 @@ namespace CoD.Core
 
         private SaveData? _save;
 
+        /// <summary>
+        /// The global player config this run was started with.
+        ///
+        /// Exposed so components that already hold a RunContext do not each need
+        /// their own serialized GameConfig reference. Every extra asset reference
+        /// in a scene is another one that can come back {fileID: 0} after a save
+        /// and fail silently — this project has paid for that twice.
+        /// </summary>
+        public GameConfig? Config => _config;
+
         public RunState State { get; } = new();
         public StatSheet Stats => State.Stats;
 

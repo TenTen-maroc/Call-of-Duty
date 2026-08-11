@@ -58,6 +58,11 @@ namespace CoD.Core
         [Header("Sandbox")]
         [Range(0.05f, 1f)] public float slowMoTimeScale = 0.35f;
 
+        [Tooltip("Extra effect-module resolution depth in SANDBOX only. Run mode always gets 0. " +
+                 "This is where the 'without limits' promise is allowed to be felt, because a frame " +
+                 "spike in a sandbox costs nothing and a frame spike in a run costs the run.")]
+        [Range(0, 3)] public int sandboxExtraEffectDepth = 1;
+
         /// <summary>Derived from jumpHeight and gravity — never stored twice.</summary>
         public float JumpVelocity => Mathf.Sqrt(2f * jumpHeight * Mathf.Abs(gravity));
 

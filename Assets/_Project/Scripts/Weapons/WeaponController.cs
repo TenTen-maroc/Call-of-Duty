@@ -68,6 +68,16 @@ namespace CoD.Weapons
         // modules are shared assets, so a buffer on one would be written by every
         // weapon carrying it.
         private readonly FollowUpBuffer _followUps = new(64);
+
+        /// <summary>
+        /// Extra resolution depth granted in Sandbox. Zero in a Run, always.
+        ///
+        /// MAX_FOLLOW_UPS_PER_SHOT and the fixed-capacity buffer above are
+        /// untouched on purpose: they are the hard backstop that makes deeper
+        /// recursion a bigger effect rather than a frame-rate event, and the whole
+        /// reason it is safe to let Sandbox off the leash at all.
+        /// </summary>
+        private int _extraEffectDepth;
         private readonly List<Health> _alreadyHit = new(24);
         // 24 covered about twelve drones: every drone puts TWO colliders in an
         // overlap (hull and weakpoint Core) and only the hull carries Health.
@@ -202,6 +212,18 @@ namespace CoD.Weapons
             }
             _runtime = new WeaponRuntime(config);
             if (_muzzleLight != null) _muzzleLight.enabled = false;
+        }
+
+        private void Start()
+        {
+            // Start, not Awake: RunContext resolves the save file in ITS Awake,
+            // and Mode is read from that save. Reading it a frame earlier would
+            // depend on script execution order, which is undefined.
+            GameConfig? config = _run != null ? _run.Config : null;
+            if (_run == null || config == null) return;
+            _extraEffectDepth = _run.Mode == GameMode.Sandbox
+                ? Mathf.Max(0, config.sandboxExtraEffectDepth)
+                : 0;
         }
 
         private void OnEnable()
@@ -543,7 +565,11 @@ namespace CoD.Weapons
                 if (module == null) continue;
                 // The recursion guard, enforced in one place: without it,
                 // Explosive -> Chain -> Explosive never terminates.
-                if (!module.RunsAtDepth(context.Depth)) continue;
+                // The sandbox bonus shifts the depth the module SEES, rather than
+                // the maxDepth it declares: maxDepth lives on a shared config
+                // asset, and Domain Reload is off, so writing to it would rewrite
+                // the shipped balance for every future Play session.
+                if (!module.RunsAtDepth(context.Depth - _extraEffectDepth)) continue;
                 module.Resolve(in context, _followUps);
             }
         }

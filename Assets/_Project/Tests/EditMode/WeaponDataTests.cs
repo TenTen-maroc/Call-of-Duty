@@ -1,4 +1,5 @@
 #nullable enable
+using CoD.Core;
 using CoD.Weapons;
 using NUnit.Framework;
 using UnityEditor;
@@ -76,5 +77,44 @@ namespace CoD.Tests
             // have quietly capped the whole "without limits" design at one module.
             Assert.IsNotNull(rifle.effectModules);
         }
+
+        // ---------- the sandbox depth bonus ----------
+
+        /// <summary>
+        /// Sandbox resolves effect modules one level deeper than a Run.
+        ///
+        /// The bonus shifts the depth the module is ASKED about rather than the
+        /// maxDepth it declares, because maxDepth lives on a shared config asset
+        /// and Domain Reload is off — writing to it would rewrite the shipped
+        /// balance for every Play session afterwards. This asserts the exact
+        /// expression WeaponController evaluates.
+        /// </summary>
+        [Test]
+        public void SandboxDepth_AllowsExactlyOneMoreLevelPerBonusPoint()
+        {
+            var chain = UnityEditor.AssetDatabase
+                .LoadAssetAtPath<EffectModule>("Assets/_Project/Data/Effects/Effect_Chain.asset");
+            var game = UnityEditor.AssetDatabase
+                .LoadAssetAtPath<GameConfig>("Assets/_Project/Data/Game/GameConfig.asset");
+            Assert.IsNotNull(chain, "Effect_Chain.asset is missing");
+            Assert.IsNotNull(game, "GameConfig.asset is missing");
+
+            int max = chain!.maxDepth;
+            int bonus = game!.sandboxExtraEffectDepth;
+            Assert.Greater(bonus, 0, "sandbox gets no extra depth at all, so the feature is inert");
+
+            // Run mode: the offset is zero and the module stops exactly at maxDepth.
+            Assert.IsTrue(chain.RunsAtDepth(max - 0), "a Run must still reach maxDepth");
+            Assert.IsFalse(chain.RunsAtDepth(max + 1 - 0), "a Run must stop at maxDepth");
+
+            // Sandbox: the same module, asked about a depth `bonus` levels deeper.
+            int deepestInSandbox = max + bonus;
+            Assert.IsTrue(chain.RunsAtDepth(deepestInSandbox - bonus),
+                "sandbox did not gain the extra level");
+            Assert.IsFalse(chain.RunsAtDepth(deepestInSandbox + 1 - bonus),
+                "sandbox gained MORE than the bonus allows — the recursion rule is the only thing " +
+                "between Explosive > Chain > Explosive and a frozen frame");
+        }
+
     }
 }
