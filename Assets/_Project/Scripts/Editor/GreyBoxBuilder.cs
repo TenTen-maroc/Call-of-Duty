@@ -42,6 +42,7 @@ namespace CoD.EditorTools
         private const string DataPassives = "Assets/_Project/Data/Passives";
         private const string DataEffects = "Assets/_Project/Data/Effects";
         private const string Materials = "Assets/_Project/Art/Materials";
+        private const string Textures = "Assets/_Project/Art/Textures";
         private const string Prefabs = "Assets/_Project/Prefabs";
         private const string Scenes = "Assets/_Project/Scenes";
         private const string Audio = "Assets/_Project/Audio";
@@ -94,8 +95,16 @@ namespace CoD.EditorTools
             // an existing material untouched, which is right for values a human
             // tuned — but these are shipped defaults being introduced, so they are
             // applied the same way SetRef re-links a reference.
-            ApplySurface(grey, smoothness: 0.28f, metallic: 0.0f);
-            ApplySurface(wall, smoothness: 0.18f, metallic: 0.0f);
+            // One shared 1024 detail normal for the whole box. Generated once and
+            // reused; see EnsureDetailNormal for why it is never rewritten.
+            //
+            // Tiling differs per material and cannot be per-object: AddBox scales
+            // cubes, and a scaled cube's UVs stay 0..1 per face, so every wall
+            // shares one material and therefore one tiling. Close enough for a
+            // detail map, and the alternative is a material per block.
+            Texture2D? detail = EnsureDetailNormal();
+            ApplySurface(grey, smoothness: 0.28f, metallic: 0.0f, detail, tiling: 24f, normalScale: 0.8f);
+            ApplySurface(wall, smoothness: 0.18f, metallic: 0.0f, detail, tiling: 10f, normalScale: 0.6f);
             ApplySurface(targetMat, smoothness: 0.35f, metallic: 0.1f);
             ApplySurface(gunmetal, smoothness: 0.62f, metallic: 0.85f);
             ApplySurface(gunAccent, smoothness: 0.45f, metallic: 0.70f);
@@ -2508,7 +2517,7 @@ namespace CoD.EditorTools
         {
             string[] folders =
             {
-                "Assets/_Project/Art", Materials, "Assets/_Project/Audio",
+                "Assets/_Project/Art", Materials, Textures, "Assets/_Project/Audio",
                 "Assets/_Project/Data", DataGame, DataWeapons, DataDrones, DataAttacks,
                 DataWaves, DataShop, DataPassives, DataEffects, Audio,
                 Prefabs, Scenes,
@@ -2574,6 +2583,138 @@ namespace CoD.EditorTools
         }
 
         /// <summary>
+        /// One shared detail normal map, generated ONCE and then left alone.
+        ///
+        /// Generated rather than authored because nothing in this project is
+        /// hand-made — the scenes, prefabs, materials and navmesh are all built by
+        /// this file, and a binary someone dragged in is the one asset nobody
+        /// could review or reproduce.
+        ///
+        /// "Once" is load-bearing. A .png goes through Git LFS, the free quota is
+        /// 1 GB of storage and 1 GB of bandwidth a month, and regenerating on every
+        /// build would push a fresh one-to-two megabyte object every time the menu
+        /// item is clicked. Existing file, existing texture, no write.
+        /// </summary>
+        private static Texture2D? EnsureDetailNormal()
+        {
+            const string path = Textures + "/Surface_Detail_N.png";
+            var existing = AssetDatabase.LoadAssetAtPath<Texture2D>(path);
+            if (existing != null) return existing;
+
+            const int size = 1024;
+
+            // Deterministic: a fixed seed and an integer hash, never
+            // UnityEngine.Random. Regenerating after a delete has to produce the
+            // same bytes, or the diff is noise and the LFS object is wasted.
+            const int seed = 20260811;
+
+            var height = new float[size * size];
+            for (int y = 0; y < size; y++)
+            {
+                for (int x = 0; x < size; x++)
+                {
+                    float u = x / (float)size;
+                    float v = y / (float)size;
+                    float value = 0f;
+                    float amplitude = 1f;
+                    float total = 0f;
+                    // Four octaves. Each one's lattice period equals its frequency,
+                    // which is what makes the result tile seamlessly.
+                    for (int octave = 0; octave < 4; octave++)
+                    {
+                        int frequency = 8 << octave;
+                        value += amplitude * ValueNoise(u * frequency, v * frequency, frequency, seed + octave);
+                        total += amplitude;
+                        amplitude *= 0.5f;
+                    }
+                    height[y * size + x] = value / total;
+                }
+            }
+
+            var texture = new Texture2D(size, size, TextureFormat.RGBA32, false, true);
+            var pixels = new Color32[size * size];
+            const float strength = 6f;
+            for (int y = 0; y < size; y++)
+            {
+                for (int x = 0; x < size; x++)
+                {
+                    // Central differences, wrapped, so the derivative is seamless
+                    // at the edges too. A visible seam is the one thing a tiling
+                    // detail map must never have.
+                    float left = height[y * size + (x + size - 1) % size];
+                    float right = height[y * size + (x + 1) % size];
+                    float down = height[((y + size - 1) % size) * size + x];
+                    float up = height[((y + 1) % size) * size + x];
+
+                    Vector3 normal = new Vector3(-(right - left) * strength, -(up - down) * strength, 1f).normalized;
+                    pixels[y * size + x] = new Color32(
+                        (byte)Mathf.Clamp(Mathf.RoundToInt((normal.x * 0.5f + 0.5f) * 255f), 0, 255),
+                        (byte)Mathf.Clamp(Mathf.RoundToInt((normal.y * 0.5f + 0.5f) * 255f), 0, 255),
+                        (byte)Mathf.Clamp(Mathf.RoundToInt((normal.z * 0.5f + 0.5f) * 255f), 0, 255),
+                        255);
+                }
+            }
+            texture.SetPixels32(pixels);
+            texture.Apply();
+
+            System.IO.File.WriteAllBytes(path, texture.EncodeToPNG());
+            Object.DestroyImmediate(texture);
+            AssetDatabase.ImportAsset(path, ImportAssetOptions.ForceSynchronousImport);
+
+            // Import settings straight from the playbook's VRAM rules. Without the
+            // NormalMap type this lands as a colour texture and lights the surface
+            // wrongly while looking perfectly fine in the project window.
+            if (AssetImporter.GetAtPath(path) is TextureImporter importer)
+            {
+                importer.textureType = TextureImporterType.NormalMap;
+                importer.maxTextureSize = 1024;
+                importer.wrapMode = TextureWrapMode.Repeat;
+                importer.filterMode = FilterMode.Bilinear;
+                importer.textureCompression = TextureImporterCompression.Compressed;
+                importer.isReadable = false;   // readable doubles the memory, for nothing
+                importer.SaveAndReimport();
+            }
+
+            Debug.Log("Generated " + path + " (once — it is never rewritten).");
+            return AssetDatabase.LoadAssetAtPath<Texture2D>(path);
+        }
+
+        /// <summary>
+        /// Tiling value noise. The lattice wraps at `period`, so sampling
+        /// 0..period across the image produces a seamless result.
+        /// </summary>
+        private static float ValueNoise(float x, float y, int period, int seed)
+        {
+            int x0 = Mathf.FloorToInt(x);
+            int y0 = Mathf.FloorToInt(y);
+            float fx = x - x0;
+            float fy = y - y0;
+            // Smoothstep, so the lattice does not read as a grid of diamonds.
+            fx = fx * fx * (3f - 2f * fx);
+            fy = fy * fy * (3f - 2f * fy);
+
+            float a = Hash01(Wrap(x0, period), Wrap(y0, period), seed);
+            float b = Hash01(Wrap(x0 + 1, period), Wrap(y0, period), seed);
+            float c = Hash01(Wrap(x0, period), Wrap(y0 + 1, period), seed);
+            float d = Hash01(Wrap(x0 + 1, period), Wrap(y0 + 1, period), seed);
+
+            return Mathf.Lerp(Mathf.Lerp(a, b, fx), Mathf.Lerp(c, d, fx), fy);
+        }
+
+        private static int Wrap(int value, int period) => ((value % period) + period) % period;
+
+        private static float Hash01(int x, int y, int seed)
+        {
+            unchecked
+            {
+                int n = x * 374761393 + y * 668265263 + seed * 1274126177;
+                n = (n ^ (n >> 13)) * 1274126177;
+                n ^= n >> 16;
+                return (n & 0x7FFFFFF) / (float)0x7FFFFFF;
+            }
+        }
+
+        /// <summary>
         /// Surface response, re-applied on every build.
         ///
         /// Deliberately NOT folded into LoadOrCreateMaterial, which returns an
@@ -2588,10 +2729,25 @@ namespace CoD.EditorTools
         /// so every surface bounced light identically and the arena read as
         /// untextured primitives, because that is exactly what it was.
         /// </summary>
-        private static void ApplySurface(Material material, float smoothness, float metallic)
+        private static void ApplySurface(Material material, float smoothness, float metallic,
+            Texture2D? normalMap = null, float tiling = 1f, float normalScale = 1f)
         {
             material.SetFloat("_Smoothness", smoothness);
             material.SetFloat("_Metallic", metallic);
+
+            if (normalMap != null)
+            {
+                // URP Lit reads _BumpMap only with the _NORMALMAP keyword on —
+                // the same trap as _EMISSION on the drone cores, where a plain
+                // assignment produces a material that looks entirely untouched.
+                material.SetTexture("_BumpMap", normalMap);
+                material.SetFloat("_BumpScale", normalScale);
+                material.EnableKeyword("_NORMALMAP");
+                // URP Lit tiles the normal map from _BaseMap_ST, which is what
+                // mainTextureScale writes, so one number drives both.
+                material.mainTextureScale = new Vector2(tiling, tiling);
+            }
+
             EditorUtility.SetDirty(material);
         }
 
