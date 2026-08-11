@@ -1,0 +1,30 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 82f11f54d76e67940bf4dbc4fcefe8b7, type: 3}
+  m_Name: Drone_Shooter
+  m_EditorClassIdentifier: 
+  stableId: drone_shooter
+  displayName: Shooter
+  maxHealth: 75
+  moveSpeed: 4.2
+  acceleration: 18
+  turnSpeed: 540
+  hoverHeight: 1.25
+  preferredRange: 14
+  stopDistance: 1
+  repathInterval: 0.25
+  scoreValue: 20
+  moneyReward: 20
+  prefab: {fileID: 5183787159920236326, guid: fd5e89e45dc657a47a129cc830bb9037, type: 3}
+  attack: {fileID: 11400000, guid: 76a88bb12cbb3544e8d1d59bac88d35e, type: 2}
+  deathVfx: {fileID: 2729887339346492243, guid: 2803e14bef355f84d8532d1d6ab969fa, type: 3}
+  deathVfxLifetime: 0.9

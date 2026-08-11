@@ -10,8 +10,12 @@
 Drones are the only enemy in the game. One `DroneController` reads a
 `DroneConfig` for its numbers and ticks an `AttackModule` for its behaviour, so a
 new archetype is **two assets and no new code** — the same modular contract the
-weapons use. The first one is the Rusher: closes to contact, lights a fuse, and
-detonates.
+weapons use.
+
+All three v1 archetypes exist. The Rusher closes to contact and detonates, the
+Shooter holds a ring and fires bursts, the Tank walks in and slams. Adding the
+second and third cost the controller **zero new fields**: kiting is one number
+(`preferredRange`), and everything else lives in the attack module.
 
 They are pooled like everything else, pathfind with Unity's AI Navigation
 package, and ask for an *attack token* before committing to an attack, which is
@@ -23,9 +27,22 @@ how a crowd stays fair.
   100 HP (four AR body shots, the same ~257 ms TTK the gun was tuned around),
   moveSpeed 6.0, hoverHeight 0.9, `preferredRange` 0 (closes to contact),
   repathInterval 0.15, 10 score / 12 money.
+- **[Drone_Shooter.asset](../../Assets/_Project/Data/Drones/Drone_Shooter.asset)** —
+  75 HP (three AR body shots), moveSpeed 4.2, hoverHeight 1.25 so it shoots over
+  the rushers' heads, **`preferredRange` 14** — the whole archetype in one number.
+  20 score / 20 money.
+- **[Drone_Tank.asset](../../Assets/_Project/Data/Drones/Drone_Tank.asset)** —
+  600 HP (24 AR body shots, most of a magazine), moveSpeed 2.6, stopDistance 1.6,
+  60 score / 65 money.
 - **[ContactDetonate_Std.asset](../../Assets/_Project/Data/Attacks/ContactDetonate_Std.asset)** —
   triggerRadius 2.2, fuse 0.55 s, lunge ×1.35, 24 damage at the centre falling to
   ×0.33 at blastRadius 3.5.
+- **[RangedBurst_Std.asset](../../Assets/_Project/Data/Attacks/RangedBurst_Std.asset)** —
+  range 16, reactionDelay 0.4, accuracy 0.7, burst 3 at 0.18 s, cooldown 1.6,
+  12 damage, projectile speed 18, **firstShotDeliberateMiss on**.
+- **[HeavySlam_Std.asset](../../Assets/_Project/Data/Attacks/HeavySlam_Std.asset)** —
+  triggerRadius 3.2, windup 0.9 s at 15% speed, slamRadius 4.5, 34 damage,
+  cooldown 2.5.
 - **[Difficulty.asset](../../Assets/_Project/Data/Game/Difficulty.asset)** —
   `maxAliveDrones` 40, `maxSimultaneousAttackers` 3,
   `minSpawnDistanceFromPlayer` 12, `spawnSampleRadius` 4, `attackTokenTimeout` 6.
@@ -48,6 +65,14 @@ the player's speed and this one has to move with it.
   cooldown, burst counter, token flag, first-attack flag.
 - **[ContactDetonate.cs](../../Assets/_Project/Scripts/Enemies/ContactDetonate.cs)** —
   the Rusher's attack.
+- **[RangedBurst.cs](../../Assets/_Project/Scripts/Enemies/RangedBurst.cs)** — the
+  Shooter's. Reaction delay, deliberate opening miss, accuracy cone, burst, cooldown.
+- **[HeavySlam.cs](../../Assets/_Project/Scripts/Enemies/HeavySlam.cs)** — the
+  Tank's. Long telegraph at near-zero speed, then a wide radial hit.
+- **[DroneProjectile.cs](../../Assets/_Project/Scripts/Enemies/DroneProjectile.cs)** —
+  the Shooter's round. Pooled, ray-swept between frames.
+- **[Blast.cs](../../Assets/_Project/Scripts/Enemies/Blast.cs)** — radial damage,
+  shared by the detonation and the slam so they can never drift apart.
 - **[DroneController.cs](../../Assets/_Project/Scripts/Enemies/DroneController.cs)** —
   agent + health + pooling + telegraph. `Initialize` at spawn, `Retire` on exit.
 - **[DroneRegistry.cs](../../Assets/_Project/Scripts/Enemies/DroneRegistry.cs)** —
@@ -79,6 +104,22 @@ the player's speed and this one has to move with it.
 
 ## Key Behaviors & Non-Obvious Patterns
 
+- **The Shooter's first shot misses on purpose.** It is thrown wide on a fixed
+  angle — fixed, not random, because a warning shot has to miss *reliably* or it
+  eventually kills the player with the round that was supposed to teach them.
+  That single decision is what turns "I died from nowhere" into "I got caught
+  out": same damage event, completely different feeling. `firstShotDeliberateMiss`
+  exists as a toggle so the reason stays visible instead of becoming folklore —
+  turn it off and the Shooter immediately feels unfair.
+- **The Tank is not a trade.** Too much health to burn down at arm's length, too
+  much slam damage to eat, and a windup long enough to leave during. The correct
+  answer is to move, keep firing and come back — which only reads because the
+  drone nearly stops while charging.
+- **Ranged fire is a projectile, not hitscan**, at 18 m/s: fast enough to punish
+  standing still, slow enough to sidestep once seen. A hitscan enemy weapon is
+  unavoidable and unreadable at the same time.
+- **Both ranged archetypes release their token the moment the attack resolves**,
+  not when the cooldown ends. A cooldown is that drone's problem, not the pack's.
 - **The fuse is the design.** An enemy that removes a quarter of your health the
   instant it touches you is a coin flip. The same enemy with 0.55 s of audible and
   visible warning is a decision: shoot it, or move. Kill it mid-fuse and the blast
@@ -130,9 +171,14 @@ the player's speed and this one has to move with it.
   it to `NavMesh_GreyBox.asset` and re-assigns it; without that the reference is
   dropped on scene save and drones spawn and never move. GreyBoxVerify repairs
   and re-checks it.
-- The agent's radius (0.4) must stay **under** the radius the surface bakes for
-  (the default humanoid 0.5), or drones will not fit through gaps the mesh says
-  exist.
+- The agent's radius (0.4, and 0.5 for the Tank) must stay **at or under** the
+  radius the surface bakes for (the default humanoid 0.5), or drones will not fit
+  through gaps the mesh says exist. The Tank's *hull* is deliberately wider than
+  its agent: a fatter agent would refuse paths the mesh allows and the Tank would
+  stand still looking broken. The visual clips walls slightly; that is the trade.
+- **Shape details carry no colliders.** Fins, barrels and plates are decoration —
+  hull and core are the only two things a bullet can find, so where you have to
+  aim never depends on cosmetics.
 - `DroneRegistry.Alive` is exposed as the concrete `List<T>` on purpose —
   iterating an `IReadOnlyList` boxes the struct enumerator. Index into it; never
   add or remove from outside.

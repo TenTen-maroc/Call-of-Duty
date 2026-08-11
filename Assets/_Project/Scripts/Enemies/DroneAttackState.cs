@@ -9,6 +9,8 @@ namespace CoD.Enemies
         Idle,
         /// <summary>Committed and telegraphing. The player's window to react.</summary>
         Windup,
+        /// <summary>Mid-burst: shots are leaving on their own cadence.</summary>
+        Firing,
         /// <summary>Attack spent, waiting out its cooldown.</summary>
         Recover,
     }

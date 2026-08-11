@@ -1,5 +1,4 @@
 #nullable enable
-using CoD.Core;
 using UnityEngine;
 
 namespace CoD.Enemies
@@ -90,36 +89,9 @@ namespace CoD.Enemies
                 drone.Pool.SpawnForSeconds(explosionVfx, origin, Quaternion.identity, explosionLifetime);
             }
 
-            Collider[] buffer = drone.OverlapBuffer;
-            int count = Physics.OverlapSphereNonAlloc(origin, blastRadius, buffer, damageMask,
-                QueryTriggerInteraction.Ignore);
-
-            for (int i = 0; i < count; i++)
-            {
-                Collider hit = buffer[i];
-                if (hit == null) continue;
-
-                // Only root colliders carrying Health take blast damage. Weakpoint
-                // children are skipped deliberately: explosions do not score
-                // headshots, and matching both colliders on one target would
-                // damage it twice.
-                if (!hit.TryGetComponent(out Health health)) continue;
-                if (health == drone.HealthComponent) continue;
-
-                // Drones do not chain-detonate each other. A rusher that wipes the
-                // pack steals the player's kills, and the wave's money with them.
-                if (health.TryGetComponent(out DroneController _)) continue;
-
-                float distance = Vector3.Distance(origin, hit.ClosestPoint(origin));
-                float falloff = Mathf.Lerp(1f, minBlastMultiplier, Mathf.Clamp01(distance / blastRadius));
-
-                Vector3 toTarget = health.transform.position - origin;
-                if (toTarget.sqrMagnitude < 0.0001f) toTarget = Vector3.up;
-                Vector3 direction = toTarget.normalized;
-
-                var info = new DamageInfo(damage * falloff, origin, -direction, direction, false);
-                health.ApplyDamage(in info);
-            }
+            // Shared with the Tank's slam. Both are radial damage and must resolve
+            // identically; two copies would drift.
+            Blast.Apply(drone, origin, blastRadius, damage, minBlastMultiplier, damageMask);
         }
 
 #if UNITY_EDITOR

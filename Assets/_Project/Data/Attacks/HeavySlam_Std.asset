@@ -1,0 +1,27 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: a3b98a8c7ce221d499be141025767b4a, type: 3}
+  m_Name: HeavySlam_Std
+  m_EditorClassIdentifier: 
+  triggerRadius: 3.2
+  windupSeconds: 0.9
+  windupSpeedMultiplier: 0.15
+  cooldown: 2.5
+  damage: 34
+  slamRadius: 4.5
+  minMultiplier: 0.4
+  damageMask:
+    serializedVersion: 2
+    m_Bits: 4294967295
+  slamVfx: {fileID: 8992349114468276200, guid: 83811ce89fa3282419cc431b12e41e9c, type: 3}
+  slamVfxLifetime: 1
+  windupClip: {fileID: 8300000, guid: 360a9223651acae41a9d0c776fae1008, type: 3}

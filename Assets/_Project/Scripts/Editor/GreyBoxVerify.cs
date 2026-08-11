@@ -46,6 +46,10 @@ namespace CoD.EditorTools
             HealthConfig? health = Load<HealthConfig>("Assets/_Project/Data/Game/Health_Target.asset");
             DifficultyConfig? difficulty = Load<DifficultyConfig>("Assets/_Project/Data/Game/Difficulty.asset");
             DroneConfig? rusher = Load<DroneConfig>("Assets/_Project/Data/Drones/Drone_Rusher.asset");
+            DroneConfig? shooter = Load<DroneConfig>("Assets/_Project/Data/Drones/Drone_Shooter.asset");
+            DroneConfig? tank = Load<DroneConfig>("Assets/_Project/Data/Drones/Drone_Tank.asset");
+            RangedBurst? rangedBurst = Load<RangedBurst>("Assets/_Project/Data/Attacks/RangedBurst_Std.asset");
+            HeavySlam? heavySlam = Load<HeavySlam>("Assets/_Project/Data/Attacks/HeavySlam_Std.asset");
             NavMeshData? navMesh = AssetDatabase.LoadAssetAtPath<NavMeshData>(
                 "Assets/_Project/Scenes/NavMesh_GreyBox.asset");
             ShopConfig? shop = Load<ShopConfig>("Assets/_Project/Data/Game/Shop.asset");
@@ -207,6 +211,14 @@ namespace CoD.EditorTools
             CheckAssetRef(rusher, "prefab", stillNull);
             CheckAssetRef(rusher, "attack", stillNull);
             CheckAssetRef(rusher, "deathVfx", stillNull);
+            CheckAssetRef(shooter, "prefab", stillNull);
+            CheckAssetRef(shooter, "attack", stillNull);
+            CheckAssetRef(tank, "prefab", stillNull);
+            CheckAssetRef(tank, "attack", stillNull);
+            // A Shooter with no projectile prefab aims, fires, and produces
+            // nothing — the drone looks like it is working and does no damage.
+            CheckAssetRef(rangedBurst, "projectilePrefab", stillNull);
+            CheckAssetRef(heavySlam, "slamVfx", stillNull);
 
             Debug.Log($"GreyBoxVerify: repaired {repaired}, unresolved {stillNull.Count}\n{report}");
             if (stillNull.Count > 0)

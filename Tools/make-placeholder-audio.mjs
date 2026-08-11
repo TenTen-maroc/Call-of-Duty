@@ -178,4 +178,30 @@ writeWav('Shop_Refused.wav', build(0.18, (t) => {
   return tone * 0.5
 }))
 
+// ---------- shooter and tank ----------
+
+// Drone shot: thin, electric, and clearly not the player's rifle. Incoming fire
+// has to be identifiable by ear alone in a crowd.
+const rndShot = makeRandom(8080)
+writeWav('Drone_Shot.wav', build(0.18, (t) => {
+  const zap = Math.sin(2 * Math.PI * (1400 - 900 * t) * t) * Math.exp(-t * 30)
+  const hiss = rndShot() * Math.exp(-t * 60) * 0.25
+  return (zap + hiss) * 0.5
+}))
+
+// Slam windup: a rising whine. This is the telegraph the Tank is built around —
+// the player must be able to leave before it lands.
+writeWav('Slam_Windup.wav', build(0.85, (t) => {
+  const rise = Math.sin(2 * Math.PI * (180 + 420 * t) * t) * Math.min(1, t * 3)
+  return rise * Math.exp(-t * 0.8) * 0.35
+}))
+
+// Slam impact: heavy, short, felt rather than heard.
+const rndSlam = makeRandom(9090)
+writeWav('Slam_Hit.wav', build(0.55, (t) => {
+  const thud = Math.sin(2 * Math.PI * 48 * t) * Math.exp(-t * 9)
+  const crack = rndSlam() * Math.exp(-t * 45) * 0.5
+  return (thud + crack) * 0.75
+}))
+
 console.log('\nPlaceholders only — replace with real recordings when the feel work starts.')

@@ -95,18 +95,68 @@ MonoBehaviour:
       serializedVersion: 2
       m_Curve:
       - serializedVersion: 3
-        time: 1
-        value: 1
+        time: 10
+        value: 6
         inSlope: 0
-        outSlope: 0
+        outSlope: -0.1
         tangentMode: 0
         weightedMode: 0
         inWeight: 0
         outWeight: 0
       - serializedVersion: 3
-        time: 60
-        value: 1
+        time: 40
+        value: 3
+        inSlope: -0.1
+        outSlope: 0
+        tangentMode: 0
+        weightedMode: 0
+        inWeight: 0
+        outWeight: 0
+      m_PreInfinity: 2
+      m_PostInfinity: 2
+      m_RotationOrder: 4
+  - drone: {fileID: 11400000, guid: 1388860723254bb4390c6175b8190ee0, type: 2}
+    weightByWave:
+      serializedVersion: 2
+      m_Curve:
+      - serializedVersion: 3
+        time: 10
+        value: 2
         inSlope: 0
+        outSlope: 0.06666667
+        tangentMode: 0
+        weightedMode: 0
+        inWeight: 0
+        outWeight: 0
+      - serializedVersion: 3
+        time: 40
+        value: 4
+        inSlope: 0.06666667
+        outSlope: 0
+        tangentMode: 0
+        weightedMode: 0
+        inWeight: 0
+        outWeight: 0
+      m_PreInfinity: 2
+      m_PostInfinity: 2
+      m_RotationOrder: 4
+  - drone: {fileID: 11400000, guid: f395972cbd363de49875d26285379ef2, type: 2}
+    weightByWave:
+      serializedVersion: 2
+      m_Curve:
+      - serializedVersion: 3
+        time: 10
+        value: 0.5
+        inSlope: 0
+        outSlope: 0.05
+        tangentMode: 0
+        weightedMode: 0
+        inWeight: 0
+        outWeight: 0
+      - serializedVersion: 3
+        time: 40
+        value: 2
+        inSlope: 0.05
         outSlope: 0
         tangentMode: 0
         weightedMode: 0

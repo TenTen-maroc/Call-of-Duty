@@ -15,9 +15,17 @@ MonoBehaviour:
   waveNumber: 7
   entries:
   - drone: {fileID: 11400000, guid: ebe34567e0da76b4ca490654fb6afb7c, type: 2}
-    count: 16
-    spawnOverSeconds: 18
+    count: 10
+    spawnOverSeconds: 14
     startDelay: 0
+  - drone: {fileID: 11400000, guid: 1388860723254bb4390c6175b8190ee0, type: 2}
+    count: 4
+    spawnOverSeconds: 10
+    startDelay: 4
+  - drone: {fileID: 11400000, guid: f395972cbd363de49875d26285379ef2, type: 2}
+    count: 1
+    spawnOverSeconds: 6
+    startDelay: 8
   durationTarget: 45
   maxAliveOverride: 0
   moneyBonusOnClear: 150

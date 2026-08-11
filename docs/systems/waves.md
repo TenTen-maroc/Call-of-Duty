@@ -20,8 +20,19 @@ replays and most runs never get past. Past wave 10 the endless ramp takes over.
 - **Wave_01 … Wave_10** ([Data/Waves](../../Assets/_Project/Data/Waves)) — entries
   of `(drone, count, spawnOverSeconds, startDelay)` plus a clear bonus. The count
   drips in evenly across the window rather than arriving as a lump.
-  Current plan: 3 → 5 → 7 → 9 → 12 → 14 → 16 → 18 → 22 → 26 Rushers, bonuses
-  80 → 220. Counts climb faster than the drip window, so later waves overlap.
+  Current plan, and the teaching order is the point:
+
+  | Wave | Rushers | Shooters | Tanks | Clear bonus |
+  | --- | --- | --- | --- | --- |
+  | 1-3 | 3 / 5 / 7 | — | — | 80 / 90 / 100 |
+  | 4-6 | 7 / 9 / 10 | 2 / 3 / 4 | — | 120 / 140 / 155 |
+  | 7-8 | 10 / 12 | 4 / 5 | 1 / 1 | 185 / 205 |
+  | 9-10 | 14 / 16 | 6 / 7 | 2 / 3 | 240 / 300 |
+
+  Three waves of pure Rushers to learn the fuse, the first Shooters at 4, one
+  Tank alone at 7. Shooters and Tanks enter on a `startDelay` **after** the
+  rushers have engaged — a new threat arriving with everything else is noise, not
+  a lesson.
 - **[Difficulty.asset](../../Assets/_Project/Data/Game/Difficulty.asset)** — the
   two hard caps plus the endless curves (`countMultiplierByWave`,
   `healthMultiplierByWave`, `speedMultiplierByWave`, `endlessMix`).

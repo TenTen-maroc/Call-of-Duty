@@ -1,4 +1,5 @@
 #nullable enable
+using System.Collections.Generic;
 using CoD.Core;
 using CoD.Enemies;
 using CoD.Player;
@@ -86,25 +87,65 @@ namespace CoD.EditorTools
             GameObject casing = BuildCasingPrefab(hot);
             GameObject dummy = BuildDummyTargetPrefab(targetMat, targetHealth);
 
+            Material shooterCore = LoadOrCreateEmissiveMaterial(Materials + "/Drone_Core_Shooter.mat",
+                new Color(0.95f, 0.55f, 0.10f), 1.8f);
+            Material tankCore = LoadOrCreateEmissiveMaterial(Materials + "/Drone_Core_Tank.mat",
+                new Color(0.85f, 0.06f, 0.22f), 1.4f);
+
             GameObject explosion = BuildExplosionPrefab(hot);
             GameObject droneDeath = BuildDroneDeathPrefab(hot);
-            GameObject dronePrefab = BuildDronePrefab(droneHull, droneCore);
+            GameObject slamVfx = BuildSlamPrefab(hot);
+            GameObject projectile = BuildDroneProjectilePrefab(shooterCore);
+
+            GameObject rusherPrefab = BuildDronePrefab("Drone_Rusher", DroneShape.Rusher, droneHull, droneCore);
+            GameObject shooterPrefab = BuildDronePrefab("Drone_Shooter", DroneShape.Shooter, droneHull, shooterCore);
+            GameObject tankPrefab = BuildDronePrefab("Drone_Tank", DroneShape.Tank, droneHull, tankCore);
 
             DifficultyConfig difficulty = LoadOrCreate<DifficultyConfig>(DataGame + "/Difficulty.asset", ConfigureDifficulty);
+
             ContactDetonate detonate = LoadOrCreate<ContactDetonate>(
                 DataAttacks + "/ContactDetonate_Std.asset", ConfigureContactDetonate);
-            DroneConfig rusher = LoadOrCreate<DroneConfig>(DataDrones + "/Drone_Rusher.asset", ConfigureRusher);
-
             SetRef(detonate, "explosionVfx", explosion);
             SetRef(detonate, "alertClip", LoadClip("Drone_Alert"));
             EditorUtility.SetDirty(detonate);
 
-            SetRef(rusher, "prefab", dronePrefab);
+            RangedBurst rangedBurst = LoadOrCreate<RangedBurst>(
+                DataAttacks + "/RangedBurst_Std.asset", ConfigureRangedBurst);
+            SetRef(rangedBurst, "projectilePrefab", projectile);
+            SetRef(rangedBurst, "fireClip", LoadClip("Drone_Shot"));
+            EditorUtility.SetDirty(rangedBurst);
+
+            HeavySlam heavySlam = LoadOrCreate<HeavySlam>(
+                DataAttacks + "/HeavySlam_Std.asset", ConfigureHeavySlam);
+            SetRef(heavySlam, "slamVfx", slamVfx);
+            SetRef(heavySlam, "windupClip", LoadClip("Slam_Windup"));
+            EditorUtility.SetDirty(heavySlam);
+
+            DroneConfig rusher = LoadOrCreate<DroneConfig>(DataDrones + "/Drone_Rusher.asset", ConfigureRusher);
+            SetRef(rusher, "prefab", rusherPrefab);
             SetRef(rusher, "attack", detonate);
             SetRef(rusher, "deathVfx", droneDeath);
             EditorUtility.SetDirty(rusher);
 
-            var drones = new DroneAssets(rusher, dronePrefab, explosion, droneDeath, difficulty);
+            DroneConfig shooter = LoadOrCreate<DroneConfig>(DataDrones + "/Drone_Shooter.asset", ConfigureShooter);
+            SetRef(shooter, "prefab", shooterPrefab);
+            SetRef(shooter, "attack", rangedBurst);
+            SetRef(shooter, "deathVfx", droneDeath);
+            EditorUtility.SetDirty(shooter);
+
+            DroneConfig tank = LoadOrCreate<DroneConfig>(DataDrones + "/Drone_Tank.asset", ConfigureTank);
+            SetRef(tank, "prefab", tankPrefab);
+            SetRef(tank, "attack", heavySlam);
+            SetRef(tank, "deathVfx", droneDeath);
+            EditorUtility.SetDirty(tank);
+
+            // Prewarm counts follow the alive cap, not the demo: rushers dominate
+            // every wave, shooters are common, tanks are rare and expensive.
+            var drones = new DroneAssets(rusher, difficulty, new[]
+            {
+                (rusherPrefab, 24), (shooterPrefab, 12), (tankPrefab, 4),
+                (explosion, 8), (droneDeath, 8), (slamVfx, 4), (projectile, 40),
+            });
 
             // The run layer: passives, the shop that sells them, and the ten
             // authored waves the endless ramp takes over from.
@@ -112,8 +153,8 @@ namespace CoD.EditorTools
             ShopItemConfig[] shopItems = BuildShopItems(passives);
             ShopConfig shopConfig = LoadOrCreate<ShopConfig>(DataGame + "/Shop.asset", ConfigureShop);
             EnsureShopPool(shopConfig, shopItems);
-            WaveConfig[] waves = BuildWaves(rusher);
-            EnsureEndlessMix(difficulty, rusher);
+            WaveConfig[] waves = BuildWaves(rusher, shooter, tank);
+            EnsureEndlessMix(difficulty, rusher, shooter, tank);
             var runAssets = new RunAssets(shopConfig, waves);
 
             SetRef(impact, "decalPrefab", decal);
@@ -169,20 +210,18 @@ namespace CoD.EditorTools
         /// </summary>
         private readonly struct DroneAssets
         {
-            public readonly DroneConfig Rusher;
-            public readonly GameObject Prefab;
-            public readonly GameObject Explosion;
-            public readonly GameObject DeathVfx;
+            /// <summary>What the spawner and the sandbox console reach for. The Rusher.</summary>
+            public readonly DroneConfig Default;
             public readonly DifficultyConfig Difficulty;
+            /// <summary>Everything the drones spawn, with prewarm counts, ready for the pool.</summary>
+            public readonly (GameObject prefab, int count)[] Pooled;
 
-            public DroneAssets(DroneConfig rusher, GameObject prefab, GameObject explosion,
-                GameObject deathVfx, DifficultyConfig difficulty)
+            public DroneAssets(DroneConfig defaultDrone, DifficultyConfig difficulty,
+                (GameObject prefab, int count)[] pooled)
             {
-                Rusher = rusher;
-                Prefab = prefab;
-                Explosion = explosion;
-                DeathVfx = deathVfx;
+                Default = defaultDrone;
                 Difficulty = difficulty;
+                Pooled = pooled;
             }
         }
 
@@ -275,6 +314,78 @@ namespace CoD.EditorTools
             config.scoreValue = 10;
             config.moneyReward = 12;
             config.deathVfxLifetime = 0.9f;
+        }
+
+        private static void ConfigureShooter(DroneConfig config)
+        {
+            config.stableId = "drone_shooter";
+            config.displayName = "Shooter";
+            // Lighter than a Rusher: it is dangerous because of where it stands,
+            // not because it is hard to kill. Three AR body shots.
+            config.maxHealth = 75f;
+            config.moveSpeed = 4.2f;
+            config.acceleration = 18f;
+            config.turnSpeed = 540f;
+            config.hoverHeight = 1.25f;
+            // The whole archetype, as one number: it holds this ring instead of
+            // closing, so the player has to deal with it rather than outrun it.
+            config.preferredRange = 14f;
+            config.stopDistance = 1f;
+            config.repathInterval = 0.25f;
+            config.scoreValue = 20;
+            config.moneyReward = 20;
+            config.deathVfxLifetime = 0.9f;
+        }
+
+        private static void ConfigureTank(DroneConfig config)
+        {
+            config.stableId = "drone_tank";
+            config.displayName = "Tank";
+            // 600 HP is 24 AR body shots — most of a magazine, and long enough
+            // that standing still to finish one is the wrong answer.
+            config.maxHealth = 600f;
+            config.moveSpeed = 2.6f;
+            config.acceleration = 10f;
+            config.turnSpeed = 240f;
+            config.hoverHeight = 0.75f;
+            config.preferredRange = 0f;
+            config.stopDistance = 1.6f;
+            config.repathInterval = 0.3f;
+            config.scoreValue = 60;
+            config.moneyReward = 65;
+            config.deathVfxLifetime = 1.2f;
+        }
+
+        private static void ConfigureRangedBurst(RangedBurst config)
+        {
+            config.triggerRange = 16f;
+            // The gunfeel reference's enemy numbers, as data instead of folklore.
+            config.reactionDelay = 0.4f;
+            config.accuracy = 0.7f;
+            config.maxSpreadDegrees = 9f;
+            config.firstShotDeliberateMiss = true;
+            config.firstShotMissDegrees = 7f;
+            config.burstCount = 3;
+            config.burstInterval = 0.18f;
+            config.cooldown = 1.6f;
+            config.damage = 12f;
+            // Slow enough to dodge once seen. This is the number that decides
+            // whether ranged fire is a threat or a tax.
+            config.projectileSpeed = 18f;
+            config.projectileLifetime = 3f;
+            config.aimHeightOffset = 1.2f;
+        }
+
+        private static void ConfigureHeavySlam(HeavySlam config)
+        {
+            config.triggerRadius = 3.2f;
+            config.windupSeconds = 0.9f;
+            config.windupSpeedMultiplier = 0.15f;
+            config.cooldown = 2.5f;
+            config.damage = 34f;
+            config.slamRadius = 4.5f;
+            config.minMultiplier = 0.4f;
+            config.slamVfxLifetime = 1f;
         }
 
         private static void ConfigureShop(ShopConfig config)
@@ -385,22 +496,32 @@ namespace CoD.EditorTools
             EditorUtility.SetDirty(shop);
         }
 
-        private static void EnsureEndlessMix(DifficultyConfig difficulty, params DroneConfig[] drones)
+        /// <summary>
+        /// The endless mix, as curves over wave number. Rushers thin out but never
+        /// vanish, Shooters climb steadily, Tanks arrive late and stay rare — a
+        /// wave that is 40% Tanks is not harder, it is slower.
+        /// </summary>
+        private static void EnsureEndlessMix(DifficultyConfig difficulty, DroneConfig rusher,
+            DroneConfig shooter, DroneConfig tank)
         {
+            (DroneConfig drone, AnimationCurve weight)[] mixPlan =
+            {
+                (rusher, AnimationCurve.Linear(10f, 6f, 40f, 3f)),
+                (shooter, AnimationCurve.Linear(10f, 2f, 40f, 4f)),
+                (tank, AnimationCurve.Linear(10f, 0.5f, 40f, 2f)),
+            };
+
             SerializedObject serialized = new(difficulty);
             SerializedProperty mix = serialized.FindProperty("endlessMix");
-            bool rebuild = mix.arraySize != drones.Length;
-            if (rebuild) mix.arraySize = drones.Length;
+            bool rebuild = mix.arraySize != mixPlan.Length;
+            if (rebuild) mix.arraySize = mixPlan.Length;
 
-            for (int i = 0; i < drones.Length; i++)
+            for (int i = 0; i < mixPlan.Length; i++)
             {
                 SerializedProperty element = mix.GetArrayElementAtIndex(i);
-                element.FindPropertyRelative("drone").objectReferenceValue = drones[i];
+                element.FindPropertyRelative("drone").objectReferenceValue = mixPlan[i].drone;
                 if (!rebuild) continue;
-                // Flat weight for the only archetype there is. The Shooter and
-                // Tank milestone replaces these with curves that rise late.
-                element.FindPropertyRelative("weightByWave").animationCurveValue =
-                    AnimationCurve.Constant(1f, 60f, 1f);
+                element.FindPropertyRelative("weightByWave").animationCurveValue = mixPlan[i].weight;
             }
             serialized.ApplyModifiedProperties();
             EditorUtility.SetDirty(difficulty);
@@ -411,45 +532,85 @@ namespace CoD.EditorTools
         /// replays and most runs never get past. Counts climb faster than the
         /// window they drip through, so later waves overlap instead of queueing.
         /// </summary>
-        private static WaveConfig[] BuildWaves(DroneConfig rusher)
+        /// <summary>
+        /// Waves 1-10, hand-authored, because the opening is the part every run
+        /// replays and most runs never get past.
+        ///
+        /// The teaching order is the point: three waves of pure Rushers to learn
+        /// the fuse, the first Shooters at 4 (arriving late in the wave, so the
+        /// first thing that shoots you is not also the first thing you see), and
+        /// one Tank at 7 alone with the crowd it forces you to move through.
+        /// </summary>
+        private static WaveConfig[] BuildWaves(DroneConfig rusher, DroneConfig shooter, DroneConfig tank)
         {
-            (int count, float over, int bonus)[] plan =
+            (int rushers, float rusherOver, int shooters, int tanks, int bonus)[] plan =
             {
-                (3, 6f, 80), (5, 10f, 90), (7, 12f, 100), (9, 14f, 110), (12, 16f, 130),
-                (14, 18f, 140), (16, 18f, 150), (18, 20f, 165), (22, 22f, 180), (26, 24f, 220),
+                (3, 6f, 0, 0, 80),
+                (5, 10f, 0, 0, 90),
+                (7, 12f, 0, 0, 100),
+                (7, 12f, 2, 0, 120),
+                (9, 14f, 3, 0, 140),
+                (10, 14f, 4, 0, 155),
+                (10, 14f, 4, 1, 185),
+                (12, 16f, 5, 1, 205),
+                (14, 18f, 6, 2, 240),
+                (16, 20f, 7, 3, 300),
             };
 
             var waves = new WaveConfig[plan.Length];
             for (int i = 0; i < plan.Length; i++)
             {
                 int number = i + 1;
-                (int count, float over, int bonus) = plan[i];
+                (int rushers, float rusherOver, int shooters, int tanks, int bonus) = plan[i];
+
+                var entries = new List<(DroneConfig drone, int count, float over, float delay)>(3)
+                {
+                    (rusher, rushers, rusherOver, 0f),
+                };
+                // Shooters and Tanks come in AFTER the rushers have engaged: a new
+                // threat that arrives with everything else is noise, not a lesson.
+                if (shooters > 0) entries.Add((shooter, shooters, 10f, 4f));
+                if (tanks > 0) entries.Add((tank, tanks, 6f, 8f));
+
                 WaveConfig wave = LoadOrCreate<WaveConfig>(
                     DataWaves + "/Wave_" + number.ToString("00") + ".asset", config =>
                     {
                         config.waveNumber = number;
                         config.durationTarget = 45f;
                         config.moneyBonusOnClear = bonus;
-                        config.entries = new[]
-                        {
-                            new WaveConfig.Entry { count = count, spawnOverSeconds = over, startDelay = 0f },
-                        };
                     });
 
-                // Entry drone references are re-linked every build, for the same
-                // reason shop payloads are.
-                SerializedObject serialized = new(wave);
-                SerializedProperty entries = serialized.FindProperty("entries");
-                for (int e = 0; e < entries.arraySize; e++)
-                {
-                    entries.GetArrayElementAtIndex(e).FindPropertyRelative("drone").objectReferenceValue = rusher;
-                }
-                serialized.ApplyModifiedProperties();
-                EditorUtility.SetDirty(wave);
-
+                WriteWaveEntries(wave, entries);
                 waves[i] = wave;
             }
             return waves;
+        }
+
+        /// <summary>
+        /// Same rule as the shop pool: a changed entry count means the wave's
+        /// composition moved and it is rebuilt from the plan, otherwise only the
+        /// drone references are re-linked — so counts tuned in the Inspector
+        /// survive a rebuild while a broken reference cannot.
+        /// </summary>
+        private static void WriteWaveEntries(WaveConfig wave,
+            List<(DroneConfig drone, int count, float over, float delay)> entries)
+        {
+            SerializedObject serialized = new(wave);
+            SerializedProperty array = serialized.FindProperty("entries");
+            bool rebuild = array.arraySize != entries.Count;
+            if (rebuild) array.arraySize = entries.Count;
+
+            for (int i = 0; i < entries.Count; i++)
+            {
+                SerializedProperty element = array.GetArrayElementAtIndex(i);
+                element.FindPropertyRelative("drone").objectReferenceValue = entries[i].drone;
+                if (!rebuild) continue;
+                element.FindPropertyRelative("count").intValue = entries[i].count;
+                element.FindPropertyRelative("spawnOverSeconds").floatValue = entries[i].over;
+                element.FindPropertyRelative("startDelay").floatValue = entries[i].delay;
+            }
+            serialized.ApplyModifiedProperties();
+            EditorUtility.SetDirty(wave);
         }
 
         // ---------- prefabs ----------
@@ -562,51 +723,72 @@ namespace CoD.EditorTools
             return SavePrefab(root, Prefabs + "/Target_Dummy.prefab");
         }
 
+        /// <summary>Which silhouette to build. Read at 30 m through fog, shape and core colour are all the player has.</summary>
+        private enum DroneShape { Rusher, Shooter, Tank }
+
         /// <summary>
-        /// The Rusher. A dark hull with one glowing core, because at 30 m through
-        /// fog a silhouette plus a bright spot is all the player can actually
-        /// read — and the core doubles as the weakpoint and the fuse telegraph.
+        /// A drone. Dark hull, one glowing core — the core doubles as the weakpoint
+        /// and the attack telegraph, so the thing you want to shoot is the thing
+        /// that warns you.
         ///
-        /// The NavMeshAgent ships DISABLED. A pooled agent enabled while its
-        /// object sits off the navmesh throws on the first SetDestination, so the
-        /// controller owns exactly when it comes alive.
+        /// The three shapes are deliberately different at a glance: the Rusher is
+        /// small and finned, the Shooter is tall with a barrel, the Tank is a slab.
+        /// Enemy variety beats enemy count, and it only counts as variety if it is
+        /// identifiable before it attacks.
+        ///
+        /// The NavMeshAgent ships DISABLED on every one of them. A pooled agent
+        /// enabled while its object sits off the navmesh throws on the first
+        /// SetDestination, so the controller owns exactly when it comes alive.
         /// </summary>
-        private static GameObject BuildDronePrefab(Material hull, Material core)
+        private static GameObject BuildDronePrefab(string name, DroneShape shape, Material hull, Material core)
         {
+            Vector3 bodyScale = shape switch
+            {
+                DroneShape.Shooter => new Vector3(0.6f, 0.85f, 0.6f),
+                DroneShape.Tank => new Vector3(1.5f, 1.15f, 1.5f),
+                _ => new Vector3(0.7f, 0.55f, 0.7f),
+            };
+            float coreSize = shape switch
+            {
+                DroneShape.Shooter => 0.26f,
+                DroneShape.Tank => 0.45f,
+                _ => 0.3f,
+            };
+            float hoverHeight = shape switch
+            {
+                DroneShape.Shooter => 1.25f,   // shoots over the rushers' heads
+                DroneShape.Tank => 0.75f,
+                _ => 0.9f,
+            };
+
             GameObject root = GameObject.CreatePrimitive(PrimitiveType.Cube);
-            root.name = "Drone_Rusher";
-            root.transform.localScale = new Vector3(0.7f, 0.55f, 0.7f);
+            root.name = name;
+            root.transform.localScale = bodyScale;
             MeshRenderer hullRenderer = root.GetComponent<MeshRenderer>();
             hullRenderer.sharedMaterial = hull;
 
-            // Core: the weakpoint AND the telegraph. Sits forward so the reward for
-            // aiming is on the face the player sees while it charges them.
+            // Core: sits forward so the reward for aiming is on the face the drone
+            // shows while it comes at you. Child scale compensates for the stretched
+            // parent, or the core comes out as a slab rather than a cube.
             GameObject coreObject = GameObject.CreatePrimitive(PrimitiveType.Cube);
             coreObject.name = "Core";
             coreObject.transform.SetParent(root.transform, false);
             coreObject.transform.localPosition = new Vector3(0f, 0f, 0.42f);
-            // Child scale compensates for the stretched parent, or the core comes
-            // out as a slab rather than a cube.
-            coreObject.transform.localScale = new Vector3(0.3f / 0.7f, 0.3f / 0.55f, 0.3f / 0.7f);
+            coreObject.transform.localScale = new Vector3(
+                coreSize / bodyScale.x, coreSize / bodyScale.y, coreSize / bodyScale.z);
             MeshRenderer coreRenderer = coreObject.GetComponent<MeshRenderer>();
             coreRenderer.sharedMaterial = core;
 
-            GameObject finLeft = GameObject.CreatePrimitive(PrimitiveType.Cube);
-            finLeft.name = "Fin_L";
-            finLeft.transform.SetParent(root.transform, false);
-            finLeft.transform.localPosition = new Vector3(-0.6f, 0f, -0.1f);
-            finLeft.transform.localScale = new Vector3(0.35f, 0.25f, 0.6f);
-            finLeft.GetComponent<MeshRenderer>().sharedMaterial = hull;
-            Object.DestroyImmediate(finLeft.GetComponent<Collider>());
-
-            GameObject finRight = Object.Instantiate(finLeft, root.transform);
-            finRight.name = "Fin_R";
-            finRight.transform.localPosition = new Vector3(0.6f, 0f, -0.1f);
+            AddShapeDetails(root, shape, hull, bodyScale);
 
             NavMeshAgent agent = root.AddComponent<NavMeshAgent>();
-            agent.radius = 0.4f;      // under the 0.5 the surface bakes for, so it fits everywhere the mesh exists
-            agent.height = 1.2f;
-            agent.baseOffset = 0.9f;
+            // Every archetype keeps its agent radius at or under the 0.5 the
+            // surface bakes for. The Tank's HULL is wider than its agent on
+            // purpose: a fatter agent would refuse paths the mesh says exist and
+            // the Tank would stand still looking broken.
+            agent.radius = shape == DroneShape.Tank ? 0.5f : 0.4f;
+            agent.height = shape == DroneShape.Tank ? 1.6f : 1.2f;
+            agent.baseOffset = hoverHeight;
             agent.autoBraking = false;
             agent.enabled = false;
 
@@ -620,8 +802,8 @@ namespace CoD.EditorTools
 
             AudioSource audio = root.AddComponent<AudioSource>();
             audio.playOnAwake = false;
-            audio.spatialBlend = 1f;      // the fuse has to come from a place in the room
-            audio.maxDistance = 30f;
+            audio.spatialBlend = 1f;      // a telegraph has to come from a place in the room
+            audio.maxDistance = 35f;
             audio.rolloffMode = AudioRolloffMode.Linear;
 
             root.AddComponent<PooledObject>();
@@ -633,7 +815,101 @@ namespace CoD.EditorTools
             SetRef(controller, "_audio", audio);
             SetRef(controller, "_coreRenderer", coreRenderer);
 
-            return SavePrefab(root, Prefabs + "/Drone_Rusher.prefab");
+            return SavePrefab(root, Prefabs + "/" + name + ".prefab");
+        }
+
+        /// <summary>The bits that make one archetype unmistakable for another. Visual only — no colliders.</summary>
+        private static void AddShapeDetails(GameObject root, DroneShape shape, Material hull, Vector3 bodyScale)
+        {
+            switch (shape)
+            {
+                case DroneShape.Rusher:
+                    AddDetail(root, "Fin_L", new Vector3(-0.6f, 0f, -0.1f), new Vector3(0.35f, 0.25f, 0.6f), hull);
+                    AddDetail(root, "Fin_R", new Vector3(0.6f, 0f, -0.1f), new Vector3(0.35f, 0.25f, 0.6f), hull);
+                    break;
+                case DroneShape.Shooter:
+                    // A barrel, so "this one shoots" is legible before it does.
+                    AddDetail(root, "Barrel", new Vector3(0f, -0.15f, 0.8f), new Vector3(0.25f, 0.18f, 0.7f), hull);
+                    AddDetail(root, "Pod_L", new Vector3(-0.75f, 0.25f, 0f), new Vector3(0.3f, 0.3f, 0.5f), hull);
+                    AddDetail(root, "Pod_R", new Vector3(0.75f, 0.25f, 0f), new Vector3(0.3f, 0.3f, 0.5f), hull);
+                    break;
+                case DroneShape.Tank:
+                    AddDetail(root, "Plate_L", new Vector3(-0.55f, 0.1f, 0.1f), new Vector3(0.12f, 0.9f, 0.8f), hull);
+                    AddDetail(root, "Plate_R", new Vector3(0.55f, 0.1f, 0.1f), new Vector3(0.12f, 0.9f, 0.8f), hull);
+                    AddDetail(root, "Crest", new Vector3(0f, 0.55f, -0.1f), new Vector3(0.5f, 0.25f, 0.6f), hull);
+                    break;
+            }
+        }
+
+        private static void AddDetail(GameObject parent, string name, Vector3 localPosition,
+            Vector3 localScale, Material material)
+        {
+            GameObject detail = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            detail.name = name;
+            detail.transform.SetParent(parent.transform, false);
+            detail.transform.localPosition = localPosition;
+            detail.transform.localScale = localScale;
+            detail.GetComponent<MeshRenderer>().sharedMaterial = material;
+            // No collider: hull and core are the only two things a bullet can find,
+            // so where you have to aim never depends on decoration.
+            Object.DestroyImmediate(detail.GetComponent<Collider>());
+        }
+
+        /// <summary>
+        /// The Shooter's round. No collider — DroneProjectile sweeps a ray between
+        /// frames instead, because a small fast trigger tunnels through walls at
+        /// any sane physics step.
+        /// </summary>
+        private static GameObject BuildDroneProjectilePrefab(Material material)
+        {
+            GameObject root = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            root.name = "Fx_DroneProjectile";
+            root.transform.localScale = new Vector3(0.09f, 0.09f, 0.34f);
+            root.GetComponent<MeshRenderer>().sharedMaterial = material;
+            Object.DestroyImmediate(root.GetComponent<Collider>());
+
+            root.AddComponent<PooledObject>();
+            DroneProjectile projectile = root.AddComponent<DroneProjectile>();
+            SetRef(projectile, "_pooled", root.GetComponent<PooledObject>());
+
+            return SavePrefab(root, Prefabs + "/Fx_DroneProjectile.prefab");
+        }
+
+        /// <summary>The Tank's slam landing: a flat outward burst, so the radius it covers is visible.</summary>
+        private static GameObject BuildSlamPrefab(Material material)
+        {
+            GameObject root = new("Fx_Slam");
+            ParticleSystem particles = root.AddComponent<ParticleSystem>();
+
+            ParticleSystem.MainModule main = particles.main;
+            main.duration = 0.5f;
+            main.loop = false;
+            main.startLifetime = 0.35f;
+            main.startSpeed = 12f;
+            main.startSize = 0.28f;
+            main.maxParticles = 36;
+            main.playOnAwake = true;
+
+            ParticleSystem.EmissionModule emission = particles.emission;
+            emission.rateOverTime = 0f;
+            emission.SetBurst(0, new ParticleSystem.Burst(0f, 30));
+
+            ParticleSystem.ShapeModule shape = particles.shape;
+            shape.shapeType = ParticleSystemShapeType.Circle;
+            shape.radius = 0.4f;
+            shape.rotation = new Vector3(90f, 0f, 0f);   // outward along the ground, not upward
+
+            particles.GetComponent<ParticleSystemRenderer>().sharedMaterial = material;
+
+            AudioSource audio = root.AddComponent<AudioSource>();
+            audio.playOnAwake = true;
+            audio.spatialBlend = 1f;
+            audio.maxDistance = 45f;
+            audio.rolloffMode = AudioRolloffMode.Linear;
+            audio.clip = LoadClip("Slam_Hit");
+
+            root.AddComponent<PooledObject>();
+            return SavePrefab(root, Prefabs + "/Fx_Slam.prefab");
         }
 
         /// <summary>
@@ -770,9 +1046,12 @@ namespace CoD.EditorTools
             // Counts are sized for a full wave, not for the demo: the pool exists
             // so the first shot of round twelve costs the same as the first shot
             // of round one.
-            SetPrewarm(pool,
+            var prewarm = new List<(GameObject prefab, int count)>
+            {
                 (decal, 48), (sparks, 24), (flash, 4), (casing, 24), (dummyPrefab, 8),
-                (drones.Prefab, 24), (drones.Explosion, 8), (drones.DeathVfx, 8));
+            };
+            prewarm.AddRange(drones.Pooled);
+            SetPrewarm(pool, prewarm.ToArray());
 
             // The run layer is created BEFORE the player, because the player's
             // motor and weapon subscribe to its StatsChanged event and a
@@ -896,7 +1175,7 @@ namespace CoD.EditorTools
             SetRef(spawner, "_registry", registry);
             SetRef(spawner, "_target", player);
             SetRef(spawner, "_difficulty", drones.Difficulty);
-            SetRef(spawner, "_defaultDrone", drones.Rusher);
+            SetRef(spawner, "_defaultDrone", drones.Default);
             SetArrayRef(spawner, "_spawnPoints", points);
 
             return (spawner, registry);
