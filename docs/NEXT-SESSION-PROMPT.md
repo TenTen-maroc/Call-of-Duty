@@ -10,9 +10,10 @@ Keep this file updated as milestones land — it is the handoff, not a snapshot.
 
 ## Read this first: the tuning card
 
-Phases 4-7 are code-complete and **have never been played**. Everything compiles
-clean, builds headlessly, and every scene reference is proven — but the bar in
-this repo is FUN, and that needs your hands on the keyboard.
+Phases 4-7 are built, tested and **never played**. 42 automated tests prove the
+loop *runs* — drones spawn, path, die, pay out, the shop opens, the pool
+recycles — so anything you find now is a feel problem, not a broken build. The
+bar in this repo is FUN, and that is the one thing the machine cannot check.
 
 Open `Assets/_Project/Scenes/10_GreyBox.unity` and press Play. Backquote opens
 the sandbox console (1-9). Work down this list; for each one, the asset field to
@@ -26,7 +27,9 @@ move is named.
 | 4 | **A Shooter's opening shot.** It misses on purpose. Does that teach you where it is, or just annoy? | `RangedBurst_Std.firstShotMissDegrees` · `.reactionDelay` (0.4) |
 | 5 | **A Tank at wave 7.** Is walking away the obvious answer, or does it feel like a wall you cannot fight? | `Drone_Tank.maxHealth` (600) · `HeavySlam_Std.windupSeconds` (0.9) |
 | 6 | **Explosive + Chain on the rifle.** Console 9 for money, buy both. Absurd in the good way, or a frame-rate event? | `Effect_Chain.jumpsPerHit` · `Effect_Explosive.radius` · both `maxDepth` (1) |
-| 7 | **40 alive on the 3050.** Watch the frame time. The cap exists for the 4 GB budget. | `Difficulty.maxAliveDrones` — the one number not to raise |
+| 7 | **The SMG vs the rifle.** Buy it at wave 3+ ($500). Is the trade — faster, snappier, useless past 30 m — a real choice or an obvious upgrade? | `SMG_Rapid.falloffRange` · `.bodyDamage` |
+| 8 | **The arena lanes.** Does breaking line of sight actually change a fight, or do drones still arrive as one mass? | the block positions in `GreyBoxBuilder.BuildRoom` |
+| 9 | **40 alive on the 3050.** Watch the frame time. The cap exists for the 4 GB budget. | `Difficulty.maxAliveDrones` — the one number not to raise |
 
 Values edited in Play Mode **persist**, because they live on ScriptableObjects.
 That is the point: tune while playing, stop, and the numbers are still there.
@@ -54,10 +57,12 @@ versioned save, and four stacking effect modules with depth-limited recursion.
 Seven assemblies, all clean, six guards green, and GreyBoxVerify proves every
 scene reference survives a save/reload round trip.
 
-Phase 3 (the grey box) is verified in play. Phases 4-7 are NOT — they compile
-and build, and nobody has felt them yet. The tuning card at the top of
-docs/NEXT-SESSION-PROMPT.md is the list of what to judge and which asset field
-to move.
+Phase 3 (the grey box) is verified in play. Phases 4-7 are verified by TEST but
+never felt: 42 tests (37 EditMode, 5 PlayMode) prove the maths and prove the loop
+actually runs, so a problem you hit now is a feel problem rather than a broken
+build. The tuning card at the top of docs/NEXT-SESSION-PROMPT.md lists what to
+judge and which asset field to move. docs/AUTOPILOT-PLAN.md is how autopilot
+operates between those sessions and what it may decide alone.
 
 TOOLS — USE THESE, THEY ARE FASTER THAN THE EDITOR
 - node Tools/check.mjs      six guards; also runs on every commit
@@ -75,14 +80,21 @@ Box. Headless (Unity must NOT be open — it locks the project):
 Extend the builder rather than hand-editing a .unity file.
 
 WHAT IS ACTUALLY LEFT
-- Play-test and tune Phases 4-7 against the card. That is the real work.
-- The arena is still one grey room with three cover blocks. A real three-lane
-  layout with line-of-sight breaks is the next thing that changes how it plays.
-- A second weapon, to prove the "new weapons are data" claim end to end.
-  ShopItemKind.Weapon exists and deliberately refunds until it has a handler.
-- ContentRegistry (stableId lookup) is not built. Nothing needs it while runs
-  are never serialised; it lands with unlocks or loadout persistence.
+- Play-test and tune Phases 4-7 against the card. That is the real work, and it
+  is the only milestone in docs/AUTOPILOT-PLAN.md that needs a human.
+- Everything else in that plan's section 3 is done: automated verification (42
+  tests), the SMG as a second weapon proving "weapons are data", and the
+  three-lane arena with a solid centre.
+- Do NOT start the M5 content list (damage numbers, a second arena, unlocks)
+  until the tuning pass says the core is fun. Content on an unfun core is
+  content that gets rebuilt.
+- ContentRegistry (stableId lookup) is still not built. Nothing needs it while
+  runs are never serialised; it lands with unlocks or loadout persistence.
 - Cinemachine is still not installed, on purpose — see CLAUDE.md.
+
+RUN THE TESTS, THEY ARE PART OF THE GATE
+  Unity.exe -batchmode -runTests -projectPath . -testPlatform EditMode     -testResults Logs/tests-editmode.xml
+  Unity.exe -batchmode -runTests -projectPath . -testPlatform PlayMode     -testResults Logs/tests-playmode.xml
 
 HARD-WON GOTCHAS — DO NOT REDISCOVER THESE
 - Assigning an ASSET reference to a component in a scene that has never been

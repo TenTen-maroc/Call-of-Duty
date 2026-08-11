@@ -1,0 +1,195 @@
+#nullable enable
+using System.Collections;
+using CoD.Core;
+using CoD.Enemies;
+using CoD.Waves;
+using NUnit.Framework;
+using UnityEngine;
+using UnityEngine.AI;
+using UnityEngine.SceneManagement;
+using UnityEngine.TestTools;
+
+namespace CoD.Tests
+{
+    /// <summary>
+    /// The loop, actually running. This is the test suite that lets a session say
+    /// "verified" instead of "compiles": it loads the real grey box, waits for the
+    /// wave system to start, and asserts drones spawn, path, take damage, pay out,
+    /// and hand the run to the shop.
+    ///
+    /// It cannot tell you whether any of that is FUN. It can tell you the thing
+    /// you are about to judge is not broken, which is the difference between a
+    /// tuning session and a debugging session.
+    /// </summary>
+    public sealed class GreyBoxLoopTests
+    {
+        private const string ScenePath = "Assets/_Project/Scenes/10_GreyBox.unity";
+
+        [UnitySetUp]
+        public IEnumerator LoadGreyBox()
+        {
+            AsyncOperation? load = SceneManager.LoadSceneAsync("10_GreyBox", LoadSceneMode.Single);
+            Assert.IsNotNull(load, $"'{ScenePath}' must be in the build settings — the builder registers it");
+            while (load != null && !load.isDone) yield return null;
+            yield return null;
+        }
+
+        /// <summary>Polls a condition with a real-time budget, so a hang fails the test instead of the run.</summary>
+        private static IEnumerator WaitUntil(System.Func<bool> condition, float timeoutSeconds, string what)
+        {
+            float deadline = Time.realtimeSinceStartup + timeoutSeconds;
+            while (!condition())
+            {
+                if (Time.realtimeSinceStartup > deadline) Assert.Fail($"timed out waiting for {what}");
+                yield return null;
+            }
+        }
+
+        [UnityTest]
+        public IEnumerator SceneBoots_WithEveryCoreSystemPresent()
+        {
+            Assert.IsNotNull(Object.FindFirstObjectByType<WaveRunner>(), "no WaveRunner");
+            Assert.IsNotNull(Object.FindFirstObjectByType<DroneSpawner>(), "no DroneSpawner");
+            Assert.IsNotNull(Object.FindFirstObjectByType<DroneRegistry>(), "no DroneRegistry");
+            Assert.IsNotNull(Object.FindFirstObjectByType<ObjectPool>(), "no ObjectPool");
+            Assert.IsNotNull(Object.FindFirstObjectByType<RunContext>(), "no RunContext");
+            yield return null;
+        }
+
+        [UnityTest]
+        public IEnumerator NavMesh_CoversTheArena_WithNoIslands()
+        {
+            var spawner = Object.FindFirstObjectByType<DroneSpawner>();
+            Assert.IsNotNull(spawner);
+
+            NavMeshTriangulation triangulation = NavMesh.CalculateTriangulation();
+            Assert.Greater(triangulation.vertices.Length, 0,
+                "the navmesh asset did not load — drones would spawn and never move");
+
+            // Every spawn point must be able to reach THE PLAYER. Not the origin:
+            // the arena has a solid centre block, so the origin is inside
+            // geometry. An island is invisible in the editor and fatal at runtime —
+            // the wave spawns and nothing ever arrives.
+            var motor = Object.FindFirstObjectByType<CoD.Player.PlayerMotor>();
+            Assert.IsNotNull(motor, "no player to path to");
+            Assert.IsTrue(NavMesh.SamplePosition(motor!.transform.position, out NavMeshHit playerHit, 4f,
+                NavMesh.AllAreas), "the player does not stand on the navmesh");
+
+            var path = new NavMeshPath();
+            foreach (Transform point in spawner.GetComponentsInChildren<Transform>())
+            {
+                if (!point.name.StartsWith("Spawn_")) continue;
+                Assert.IsTrue(NavMesh.SamplePosition(point.position, out NavMeshHit hit, 4f, NavMesh.AllAreas),
+                    $"{point.name} is not on the navmesh");
+                Assert.IsTrue(NavMesh.CalculatePath(hit.position, playerHit.position, NavMesh.AllAreas, path)
+                              && path.status == NavMeshPathStatus.PathComplete,
+                    $"{point.name} cannot reach the player — that is a navmesh island");
+            }
+            yield return null;
+        }
+
+        [UnityTest]
+        public IEnumerator Wave_Starts_SpawnsDrones_AndTheyPathTowardThePlayer()
+        {
+            var runner = Object.FindFirstObjectByType<WaveRunner>();
+            var registry = Object.FindFirstObjectByType<DroneRegistry>();
+            Assert.IsNotNull(runner);
+            Assert.IsNotNull(registry);
+
+            yield return WaitUntil(() => runner!.Phase == RunPhase.Wave, 20f, "the first wave to start");
+            yield return WaitUntil(() => registry!.AliveCount > 0, 20f, "the first drone to spawn");
+
+            DroneController drone = registry!.Alive[0];
+            Assert.IsTrue(drone.IsActive);
+
+            // A drone whose agent never took a path is the pooled-NavMeshAgent bug
+            // this project has already paid for once.
+            var agent = drone.GetComponent<NavMeshAgent>();
+            Assert.IsTrue(agent.enabled, "the agent must be enabled after Initialize");
+            Assert.IsTrue(agent.isOnNavMesh, "the agent must be placed on the navmesh");
+
+            Vector3 startDistanceTo = drone.Target != null
+                ? drone.Target.position - drone.Position
+                : Vector3.zero;
+            float before = startDistanceTo.magnitude;
+
+            float deadline = Time.realtimeSinceStartup + 4f;
+            while (Time.realtimeSinceStartup < deadline && drone.IsActive) yield return null;
+
+            if (drone.IsActive && drone.Target != null)
+            {
+                float after = (drone.Target.position - drone.Position).magnitude;
+                Assert.Less(after, before, "a Rusher that does not close the distance is not chasing");
+            }
+        }
+
+        [UnityTest]
+        public IEnumerator KillingDrones_PaysMoney_AndClearsTheWaveIntoTheShop()
+        {
+            var runner = Object.FindFirstObjectByType<WaveRunner>();
+            var registry = Object.FindFirstObjectByType<DroneRegistry>();
+            var run = Object.FindFirstObjectByType<RunContext>();
+            Assert.IsNotNull(runner);
+            Assert.IsNotNull(registry);
+            Assert.IsNotNull(run);
+
+            yield return WaitUntil(() => runner!.Phase == RunPhase.Wave, 20f, "the first wave");
+            yield return WaitUntil(() => registry!.AliveCount > 0, 20f, "the first drone");
+
+            int moneyBefore = run!.State.Money;
+
+            // Kill everything the wave produces until the runner says it is done.
+            float deadline = Time.realtimeSinceStartup + 45f;
+            while (runner!.Phase == RunPhase.Wave && Time.realtimeSinceStartup < deadline)
+            {
+                for (int i = registry!.Alive.Count - 1; i >= 0; i--)
+                {
+                    Health? health = registry.Alive[i].HealthComponent;
+                    if (health == null || !health.IsAlive) continue;
+                    var info = new DamageInfo(9999f, health.transform.position, Vector3.up, Vector3.forward, false);
+                    health.ApplyDamage(in info);
+                }
+                yield return null;
+            }
+
+            Assert.AreNotEqual(RunPhase.Wave, runner.Phase, "the wave never ended after everything died");
+            Assert.Greater(run.State.Kills, 0, "kills must be counted through the registry");
+            Assert.Greater(run.State.Money, moneyBefore, "a kill has to pay");
+
+            yield return WaitUntil(() => runner.Phase == RunPhase.Shop, 20f, "the shop to open");
+
+            Assert.IsNotNull(runner.Shop);
+            Assert.Greater(runner.Shop!.Offers.Count, 0, "an empty shop break is a break with nothing in it");
+            Assert.AreEqual(runner.Shop.Offers.Count, runner.Shop.Prices.Count, "offers and prices must stay aligned");
+        }
+
+        [UnityTest]
+        public IEnumerator ThePoolReusesDrones_RatherThanGrowing()
+        {
+            var spawner = Object.FindFirstObjectByType<DroneSpawner>();
+            var registry = Object.FindFirstObjectByType<DroneRegistry>();
+            Assert.IsNotNull(spawner);
+            Assert.IsNotNull(registry);
+
+            DroneConfig? config = spawner!.DefaultDrone;
+            Assert.IsNotNull(config);
+
+            yield return WaitUntil(() => spawner.Spawn(config!) != null, 10f, "a sandbox spawn");
+            DroneController first = registry!.Alive[registry.Alive.Count - 1];
+            int firstId = first.gameObject.GetInstanceID();
+
+            first.DespawnNow();
+            yield return null;
+
+            DroneController? second = spawner.Spawn(config!);
+            Assert.IsNotNull(second);
+            // If this fails the pool is growing instead of recycling, which is the
+            // GC-hitch factory the whole pool exists to prevent.
+            Assert.AreEqual(firstId, second!.gameObject.GetInstanceID(),
+                "the despawned instance should have come straight back out of the pool");
+
+            second.DespawnNow();
+            yield return null;
+        }
+    }
+}

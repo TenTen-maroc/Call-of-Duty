@@ -119,6 +119,34 @@ namespace CoD.Weapons
             _runtime.Modules.Add(module);
         }
 
+        /// <summary>
+        /// Swaps the carried weapon at runtime, keeping every effect module the
+        /// player has bought. Modules are ammunition tech, not part of the gun:
+        /// buying Explosive Rounds and then a new rifle must never silently throw
+        /// the purchase away.
+        ///
+        /// This is the whole "new weapons are DATA" claim in one method — a second
+        /// weapon is a WeaponConfig asset and nothing else.
+        /// </summary>
+        public void EquipWeapon(WeaponConfig config)
+        {
+            if (config == null) return;
+
+            var next = new WeaponRuntime(config);
+            if (_runtime != null)
+            {
+                for (int i = 0; i < _runtime.Modules.Count; i++)
+                {
+                    EffectModule module = _runtime.Modules[i];
+                    if (module != null && !next.Modules.Contains(module)) next.Modules.Add(module);
+                }
+            }
+
+            _runtime = next;
+            _adsProgress = 0f;
+            GameLog.Info($"equipped {config.displayName}", this);
+        }
+
         public int EffectModuleCount => _runtime != null ? _runtime.Modules.Count : 0;
         public EffectModule? EffectModuleAt(int index) =>
             _runtime != null && index >= 0 && index < _runtime.Modules.Count ? _runtime.Modules[index] : null;

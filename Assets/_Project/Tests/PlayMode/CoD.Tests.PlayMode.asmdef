@@ -1,0 +1,26 @@
+{
+    "name": "CoD.Tests.PlayMode",
+    "rootNamespace": "CoD.Tests",
+    "references": [
+        "CoD.Core",
+        "CoD.Player",
+        "CoD.Enemies",
+        "CoD.Waves",
+        "CoD.Weapons",
+        "UnityEngine.TestRunner",
+        "UnityEditor.TestRunner"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": true,
+    "precompiledReferences": [
+        "nunit.framework.dll"
+    ],
+    "autoReferenced": false,
+    "defineConstraints": [
+        "UNITY_INCLUDE_TESTS"
+    ],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

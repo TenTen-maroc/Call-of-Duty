@@ -71,8 +71,11 @@ writes a modified number back into a config asset.
   persists between Play sessions. The shop panel shows the installed stack in
   execution order, because order is a real rule: a module can only react to what
   an earlier one produced.
-- **An unimplemented item kind refunds and refuses.** Buying a second weapon has
-  no handler yet, so it returns the money rather than taking it for nothing.
+- **Weapons swap through `EquipWeapon` and keep your modules.** The SMG is sold
+  from wave 3 at $500, once per run, and drops off the offer list while you are
+  already carrying it. A refund-and-refuse path still exists for any payload with
+  no handler — a purchase that does nothing is worse than an item that cannot be
+  bought yet.
 - **Reload speed is captured when the reload starts** (`WeaponRuntime.ReloadDuration`),
   so cancelling measures against the same number the reload began with.
 - Raising max health tops the player up. Deliberate: the shop only opens between

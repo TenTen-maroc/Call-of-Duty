@@ -60,6 +60,7 @@ namespace CoD.EditorTools
             });
             ImpactConfig impact = LoadOrCreate<ImpactConfig>(DataGame + "/Impact_Default.asset", _ => { });
             WeaponConfig rifle = LoadOrCreate<WeaponConfig>(DataWeapons + "/AR_Standard.asset", ConfigureRifle);
+            WeaponConfig smg = LoadOrCreate<WeaponConfig>(DataWeapons + "/SMG_Rapid.asset", ConfigureSmg);
             PlayerLoadoutConfig loadout = LoadOrCreate<PlayerLoadoutConfig>(DataWeapons + "/Loadout_Default.asset", l =>
             {
                 l.startingWeapon = rifle;
@@ -152,7 +153,7 @@ namespace CoD.EditorTools
             // authored waves the endless ramp takes over from.
             PassiveConfig[] passives = BuildPassives();
             EffectModule[] effects = BuildEffectModules(explosion);
-            ShopItemConfig[] shopItems = BuildShopItems(passives, effects);
+            ShopItemConfig[] shopItems = BuildShopItems(passives, effects, smg);
             ShopConfig shopConfig = LoadOrCreate<ShopConfig>(DataGame + "/Shop.asset", ConfigureShop);
             EnsureShopPool(shopConfig, shopItems);
             WaveConfig[] waves = BuildWaves(rusher, shooter, tank);
@@ -162,6 +163,14 @@ namespace CoD.EditorTools
             SetRef(impact, "decalPrefab", decal);
             SetRef(impact, "particlePrefab", sparks);
             EditorUtility.SetDirty(impact);
+
+            SetRef(smg, "muzzleFlashPrefab", flash);
+            SetRef(smg, "shellCasingPrefab", casing);
+            SetRef(smg, "fireCloseLayer", LoadClip("Fire_AR_Close"));
+            SetRef(smg, "fireTailLayer", LoadClip("Fire_AR_Tail"));
+            SetRef(smg, "dryFireClip", LoadClip("DryFire"));
+            SetRef(smg, "reloadClip", LoadClip("Reload_AR"));
+            EditorUtility.SetDirty(smg);
 
             SetRef(rifle, "muzzleFlashPrefab", flash);
             SetRef(rifle, "shellCasingPrefab", casing);
@@ -253,6 +262,41 @@ namespace CoD.EditorTools
             config.baseFovVertical = 62f;   // ~95 horizontal at 16:9
             config.mouseSensitivity = 0.12f;
             config.slowMoTimeScale = 0.35f;
+        }
+
+        /// <summary>
+        /// The second weapon, and the proof of the modular claim: an SMG is this
+        /// method and nothing else — no new class, no new component, no new
+        /// prefab. Numbers straight off the gunfeel table: 900 RPM at 20 damage is
+        /// five shots to kill and ~267 ms, inside the same arcade window as the
+        /// rifle but with a different texture (faster, twitchier, worse at range).
+        /// </summary>
+        private static void ConfigureSmg(WeaponConfig config)
+        {
+            config.stableId = "wpn_smg_rapid";
+            config.displayName = "SMG";
+            config.weaponClass = WeaponClass.SMG;
+            config.roundsPerMinute = 900f;
+            config.bodyDamage = 20f;
+            config.headshotMultiplier = 1.5f;
+            config.magazineSize = 40;
+            config.reserveAmmo = 240;
+            config.fireMode = FireMode.FullAuto;
+            config.adsTime = 0.2f;
+            config.sprintToFireTime = 0.15f;
+            config.reloadTime = 1.8f;
+            config.reloadEmptyTime = 2.3f;
+            // Falls off harder and sooner than the rifle: that, plus the wider
+            // hipfire cone, is what makes picking one a decision.
+            config.falloffRange = new Vector2(14f, 34f);
+            config.minDamageMultiplier = 0.5f;
+            config.baseSpread = 3.2f;
+            config.spreadPerShot = 0.3f;
+            config.maxSpread = 7f;
+            config.verticalKickFirstShot = 0.45f;
+            config.verticalKickAtShotEight = 0.95f;
+            config.horizontalKickMax = 0.45f;
+            config.recoilSeed = 4242;
         }
 
         private static void ConfigureRifle(WeaponConfig config)
@@ -493,10 +537,11 @@ namespace CoD.EditorTools
             return new EffectModule[] { explosive, pierce, ricochet, chain };
         }
 
-        private static ShopItemConfig[] BuildShopItems(PassiveConfig[] passives, EffectModule[] effects)
+        private static ShopItemConfig[] BuildShopItems(PassiveConfig[] passives, EffectModule[] effects,
+            WeaponConfig smg)
         {
             int[] costs = { 150, 175, 160, 220, 200 };
-            var items = new ShopItemConfig[passives.Length + effects.Length];
+            var items = new ShopItemConfig[passives.Length + effects.Length + 1];
             for (int i = 0; i < passives.Length; i++)
             {
                 PassiveConfig passive = passives[i];
@@ -548,6 +593,17 @@ namespace CoD.EditorTools
                 items[passives.Length + i] = item;
             }
 
+            ShopItemConfig weaponItem = LoadOrCreate<ShopItemConfig>(DataShop + "/Shop_SMG.asset", shopItem =>
+            {
+                shopItem.stableId = "shop_wpn_smg_rapid";
+                shopItem.displayName = "SMG";
+                shopItem.description = "900 RPM, faster handling, weak past 30 m";
+                shopItem.cost = 500;
+                shopItem.kind = ShopItemKind.Weapon;
+            });
+            SetRef(weaponItem, "weapon", smg);
+            items[items.Length - 1] = weaponItem;
+
             return items;
         }
 
@@ -569,7 +625,7 @@ namespace CoD.EditorTools
                 SerializedProperty element = pool.GetArrayElementAtIndex(i);
                 element.FindPropertyRelative("item").objectReferenceValue = items[i];
                 if (!rebuild) continue;
-                bool isEffect = items[i].kind == ShopItemKind.EffectModule;
+                bool isEffect = items[i].kind != ShopItemKind.Passive;
                 // Modules are rarer, gated to wave 3+, and one per run: a second
                 // copy of Pierce does nothing the first one did not.
                 element.FindPropertyRelative("weight").floatValue = isEffect ? 0.6f : 1f;
@@ -1183,15 +1239,46 @@ namespace CoD.EditorTools
             floor.transform.position = new Vector3(0f, -0.25f, 0f);
             floor.GetComponent<MeshRenderer>().sharedMaterial = floorMat;
 
-            // Four walls plus a few cover blocks: enough to break line of sight,
-            // which is what the arena will be made of later.
             AddBox(room, "Wall_N", new Vector3(0f, 2.5f, 20f), new Vector3(40f, 5f, 0.5f), wallMat);
             AddBox(room, "Wall_S", new Vector3(0f, 2.5f, -20f), new Vector3(40f, 5f, 0.5f), wallMat);
             AddBox(room, "Wall_E", new Vector3(20f, 2.5f, 0f), new Vector3(0.5f, 5f, 40f), wallMat);
             AddBox(room, "Wall_W", new Vector3(-20f, 2.5f, 0f), new Vector3(0.5f, 5f, 40f), wallMat);
-            AddBox(room, "Cover_A", new Vector3(-6f, 1f, 6f), new Vector3(3f, 2f, 1f), wallMat);
-            AddBox(room, "Cover_B", new Vector3(7f, 1.5f, 10f), new Vector3(1f, 3f, 4f), wallMat);
-            AddBox(room, "Cover_C", new Vector3(0f, 0.75f, 14f), new Vector3(6f, 1.5f, 1f), wallMat);
+
+            // THE ARENA. One open room made the fight shapeless: every drone took
+            // the same straight line, retreating was a straight line too, and the
+            // Shooter had permanent line of sight from anywhere. Three lanes
+            // around a solid centre fix all three — you break line of sight by
+            // moving, and the crowd arrives split instead of as one mass.
+            //
+            // Full-height blocks (3 m) break sight completely; half-height cover
+            // (1.2 m) sits below eye level, so you can shoot over it while a
+            // pathing drone still has to go around. That asymmetry is what makes
+            // cover worth using rather than worth hiding behind.
+
+            // The centre mass. Everything orbits this, and nothing shoots across it.
+            AddBox(room, "Core_Bunker", new Vector3(0f, 1.5f, 2f), new Vector3(8f, 3f, 6f), wallMat);
+
+            // Lane dividers, with a deliberate 7 m crossing gap between each pair:
+            // wide enough that a Tank fits, narrow enough to be a decision.
+            AddBox(room, "Divider_W_South", new Vector3(-9f, 1.5f, -6f), new Vector3(1f, 3f, 10f), wallMat);
+            AddBox(room, "Divider_E_South", new Vector3(9f, 1.5f, -6f), new Vector3(1f, 3f, 10f), wallMat);
+            AddBox(room, "Divider_W_North", new Vector3(-9f, 1.5f, 11f), new Vector3(1f, 3f, 8f), wallMat);
+            AddBox(room, "Divider_E_North", new Vector3(9f, 1.5f, 11f), new Vector3(1f, 3f, 8f), wallMat);
+
+            // Shoot-over cover. The south block is in front of the player spawn on
+            // purpose: the first thing you learn is that you can back behind it.
+            AddBox(room, "Cover_S", new Vector3(0f, 0.6f, -10f), new Vector3(6f, 1.2f, 1f), wallMat);
+            AddBox(room, "Cover_W", new Vector3(-14f, 0.6f, 4f), new Vector3(4f, 1.2f, 1f), wallMat);
+            AddBox(room, "Cover_E", new Vector3(14f, 0.6f, 4f), new Vector3(4f, 1.2f, 1f), wallMat);
+            AddBox(room, "Cover_NW", new Vector3(-5f, 0.6f, 14f), new Vector3(1f, 1.2f, 5f), wallMat);
+            AddBox(room, "Cover_NE", new Vector3(5f, 0.6f, 14f), new Vector3(1f, 1.2f, 5f), wallMat);
+
+            // Corner pillars: they stop the perimeter from being a free racetrack
+            // and give a kiting Shooter somewhere to be forced out of.
+            AddBox(room, "Pillar_NW", new Vector3(-16f, 2f, 16f), new Vector3(2f, 4f, 2f), wallMat);
+            AddBox(room, "Pillar_NE", new Vector3(16f, 2f, 16f), new Vector3(2f, 4f, 2f), wallMat);
+            AddBox(room, "Pillar_SW", new Vector3(-16f, 2f, -16f), new Vector3(2f, 4f, 2f), wallMat);
+            AddBox(room, "Pillar_SE", new Vector3(16f, 2f, -16f), new Vector3(2f, 4f, 2f), wallMat);
             return room;
         }
 
@@ -1424,10 +1511,12 @@ namespace CoD.EditorTools
         private static void BuildTargets(GameObject dummyPrefab, Material material)
         {
             GameObject root = new("Targets");
+            // Clear of the arena geometry, one per lane plus two at the north end,
+            // so the tuning bench survived the arena rebuild.
             Vector3[] spots =
             {
-                new(-4f, 0.9f, 4f), new(0f, 0.9f, 8f), new(5f, 0.9f, 5f),
-                new(-8f, 0.9f, 12f), new(9f, 0.9f, 14f),
+                new(-13f, 0.9f, 8f), new(13f, 0.9f, 8f), new(0f, 0.9f, 12f),
+                new(-6f, 0.9f, 17f), new(6f, 0.9f, 17f),
             };
             for (int i = 0; i < spots.Length; i++)
             {

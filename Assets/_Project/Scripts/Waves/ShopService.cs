@@ -86,11 +86,15 @@ namespace CoD.Waves
                     _weapon.AddEffectModule(item.effect);
                     break;
                 case ShopItemKind.Weapon:
-                    // Buying a second weapon lands with the arsenal work; refuse
-                    // rather than take the money for nothing.
-                    GameLog.Warn($"Shop item '{item.displayName}' has no handler yet; refunding.");
-                    _run.AddMoney(price);
-                    return false;
+                    if (_weapon == null || item.weapon == null)
+                    {
+                        GameLog.Warn($"'{item.displayName}' has no weapon to equip; refunding.");
+                        _run.AddMoney(price);
+                        return false;
+                    }
+                    // Installed modules travel with the player, not the gun.
+                    _weapon.EquipWeapon(item.weapon);
+                    break;
             }
 
             // Sold out of this break. Removing rather than greying out keeps the
@@ -136,6 +140,12 @@ namespace CoD.Waves
         private int OwnedCount(ShopItemConfig item)
         {
             if (item.kind == ShopItemKind.Passive && item.passive != null) return _run.State.StacksOf(item.passive);
+            if (item.kind == ShopItemKind.Weapon && item.weapon != null && _weapon != null)
+            {
+                // A weapon you are already holding is not an offer worth making.
+                WeaponRuntime? runtime = _weapon.Runtime;
+                return runtime != null && runtime.Config == item.weapon ? 1 : 0;
+            }
             if (item.kind != ShopItemKind.EffectModule || item.effect == null || _weapon == null) return 0;
 
             int owned = 0;

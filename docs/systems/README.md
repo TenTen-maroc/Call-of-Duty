@@ -19,6 +19,23 @@ obvious, emphasise the non-obvious.
 | [waves.md](waves.md) | `WaveConfig`, `WaveRunner`, `DifficultyConfig` caps and the endless ramp | ✅ |
 | [shop.md](shop.md) | `ShopConfig`, `ShopItemConfig`, `PassiveConfig`, `StatSheet` rebuild | ✅ passives + modules |
 | [save.md](save.md) | Versioned JSON, `schemaVersion` migration, atomic write, `.bak` | ✅ |
+| [arena.md](arena.md) | The three-lane arena, cover heights, navmesh bake | ✅ |
+
+## Automated verification
+
+Beyond `typecheck.mjs` and the guards, the project has 42 tests:
+
+```
+Unity.exe -batchmode -runTests -projectPath . -testPlatform EditMode -testResults Logs/tests-editmode.xml
+Unity.exe -batchmode -runTests -projectPath . -testPlatform PlayMode -testResults Logs/tests-playmode.xml
+```
+
+EditMode covers the maths that fails silently — stat folding, save round-trip and
+corruption recovery, follow-up bounds, damage falloff, wave scaling, shop rules,
+and both weapons' TTK. PlayMode loads the real grey box and asserts the loop
+runs: drones spawn, path, close distance, die, pay out, and hand the run to the
+shop, with the pool recycling instances. See
+[AUTOPILOT-PLAN.md](../AUTOPILOT-PLAN.md) for what these can and cannot prove.
 
 Every doc here describes code that now **runs**. Each states at the top what
 has actually been verified in play and what has only been compiled — those are
