@@ -85,6 +85,8 @@ namespace CoD.Waves
         public RunPhase Phase { get; private set; } = RunPhase.Countdown;
         public int WaveNumber => _wave;
         public ShopService? Shop => _shop;
+        /// <summary>The authored wave being fought, or null once the endless ramp has taken over.</summary>
+        public WaveConfig? CurrentWave => ConfigForWave(_wave);
         public AttackTokenPool? Tokens => _tokens;
         public float PhaseTimeRemaining => Mathf.Max(0f, _phaseEndsAt - Time.time);
 

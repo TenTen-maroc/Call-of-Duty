@@ -59,7 +59,13 @@ namespace CoD.UI
             if (_waveLabel != null && _runner.WaveNumber != _lastWave)
             {
                 _lastWave = _runner.WaveNumber;
-                _waveLabel.text = _lastWave <= 0 ? "GET READY" : "WAVE " + _lastWave;
+                // Concatenation is fine here: this runs when the wave NUMBER
+                // changes, which is once every forty-five seconds, not per frame.
+                WaveConfig? config = _runner.CurrentWave;
+                string name = config != null ? config.displayName : string.Empty;
+                _waveLabel.text = _lastWave <= 0
+                    ? "GET READY"
+                    : string.IsNullOrEmpty(name) ? "WAVE " + _lastWave : "WAVE " + _lastWave + " — " + name;
             }
 
             if (_enemiesLabel != null)

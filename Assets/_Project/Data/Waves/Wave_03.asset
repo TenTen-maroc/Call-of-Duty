@@ -13,11 +13,17 @@ MonoBehaviour:
   m_Name: Wave_03
   m_EditorClassIdentifier: 
   waveNumber: 3
+  displayName: OVERWATCH
+  designVersion: 1
   entries:
   - drone: {fileID: 11400000, guid: ebe34567e0da76b4ca490654fb6afb7c, type: 2}
-    count: 7
+    count: 5
     spawnOverSeconds: 12
     startDelay: 0
+  - drone: {fileID: 11400000, guid: 1388860723254bb4390c6175b8190ee0, type: 2}
+    count: 3
+    spawnOverSeconds: 10
+    startDelay: 4
   durationTarget: 45
   maxAliveOverride: 0
-  moneyBonusOnClear: 100
+  moneyBonusOnClear: 110

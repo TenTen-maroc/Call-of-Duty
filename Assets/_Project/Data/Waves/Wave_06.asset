@@ -13,6 +13,8 @@ MonoBehaviour:
   m_Name: Wave_06
   m_EditorClassIdentifier: 
   waveNumber: 6
+  displayName: BREACH
+  designVersion: 1
   entries:
   - drone: {fileID: 11400000, guid: ebe34567e0da76b4ca490654fb6afb7c, type: 2}
     count: 10
@@ -22,6 +24,10 @@ MonoBehaviour:
     count: 4
     spawnOverSeconds: 10
     startDelay: 4
+  - drone: {fileID: 11400000, guid: f395972cbd363de49875d26285379ef2, type: 2}
+    count: 1
+    spawnOverSeconds: 6
+    startDelay: 8
   durationTarget: 45
   maxAliveOverride: 0
-  moneyBonusOnClear: 140
+  moneyBonusOnClear: 175

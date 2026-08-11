@@ -13,15 +13,13 @@ MonoBehaviour:
   m_Name: Wave_04
   m_EditorClassIdentifier: 
   waveNumber: 4
+  displayName: SWARM
+  designVersion: 1
   entries:
   - drone: {fileID: 11400000, guid: ebe34567e0da76b4ca490654fb6afb7c, type: 2}
-    count: 7
-    spawnOverSeconds: 12
+    count: 14
+    spawnOverSeconds: 8
     startDelay: 0
-  - drone: {fileID: 11400000, guid: 1388860723254bb4390c6175b8190ee0, type: 2}
-    count: 2
-    spawnOverSeconds: 10
-    startDelay: 4
   durationTarget: 45
   maxAliveOverride: 0
-  moneyBonusOnClear: 110
+  moneyBonusOnClear: 130

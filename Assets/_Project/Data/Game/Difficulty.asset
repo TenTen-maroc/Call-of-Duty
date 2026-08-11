@@ -166,6 +166,6 @@ MonoBehaviour:
       m_PostInfinity: 2
       m_RotationOrder: 4
   endlessClearBonusBase: 120
-  endlessClearBonusPerWave: 12
+  endlessClearBonusPerWave: 20
   endlessFallbackWaveSize: 8
   endlessSpawnOverSeconds: 20

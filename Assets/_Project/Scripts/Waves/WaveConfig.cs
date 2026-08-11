@@ -25,6 +25,21 @@ namespace CoD.Waves
         }
 
         [Min(1)] public int waveNumber = 1;
+
+        [Tooltip("Shown next to the wave number. A wave the player cannot name is a wave with no identity.")]
+        public string displayName = "";
+
+        /// <summary>
+        /// Which iteration of the authored plan this asset was written from.
+        ///
+        /// GreyBoxBuilder rebuilds a wave in full when this does not match the
+        /// plan's version, and otherwise re-links drone references only. Without
+        /// it a redesign that happens to keep the same NUMBER of entries lands
+        /// silently nowhere: the builder's rebuild test was array length alone, so
+        /// changing 7 rushers to 14 looked applied and was not.
+        /// </summary>
+        public int designVersion;
+
         public Entry[] entries = System.Array.Empty<Entry>();
 
         [Tooltip("Roughly how long the wave should take. Informational — the wave ends when the last drone dies.")]

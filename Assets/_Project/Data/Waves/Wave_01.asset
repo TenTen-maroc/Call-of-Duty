@@ -13,6 +13,8 @@ MonoBehaviour:
   m_Name: Wave_01
   m_EditorClassIdentifier: 
   waveNumber: 1
+  displayName: CONTACT
+  designVersion: 1
   entries:
   - drone: {fileID: 11400000, guid: ebe34567e0da76b4ca490654fb6afb7c, type: 2}
     count: 3

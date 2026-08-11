@@ -13,15 +13,17 @@ MonoBehaviour:
   m_Name: Wave_05
   m_EditorClassIdentifier: 
   waveNumber: 5
+  displayName: SIEGE
+  designVersion: 1
   entries:
   - drone: {fileID: 11400000, guid: ebe34567e0da76b4ca490654fb6afb7c, type: 2}
-    count: 9
-    spawnOverSeconds: 14
+    count: 4
+    spawnOverSeconds: 10
     startDelay: 0
   - drone: {fileID: 11400000, guid: 1388860723254bb4390c6175b8190ee0, type: 2}
-    count: 3
+    count: 7
     spawnOverSeconds: 10
     startDelay: 4
   durationTarget: 45
   maxAliveOverride: 0
-  moneyBonusOnClear: 130
+  moneyBonusOnClear: 150

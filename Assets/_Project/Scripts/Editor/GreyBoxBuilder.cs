@@ -384,7 +384,12 @@ namespace CoD.EditorTools
             // 11, a pay CUT on the wave where enemy count, health and shop prices
             // all step up together.
             config.endlessClearBonusBase = 120;
-            config.endlessClearBonusPerWave = 12;
+            // 20, not 12. The authored waves now end at 320 on wave 10, and at 12
+            // per wave the endless ramp opened on 252 — a pay CUT on exactly the
+            // wave where count, health and shop prices all step up together.
+            // CoreLogicTests guards this seam; if the wave plan's payouts move
+            // again, this moves with them.
+            config.endlessClearBonusPerWave = 20;
             config.endlessFallbackWaveSize = 8;
             config.endlessSpawnOverSeconds = 20f;
         }
@@ -776,27 +781,54 @@ namespace CoD.EditorTools
         /// first thing that shoots you is not also the first thing you see), and
         /// one Tank at 7 alone with the crowd it forces you to move through.
         /// </summary>
+        /// <summary>
+        /// Bumped whenever the authored plan below changes. WaveConfig.designVersion
+        /// records which iteration an asset was written from, and a mismatch is
+        /// what licenses the builder to overwrite counts a human may have tuned.
+        /// </summary>
+        private const int WaveDesignVersion = 1;
+
+        /// <summary>
+        /// The first ten waves, authored. This is the part of the game every run
+        /// replays and the only part most runs ever see, so it is designed rather
+        /// than generated — past wave 10 DifficultyConfig's curves take over.
+        ///
+        /// The plan is written as IDENTITIES rather than as a smooth ramp. The
+        /// previous version added roughly two drones per wave with the same mix
+        /// throughout, which is a difficulty curve but not a memory: no wave was
+        /// recognisable, so nothing taught the player anything specific and
+        /// nothing was worth dreading. Now a swarm is a swarm, a siege is fought
+        /// from cover, and an anvil is three tanks you walk away from.
+        /// </summary>
         private static WaveConfig[] BuildWaves(DroneConfig rusher, DroneConfig shooter, DroneConfig tank)
         {
-            (int rushers, float rusherOver, int shooters, int tanks, int bonus)[] plan =
+            (string name, int rushers, float rusherOver, int shooters, int tanks, int bonus)[] plan =
             {
-                (3, 6f, 0, 0, 80),
-                (5, 10f, 0, 0, 90),
-                (7, 12f, 0, 0, 100),
-                (7, 12f, 2, 0, 120),
-                (9, 14f, 3, 0, 140),
-                (10, 14f, 4, 0, 155),
-                (10, 14f, 4, 1, 185),
-                (12, 16f, 5, 1, 205),
-                (14, 18f, 6, 2, 240),
-                (16, 20f, 7, 3, 300),
+                // Learn the rifle and the fuse. Nothing else is happening.
+                ("CONTACT",   3,  6f, 0, 0,  80),
+                ("PROBE",     5, 10f, 0, 0,  90),
+                // Shooters arrive. Their opening shot misses on purpose, and this
+                // is the wave that lesson has room to land in.
+                ("OVERWATCH", 5, 12f, 3, 0, 110),
+                // Pure pressure, and the first wave with a shape: no ranged threat
+                // at all, so the only problem is how fast they close.
+                ("SWARM",    14,  8f, 0, 0, 130),
+                // The inverse. Few rushers, mostly ranged — the wave that makes
+                // the lane dividers worth using instead of running the perimeter.
+                ("SIEGE",     4, 10f, 7, 0, 150),
+                ("BREACH",   10, 14f, 4, 1, 175),
+                // Tank-heavy. Walking away is supposed to be the right answer.
+                ("ANVIL",     6, 12f, 3, 3, 200),
+                ("SWARM II", 20, 10f, 2, 0, 230),
+                ("CROSSFIRE", 8, 14f, 9, 1, 265),
+                ("OVERRUN",  16, 18f, 7, 3, 320),
             };
 
             var waves = new WaveConfig[plan.Length];
             for (int i = 0; i < plan.Length; i++)
             {
                 int number = i + 1;
-                (int rushers, float rusherOver, int shooters, int tanks, int bonus) = plan[i];
+                (string name, int rushers, float rusherOver, int shooters, int tanks, int bonus) = plan[i];
 
                 var entries = new List<(DroneConfig drone, int count, float over, float delay)>(3)
                 {
@@ -812,27 +844,35 @@ namespace CoD.EditorTools
                     {
                         config.waveNumber = number;
                         config.durationTarget = 45f;
-                        config.moneyBonusOnClear = bonus;
                     });
 
-                WriteWaveEntries(wave, entries);
+                WriteWave(wave, number, name, bonus, entries);
                 waves[i] = wave;
             }
             return waves;
         }
 
         /// <summary>
-        /// Same rule as the shop pool: a changed entry count means the wave's
-        /// composition moved and it is rebuilt from the plan, otherwise only the
-        /// drone references are re-linked — so counts tuned in the Inspector
-        /// survive a rebuild while a broken reference cannot.
+        /// Writes a wave, in full or not at all.
+        ///
+        /// The rule: drone references are ALWAYS re-linked, because a broken
+        /// reference is a wave that spawns nothing. Everything else — counts,
+        /// timings, the payout, the name — is rewritten only when the plan's
+        /// designVersion has moved, so numbers tuned in the Inspector survive a
+        /// rebuild but an intentional redesign still lands.
+        ///
+        /// The old test was array length alone, which meant a redesign keeping the
+        /// same number of entries was silently ignored. LoadOrCreate has the same
+        /// shape of trap: its configure callback runs on CREATE only, so the
+        /// payout and the name have to be written here rather than there or they
+        /// would never reach an asset that already exists.
         /// </summary>
-        private static void WriteWaveEntries(WaveConfig wave,
+        private static void WriteWave(WaveConfig wave, int number, string displayName, int bonus,
             List<(DroneConfig drone, int count, float over, float delay)> entries)
         {
             SerializedObject serialized = new(wave);
             SerializedProperty array = serialized.FindProperty("entries");
-            bool rebuild = array.arraySize != entries.Count;
+            bool rebuild = array.arraySize != entries.Count || wave.designVersion != WaveDesignVersion;
             if (rebuild) array.arraySize = entries.Count;
 
             for (int i = 0; i < entries.Count; i++)
@@ -845,6 +885,14 @@ namespace CoD.EditorTools
                 element.FindPropertyRelative("startDelay").floatValue = entries[i].delay;
             }
             serialized.ApplyModifiedProperties();
+
+            if (rebuild)
+            {
+                wave.waveNumber = number;
+                wave.displayName = displayName;
+                wave.moneyBonusOnClear = bonus;
+                wave.designVersion = WaveDesignVersion;
+            }
             EditorUtility.SetDirty(wave);
         }
 
