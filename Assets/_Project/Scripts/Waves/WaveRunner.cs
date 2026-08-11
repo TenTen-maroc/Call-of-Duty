@@ -63,6 +63,16 @@ namespace CoD.Waves
         private int _plannedThisWave;
         private int _placementFailuresThisWave;
 
+        /// <summary>
+        /// Multiplies the NEXT clear bonus. Set by walking out of a shop break
+        /// without buying, consumed the moment a clear actually pays.
+        ///
+        /// Run state, not config: it changes while the game is running, so it must
+        /// never live on a ScriptableObject. Domain Reload is off, and a runtime
+        /// write to a config survives into the next Play session.
+        /// </summary>
+        private float _pendingClearMultiplier = 1f;
+
         /// <summary>Consecutive failed placements before the runner says so. A hang guard's log threshold, not a tuning value.</summary>
         private const int PLACEMENT_FAILURE_WARN_AT = 30;
 
@@ -85,6 +95,12 @@ namespace CoD.Waves
         public RunPhase Phase { get; private set; } = RunPhase.Countdown;
         public int WaveNumber => _wave;
         public ShopService? Shop => _shop;
+        /// <summary>What the next clear will pay, as a multiplier. 1 unless the player skipped a break.</summary>
+        public float PendingClearMultiplier => _pendingClearMultiplier;
+        /// <summary>What skipping WOULD pay, for the shop to offer. 1 means skipping is not worth showing.</summary>
+        public float SkipBonusMultiplier => _shopConfig != null
+            ? Mathf.Max(1f, _shopConfig.skipBonusMultiplier)
+            : 1f;
         /// <summary>The authored wave being fought, or null once the endless ramp has taken over.</summary>
         public WaveConfig? CurrentWave => ConfigForWave(_wave);
         public AttackTokenPool? Tokens => _tokens;
@@ -308,6 +324,16 @@ namespace CoD.Waves
                 int bonus = config != null
                     ? config.moneyBonusOnClear
                     : EndlessClearBonus(_wave);
+
+                // Consumed only when a clear actually PAYS. The recovery paths end
+                // a wave that never happened, and eating the player's gamble for a
+                // fight they were never given would be the worst possible moment
+                // to take it.
+                if (_pendingClearMultiplier > 1f)
+                {
+                    bonus = ApplySkipBonus(bonus, _pendingClearMultiplier);
+                    _pendingClearMultiplier = 1f;
+                }
                 _run?.AddMoney(bonus);
             }
 
@@ -315,6 +341,14 @@ namespace CoD.Waves
             SetPhase(RunPhase.Cleared);
             WaveCleared?.Invoke(_wave);
         }
+
+        /// <summary>
+        /// The skipped-shop payout. A pure static so the arithmetic can be tested
+        /// exactly, rather than inferred from a money total that kill rewards have
+        /// already been added to. No mutable state, so the no-statics rule is happy.
+        /// </summary>
+        public static int ApplySkipBonus(int bonus, float multiplier) =>
+            Mathf.RoundToInt(bonus * Mathf.Max(1f, multiplier));
 
         /// <summary>
         /// The clear bonus past the last authored wave. Read from DifficultyConfig
@@ -340,6 +374,24 @@ namespace CoD.Waves
         public void ContinueFromShop()
         {
             if (Phase != RunPhase.Shop) return;
+            EnterCountdown();
+        }
+
+        /// <summary>
+        /// Walk out of the break without buying, and the next clear pays more.
+        ///
+        /// This is the decision the shop was missing. Buying is always correct
+        /// when the offers are good, so a good break was never a choice — it was
+        /// a menu. Skipping trades the upgrade you could have had for money you
+        /// only collect if you survive the next wave without it, and dying in that
+        /// wave means you get neither.
+        /// </summary>
+        public void SkipShopForBonus()
+        {
+            if (Phase != RunPhase.Shop) return;
+            _pendingClearMultiplier = _shopConfig != null
+                ? Mathf.Max(1f, _shopConfig.skipBonusMultiplier)
+                : 1f;
             EnterCountdown();
         }
 

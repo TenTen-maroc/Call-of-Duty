@@ -112,6 +112,10 @@ namespace CoD.UI
             }
             if (keyboard[Key.R].wasPressedThisFrame) Reroll();
             if (keyboard[Key.Space].wasPressedThisFrame) _runner.ContinueFromShop();
+            // TAB is free across the whole project — the only keys polled anywhere
+            // are the digits, R, SPACE, WASD, ENTER, ESC, BACKSPACE and BACKQUOTE.
+            // Polled here and nowhere else, per the one-input-owner-per-screen rule.
+            if (keyboard[Key.Tab].wasPressedThisFrame) _runner.SkipShopForBonus();
         }
 
         private void Buy(int index)
@@ -176,7 +180,16 @@ namespace CoD.UI
 
             if (_footerLabel != null)
             {
-                _footerLabel.text = "R)  reroll  $" + shop.RerollCost + "        SPACE)  next wave";
+                _builder.Clear();
+                _builder.Append("R)  reroll  $").Append(shop.RerollCost)
+                        .Append("        SPACE)  next wave");
+                float skip = _runner.SkipBonusMultiplier;
+                if (skip > 1f)
+                {
+                    _builder.Append("        TAB)  skip the shop, next clear pays x")
+                            .Append(skip.ToString("0.##"));
+                }
+                _footerLabel.text = _builder.ToString();
             }
 
             RedrawLoadout();

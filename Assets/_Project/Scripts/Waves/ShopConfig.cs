@@ -37,6 +37,10 @@ namespace CoD.Waves
         [Tooltip("Multiplies every price by wave number, so late-game money still has somewhere to go.")]
         public AnimationCurve priceScalingByWave = AnimationCurve.Linear(1f, 1f, 30f, 3f);
 
+        [Tooltip("What the NEXT clear pays if the player walks out of the break without buying. " +
+                 "1 means there is never a reason to skip, which makes the break a formality.")]
+        [Range(1f, 4f)] public float skipBonusMultiplier = 1.75f;
+
         [Header("Pool")]
         public PoolEntry[] pool = System.Array.Empty<PoolEntry>();
 

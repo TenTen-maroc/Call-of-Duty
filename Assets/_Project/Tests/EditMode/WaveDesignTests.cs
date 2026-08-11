@@ -112,5 +112,33 @@ namespace CoD.Tests
             Assert.Greater(siegeRanged, siegeMelee,
                 "the siege must be mostly ranged, or there is no reason to fight it from cover");
         }
+
+        // ---------- the skipped-shop gamble ----------
+
+        [Test]
+        public void SkippingTheShop_MultipliesTheNextClear()
+        {
+            Assert.AreEqual(175, WaveRunner.ApplySkipBonus(100, 1.75f));
+            Assert.AreEqual(560, WaveRunner.ApplySkipBonus(320, 1.75f));
+        }
+
+        [Test]
+        public void ASkipMultiplierBelowOne_NeverCutsThePayout()
+        {
+            // A hand-edited config must not turn the gamble into a penalty the
+            // player already committed to before they could see it.
+            Assert.AreEqual(100, WaveRunner.ApplySkipBonus(100, 0f));
+            Assert.AreEqual(100, WaveRunner.ApplySkipBonus(100, -3f));
+        }
+
+        [Test]
+        public void TheShippedSkipBonus_IsWorthTakingAtAll()
+        {
+            var shop = AssetDatabase.LoadAssetAtPath<ShopConfig>("Assets/_Project/Data/Game/Shop.asset");
+            Assert.IsNotNull(shop, "Shop.asset is missing");
+            Assert.Greater(shop!.skipBonusMultiplier, 1f,
+                "at 1x there is never a reason to skip, which makes the break a formality again");
+        }
+
     }
 }

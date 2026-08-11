@@ -41,6 +41,7 @@ MonoBehaviour:
     m_PreInfinity: 2
     m_PostInfinity: 2
     m_RotationOrder: 4
+  skipBonusMultiplier: 1.75
   pool:
   - item: {fileID: 11400000, guid: ca3fd85ba45831243b6278c7fedf33c3, type: 2}
     weight: 1

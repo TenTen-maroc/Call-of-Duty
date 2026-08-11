@@ -47,12 +47,14 @@ namespace CoD.Tests
         }
 
         /// <summary>Polls a condition with a real-time budget, so a hang fails the test instead of the run.</summary>
-        private static IEnumerator WaitUntil(System.Func<bool> condition, float timeoutSeconds, string what)
+        private static IEnumerator WaitUntil(System.Func<bool> condition, float timeoutSeconds, string what,
+            System.Action? eachFrame = null)
         {
             float deadline = Time.realtimeSinceStartup + timeoutSeconds;
             while (!condition())
             {
                 if (Time.realtimeSinceStartup > deadline) Assert.Fail($"timed out waiting for {what}");
+                eachFrame?.Invoke();
                 yield return null;
             }
         }
@@ -173,6 +175,49 @@ namespace CoD.Tests
             Assert.IsNotNull(runner.Shop);
             Assert.Greater(runner.Shop!.Offers.Count, 0, "an empty shop break is a break with nothing in it");
             Assert.AreEqual(runner.Shop.Offers.Count, runner.Shop.Prices.Count, "offers and prices must stay aligned");
+        }
+
+        /// <summary>
+        /// Skipping a break leaves the shop, arms the bonus, and spends it exactly
+        /// once. The arithmetic is covered by WaveDesignTests against the pure
+        /// helper — a money total here already has kill rewards folded into it, so
+        /// it could never prove the multiplication on its own.
+        /// </summary>
+        [UnityTest]
+        public IEnumerator SkippingTheShop_ArmsTheBonus_AndSpendsItOnce()
+        {
+            var runner = Object.FindFirstObjectByType<WaveRunner>();
+            var registry = Object.FindFirstObjectByType<DroneRegistry>();
+            Assert.IsNotNull(runner);
+            Assert.IsNotNull(registry);
+            Assert.Greater(runner!.SkipBonusMultiplier, 1f, "skipping is not worth anything in this build");
+
+            yield return WaitUntil(() => runner.Phase == RunPhase.Shop, 90f, "the first shop break",
+                () => KillEverything(registry!));
+
+            Assert.AreEqual(1f, runner.PendingClearMultiplier, 1e-3f, "nothing should be armed yet");
+
+            runner.SkipShopForBonus();
+            Assert.AreNotEqual(RunPhase.Shop, runner.Phase, "skipping must leave the break");
+            Assert.Greater(runner.PendingClearMultiplier, 1f, "the bonus was not armed");
+
+            yield return WaitUntil(() => runner.Phase == RunPhase.Cleared || runner.Phase == RunPhase.Shop,
+                90f, "the next wave to clear", () => KillEverything(registry!));
+
+            Assert.AreEqual(1f, runner.PendingClearMultiplier, 1e-3f,
+                "the bonus must be spent on the clear, not carried into every wave after it");
+        }
+
+        /// <summary>Kills whatever is alive this frame. Used to drive a wave to its end quickly.</summary>
+        private static void KillEverything(DroneRegistry registry)
+        {
+            for (int i = registry.Alive.Count - 1; i >= 0; i--)
+            {
+                Health? health = registry.Alive[i].HealthComponent;
+                if (health == null || !health.IsAlive) continue;
+                var info = new DamageInfo(9999f, health.transform.position, Vector3.up, Vector3.forward, false);
+                health.ApplyDamage(in info);
+            }
         }
 
         [UnityTest]
