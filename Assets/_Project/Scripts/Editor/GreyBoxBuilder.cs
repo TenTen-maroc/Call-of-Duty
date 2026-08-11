@@ -55,10 +55,15 @@ namespace CoD.EditorTools
                 l.weaponSlots = 2;
             });
 
-            Material grey = LoadOrCreateMaterial(Materials + "/GreyBox_Floor.mat", new Color(0.32f, 0.33f, 0.35f));
-            Material wall = LoadOrCreateMaterial(Materials + "/GreyBox_Wall.mat", new Color(0.42f, 0.43f, 0.46f));
-            Material targetMat = LoadOrCreateMaterial(Materials + "/GreyBox_Target.mat", new Color(0.75f, 0.2f, 0.16f));
+            // Grey/red tactical palette. The first pass was washed out: a near-white
+            // floor under a bright directional light left nothing to read the
+            // crosshair or the muzzle flash against.
+            Material grey = LoadOrCreateMaterial(Materials + "/GreyBox_Floor.mat", new Color(0.17f, 0.18f, 0.20f));
+            Material wall = LoadOrCreateMaterial(Materials + "/GreyBox_Wall.mat", new Color(0.28f, 0.29f, 0.32f));
+            Material targetMat = LoadOrCreateMaterial(Materials + "/GreyBox_Target.mat", new Color(0.62f, 0.13f, 0.11f));
             Material hot = LoadOrCreateMaterial(Materials + "/Fx_Hot.mat", new Color(1f, 0.82f, 0.45f));
+            Material gunmetal = LoadOrCreateMaterial(Materials + "/Weapon_Body.mat", new Color(0.10f, 0.105f, 0.115f));
+            Material gunAccent = LoadOrCreateMaterial(Materials + "/Weapon_Accent.mat", new Color(0.055f, 0.06f, 0.065f));
 
             GameObject decal = BuildDecalPrefab(hot);
             GameObject sparks = BuildSparksPrefab();
@@ -78,7 +83,8 @@ namespace CoD.EditorTools
             SetRef(rifle, "reloadClip", LoadClip("Reload_AR"));
             EditorUtility.SetDirty(rifle);
 
-            BuildGreyBoxScene(game, loadout, impact, grey, wall, targetMat, dummy, decal, sparks, flash, casing);
+            BuildGreyBoxScene(game, loadout, impact, grey, wall, targetMat, gunmetal, gunAccent,
+                dummy, decal, sparks, flash, casing);
             BuildBootScene();
             RegisterScenes();
 
@@ -231,8 +237,8 @@ namespace CoD.EditorTools
         // ---------- scenes ----------
 
         private static void BuildGreyBoxScene(GameConfig game, PlayerLoadoutConfig loadout, ImpactConfig impact,
-            Material floorMat, Material wallMat, Material targetMat, GameObject dummyPrefab,
-            GameObject decal, GameObject sparks, GameObject flash, GameObject casing)
+            Material floorMat, Material wallMat, Material targetMat, Material gunmetal, Material gunAccent,
+            GameObject dummyPrefab, GameObject decal, GameObject sparks, GameObject flash, GameObject casing)
         {
             Scene scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
 
@@ -246,9 +252,23 @@ namespace CoD.EditorTools
             GameObject sun = new("Directional Light");
             Light light = sun.AddComponent<Light>();
             light.type = LightType.Directional;
-            light.intensity = 1.1f;
+            light.intensity = 0.85f;
+            light.color = new Color(0.95f, 0.96f, 1f);
             light.shadows = LightShadows.Soft;
             sun.transform.rotation = Quaternion.Euler(48f, 32f, 0f);
+
+            // Ambient + fog do the heavy lifting for depth here. Fog especially:
+            // it separates the far wall from the near one, which is what makes a
+            // grey box readable instead of a flat field of the same colour.
+            RenderSettings.ambientMode = UnityEngine.Rendering.AmbientMode.Trilight;
+            RenderSettings.ambientSkyColor = new Color(0.22f, 0.25f, 0.31f);
+            RenderSettings.ambientEquatorColor = new Color(0.15f, 0.16f, 0.18f);
+            RenderSettings.ambientGroundColor = new Color(0.07f, 0.07f, 0.08f);
+            RenderSettings.fog = true;
+            RenderSettings.fogMode = FogMode.Linear;
+            RenderSettings.fogColor = new Color(0.12f, 0.13f, 0.16f);
+            RenderSettings.fogStartDistance = 14f;
+            RenderSettings.fogEndDistance = 55f;
 
             BuildRoom(floorMat, wallMat);
 
@@ -256,7 +276,7 @@ namespace CoD.EditorTools
             SetPrewarm(pool, decal, sparks, flash, casing, dummyPrefab);
 
             (WeaponController weapon, PlayerLook look, Health playerHealth, Transform muzzle) =
-                BuildPlayerRig(game, loadout, impact, pool);
+                BuildPlayerRig(game, loadout, impact, pool, gunmetal, gunAccent);
 
             BuildTargets(dummyPrefab, targetMat);
             BuildHud(weapon, playerHealth, game, pool, dummyPrefab, muzzle);
@@ -297,8 +317,33 @@ namespace CoD.EditorTools
             box.GetComponent<MeshRenderer>().sharedMaterial = material;
         }
 
+        /// <summary>
+        /// One block of the viewmodel. Colliders are stripped: a collider on the
+        /// player's own gun sits directly in front of the camera, so every shot
+        /// would raycast into the weapon instead of the world. Shadows are off
+        /// too — a viewmodel casting shadows into the scene looks like a floating
+        /// prop, because that is exactly what it is.
+        /// </summary>
+        private static void AddViewmodelPart(GameObject parent, string name, Vector3 position,
+            Vector3 scale, Material material)
+        {
+            GameObject part = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            part.name = name;
+            part.transform.SetParent(parent.transform, false);
+            part.transform.localPosition = position;
+            part.transform.localScale = scale;
+
+            Object.DestroyImmediate(part.GetComponent<Collider>());
+
+            MeshRenderer renderer = part.GetComponent<MeshRenderer>();
+            renderer.sharedMaterial = material;
+            renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            renderer.receiveShadows = false;
+        }
+
         private static (WeaponController, PlayerLook, Health, Transform) BuildPlayerRig(
-            GameConfig game, PlayerLoadoutConfig loadout, ImpactConfig impact, ObjectPool pool)
+            GameConfig game, PlayerLoadoutConfig loadout, ImpactConfig impact, ObjectPool pool,
+            Material gunmetal, Material gunAccent)
         {
             GameObject player = new("Player");
             player.transform.position = new Vector3(0f, 0.1f, -12f);
@@ -342,13 +387,40 @@ namespace CoD.EditorTools
             SetRef(look, "_cameraPivot", pivot.transform);
             SetRef(look, "_camera", camera);
 
+            // The viewmodel. There was no gun on screen at all before this, which
+            // is most of why the grey box read as a tech demo rather than a
+            // shooter: nothing occupies the lower-right, nothing moves when you
+            // look around, and the muzzle flash spawns in empty air.
+            GameObject weaponRig = new("WeaponRig");
+            weaponRig.transform.SetParent(cameraObject.transform, false);
+            weaponRig.transform.localPosition = new Vector3(0.145f, -0.125f, 0.28f);
+
+            GameObject model = new("Viewmodel");
+            model.transform.SetParent(weaponRig.transform, false);
+
+            AddViewmodelPart(model, "Receiver", new Vector3(0f, 0f, 0.10f), new Vector3(0.055f, 0.075f, 0.30f), gunmetal);
+            AddViewmodelPart(model, "Handguard", new Vector3(0f, -0.004f, 0.31f), new Vector3(0.045f, 0.052f, 0.23f), gunAccent);
+            AddViewmodelPart(model, "Barrel", new Vector3(0f, 0.006f, 0.46f), new Vector3(0.019f, 0.019f, 0.13f), gunAccent);
+            AddViewmodelPart(model, "Stock", new Vector3(0f, -0.006f, -0.13f), new Vector3(0.045f, 0.062f, 0.17f), gunmetal);
+            AddViewmodelPart(model, "Grip", new Vector3(0f, -0.077f, 0.015f), new Vector3(0.04f, 0.105f, 0.05f), gunmetal);
+            AddViewmodelPart(model, "Magazine", new Vector3(0f, -0.102f, 0.15f), new Vector3(0.036f, 0.135f, 0.062f), gunAccent);
+            AddViewmodelPart(model, "SightRear", new Vector3(0f, 0.052f, 0.01f), new Vector3(0.022f, 0.028f, 0.03f), gunAccent);
+            AddViewmodelPart(model, "SightFront", new Vector3(0f, 0.052f, 0.42f), new Vector3(0.016f, 0.032f, 0.022f), gunAccent);
+
+            WeaponSway sway = weaponRig.AddComponent<WeaponSway>();
+            SetRef(sway, "_input", input);
+            SetRef(sway, "_motor", motor);
+
+            // Muzzle now sits at the barrel tip, so the flash and the light come
+            // out of the gun rather than out of the middle of the screen.
             GameObject muzzle = new("Muzzle");
-            muzzle.transform.SetParent(cameraObject.transform, false);
-            muzzle.transform.localPosition = new Vector3(0.16f, -0.13f, 0.45f);
+            muzzle.transform.SetParent(model.transform, false);
+            muzzle.transform.localPosition = new Vector3(0f, 0.006f, 0.53f);
 
             GameObject casingEject = new("CasingEject");
-            casingEject.transform.SetParent(cameraObject.transform, false);
-            casingEject.transform.localPosition = new Vector3(0.24f, -0.1f, 0.3f);
+            casingEject.transform.SetParent(model.transform, false);
+            casingEject.transform.localPosition = new Vector3(0.045f, 0.02f, 0.13f);
+            casingEject.transform.localRotation = Quaternion.Euler(0f, 60f, 0f);
 
             GameObject lightObject = new("MuzzleLight");
             lightObject.transform.SetParent(muzzle.transform, false);
@@ -373,6 +445,7 @@ namespace CoD.EditorTools
             SetRef(weapon, "_motor", motor);
             SetRef(weapon, "_pool", pool);
             SetRef(weapon, "_shake", shake);
+            SetRef(weapon, "_sway", sway);
             SetRef(weapon, "_muzzle", muzzle.transform);
             SetRef(weapon, "_casingEject", casingEject.transform);
             SetRef(weapon, "_muzzleLight", muzzleLight);
@@ -436,32 +509,55 @@ namespace CoD.EditorTools
             GameObject crossRoot = new("Crosshair", typeof(RectTransform));
             crossRoot.transform.SetParent(canvasObject.transform, false);
             crossRoot.GetComponent<RectTransform>().anchoredPosition = Vector2.zero;
+            CanvasGroup crossGroup = crossRoot.AddComponent<CanvasGroup>();
+            crossGroup.blocksRaycasts = false;
+            crossGroup.interactable = false;
 
+            // Every element gets a dark backing plate one pixel larger on each
+            // side. A plain white crosshair vanishes against a bright floor —
+            // which is exactly what happened on the first pass — and an outlined
+            // one reads on light AND dark without a second thought.
             Graphic[] arms = new Graphic[4];
             for (int i = 0; i < 4; i++)
             {
                 bool vertical = i < 2; // order matches Crosshair.Directions: up, down, left, right
+                Vector2 size = vertical ? new Vector2(2.5f, 9f) : new Vector2(9f, 2.5f);
+
                 GameObject arm = new("Arm" + i, typeof(RectTransform));
                 arm.transform.SetParent(crossRoot.transform, false);
+
+                GameObject outline = new("Outline", typeof(RectTransform));
+                outline.transform.SetParent(arm.transform, false);
+                Image outlineImage = outline.AddComponent<Image>();
+                outlineImage.color = new Color(0f, 0f, 0f, 0.65f);
+                outlineImage.raycastTarget = false;
+                outline.GetComponent<RectTransform>().sizeDelta = size + new Vector2(2f, 2f);
+
                 Image image = arm.AddComponent<Image>();
-                image.color = new Color(1f, 1f, 1f, 0.85f);
+                image.color = new Color(1f, 1f, 1f, 0.9f);
                 image.raycastTarget = false;
-                arm.GetComponent<RectTransform>().sizeDelta = vertical
-                    ? new Vector2(2f, 7f)
-                    : new Vector2(7f, 2f);
+                arm.GetComponent<RectTransform>().sizeDelta = size;
                 arms[i] = image;
             }
 
             GameObject dot = new("CentreDot", typeof(RectTransform));
             dot.transform.SetParent(crossRoot.transform, false);
+
+            GameObject dotOutline = new("Outline", typeof(RectTransform));
+            dotOutline.transform.SetParent(dot.transform, false);
+            Image dotOutlineImage = dotOutline.AddComponent<Image>();
+            dotOutlineImage.color = new Color(0f, 0f, 0f, 0.65f);
+            dotOutlineImage.raycastTarget = false;
+            dotOutline.GetComponent<RectTransform>().sizeDelta = new Vector2(5f, 5f);
+
             Image dotImage = dot.AddComponent<Image>();
-            dotImage.color = new Color(1f, 1f, 1f, 0.85f);
+            dotImage.color = new Color(1f, 1f, 1f, 0.9f);
             dotImage.raycastTarget = false;
-            dot.GetComponent<RectTransform>().sizeDelta = new Vector2(2f, 2f);
+            dot.GetComponent<RectTransform>().sizeDelta = new Vector2(3f, 3f);
 
             Crosshair crosshair = canvasObject.AddComponent<Crosshair>();
             SetRef(crosshair, "_weapon", weapon);
-            SetRef(crosshair, "_centreDot", dotImage);
+            SetRef(crosshair, "_group", crossGroup);
             SetArrayRef(crosshair, "_arms", arms);
 
             AudioSource hudAudio = canvasObject.AddComponent<AudioSource>();
@@ -480,11 +576,27 @@ namespace CoD.EditorTools
             Text healthLabel = BuildLabel(canvasObject, "Health", new Vector2(90f, 60f),
                 TextAnchor.LowerLeft, new Vector2(0f, 0f));
 
+            // Low-ammo warning: a red bar under the ammo count. The field existed
+            // from the start and was never assigned, so the cue never appeared.
+            GameObject lowAmmo = new("LowAmmoTint", typeof(RectTransform));
+            lowAmmo.transform.SetParent(canvasObject.transform, false);
+            Image lowAmmoImage = lowAmmo.AddComponent<Image>();
+            lowAmmoImage.color = new Color(0.85f, 0.22f, 0.16f, 0.85f);
+            lowAmmoImage.raycastTarget = false;
+            RectTransform lowAmmoRect = lowAmmo.GetComponent<RectTransform>();
+            lowAmmoRect.anchorMin = new Vector2(1f, 0f);
+            lowAmmoRect.anchorMax = new Vector2(1f, 0f);
+            lowAmmoRect.pivot = new Vector2(1f, 0f);
+            lowAmmoRect.anchoredPosition = new Vector2(-90f, 48f);
+            lowAmmoRect.sizeDelta = new Vector2(160f, 3f);
+            lowAmmoImage.enabled = false;
+
             Hud hud = canvasObject.AddComponent<Hud>();
             SetRef(hud, "_weapon", weapon);
             SetRef(hud, "_playerHealth", playerHealth);
             SetRef(hud, "_ammoLabel", ammo);
             SetRef(hud, "_healthLabel", healthLabel);
+            SetRef(hud, "_lowAmmoTint", lowAmmoImage);
 
             CheatConsole console = canvasObject.AddComponent<CheatConsole>();
             SetRef(console, "_config", game);

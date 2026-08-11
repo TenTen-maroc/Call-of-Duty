@@ -97,7 +97,7 @@ namespace CoD.EditorTools
                 foreach (Crosshair crosshair in root.GetComponentsInChildren<Crosshair>(true))
                 {
                     Check(crosshair, "_weapon", stillNull);
-                    Check(crosshair, "_centreDot", stillNull);
+                    Check(crosshair, "_group", stillNull);
                 }
             }
 

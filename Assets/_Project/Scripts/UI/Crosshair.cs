@@ -29,7 +29,8 @@ namespace CoD.UI
         [SerializeField] private WeaponController? _weapon = null;
         [Tooltip("Four arms, in the order up, down, left, right.")]
         [SerializeField] private Graphic[] _arms = System.Array.Empty<Graphic>();
-        [SerializeField] private Graphic? _centreDot = null;
+        [Tooltip("Fades the whole reticle, outlines included. Per-Graphic alpha would leave the dark outlines behind.")]
+        [SerializeField] private CanvasGroup? _group = null;
 
         [Header("Shape")]
         [Tooltip("Gap from centre to each arm at zero spread, in reference pixels.")]
@@ -65,24 +66,7 @@ namespace CoD.UI
 
             float ads = _weapon != null ? _weapon.AdsProgress : 0f;
             float alpha = Mathf.Lerp(_restAlpha, _adsAlpha, ads);
-            SetAlpha(alpha);
-        }
-
-        private void SetAlpha(float alpha)
-        {
-            for (int i = 0; i < _arms.Length; i++)
-            {
-                if (_arms[i] == null) continue;
-                Color color = _arms[i].color;
-                if (Mathf.Approximately(color.a, alpha)) continue;
-                color.a = alpha;
-                _arms[i].color = color;
-            }
-
-            if (_centreDot == null) return;
-            Color dot = _centreDot.color;
-            dot.a = alpha;
-            _centreDot.color = dot;
+            if (_group != null && !Mathf.Approximately(_group.alpha, alpha)) _group.alpha = alpha;
         }
     }
 }

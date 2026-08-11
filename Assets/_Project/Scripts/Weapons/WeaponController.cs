@@ -28,6 +28,7 @@ namespace CoD.Weapons
         [SerializeField] private PlayerMotor? _motor = null;
         [SerializeField] private ObjectPool? _pool = null;
         [SerializeField] private CameraShake? _shake = null;
+        [SerializeField] private WeaponSway? _sway = null;
         [Tooltip("Where the muzzle flash and casings spawn from.")]
         [SerializeField] private Transform? _muzzle = null;
         [SerializeField] private Transform? _casingEject = null;
@@ -298,6 +299,9 @@ namespace CoD.Weapons
             _adsProgress = Mathf.MoveTowards(_adsProgress, wantsAds ? 1f : 0f, rate);
 
             _look.SetSensitivityMultiplier(Mathf.Lerp(1f, config.adsSensitivityMultiplier, _adsProgress));
+            // The viewmodel follows the same blend, so the gun rises into the
+            // sight instead of teleporting between two poses.
+            if (_sway != null) _sway.SetAdsProgress(_adsProgress);
         }
 
         private void UpdateFovOffset(float now)
