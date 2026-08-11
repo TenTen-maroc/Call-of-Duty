@@ -9,17 +9,18 @@ obvious, emphasise the non-obvious.
 
 ## Index
 
-Nothing yet — the codebase is at Phase 0 and no subsystem exists. These land as
-they are built:
-
-| Doc | Covers | Arrives with |
+| Doc | Covers | Status |
 | --- | --- | --- |
-| `weapons.md` | `WeaponConfig`, `WeaponRuntime`, firing, recoil, spread, damage + falloff, `EffectModule` stacking | Phase 3 (grey box), extended at Wild Arsenal |
-| `drones.md` | `DroneConfig`, `AttackModule`, NavMesh pathing, attack tokens, pooling | Rusher milestone |
+| [weapons.md](weapons.md) | `WeaponConfig`, `WeaponRuntime`, firing, recoil, spread, damage + falloff | ✅ Phase 3 |
+| [player.md](player.md) | Input, movement, look, camera shake, the rig layout | ✅ Phase 3 |
+| [pooling.md](pooling.md) | The object pool every spawn goes through | ✅ Phase 3 |
+| `drones.md` | `DroneConfig`, `AttackModule`, NavMesh pathing, attack tokens | Rusher milestone |
 | `waves.md` | `WaveConfig`, `WaveRunner`, `DifficultyConfig` caps and the endless ramp | Waves milestone |
-| `shop.md` | `ShopConfig`, `ShopItemConfig`, `PassiveConfig`, `StatSheet` rebuild pipeline | Shop milestone |
-| `save.md` | Versioned JSON, `schemaVersion` migration, atomic temp-file write, `.bak` | Waves milestone (best-round record) |
-| `pooling.md` | The object pool every spawn goes through | Phase 3 (grey box) |
+| `shop.md` | `ShopConfig`, `ShopItemConfig`, `PassiveConfig`, `StatSheet` rebuild | Shop milestone |
+| `save.md` | Versioned JSON, `schemaVersion` migration, atomic write, `.bak` | Waves milestone |
+
+The three that exist describe code that **compiles but has never run** — they are
+accurate about intent and structure, and each one says so at the top.
 
 ## Template
 
@@ -28,5 +29,5 @@ Key Behaviors & Non-Obvious Patterns → Related Systems → Gotchas. Use markdo
 links for code references, cite line numbers where useful, keep each file under
 ~500 lines.
 
-Until these exist, the design intent lives in
+Design intent for the systems not yet built lives in
 [../DATA-MODEL-SKETCH.md](../DATA-MODEL-SKETCH.md) and [../../CLAUDE.md](../../CLAUDE.md).
