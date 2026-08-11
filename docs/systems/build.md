@@ -121,3 +121,10 @@ when there is something to ship rather than something to test.
   failure.
 - `Build/Windows-Dev/` contains a `..._BurstDebugInformation_DoNotShip` folder.
   The name is the instruction; it is gitignored with the rest of `Build/`.
+- **A no-op scene rebuild still shows a huge diff.** Unity assigns fresh local
+  fileIDs every time `GreyBoxBuilder` regenerates a scene, so re-running it
+  produces thousands of changed lines with *equal* insertions and deletions and
+  nothing semantically different. Compare the counts before believing it, and
+  drop pure churn with `git checkout -- Assets/_Project/Scenes/`.
+  `GreyBoxVerify.VerifyHeadless` checks the committed scenes without
+  regenerating them, which is the right tool when you only want proof.

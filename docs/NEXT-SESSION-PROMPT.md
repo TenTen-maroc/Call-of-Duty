@@ -166,6 +166,12 @@ HARD-WON GOTCHAS — DO NOT REDISCOVER THESE
 - The arena origin (0,0,0) is INSIDE the centre bunker. Never use it as "the
   middle".
 - Opening the project rewrites Packages/manifest.json. Check it before committing.
+- Re-running the builder ALWAYS produces a scene diff even when nothing changed:
+  Unity assigns fresh local fileIDs on every regeneration, so a no-op rebuild
+  shows thousands of lines with equal insertions and deletions. Check the counts
+  before assuming you broke something, and `git checkout -- Assets/_Project/Scenes/`
+  to drop pure churn. `GreyBoxVerify.VerifyHeadless` proves the COMMITTED scenes
+  are wired without regenerating them.
 - Every new .cs needs a .meta sibling or the pre-commit hook blocks the commit.
 - Viewmodel parts and drone shape details carry NO colliders.
 - The aim ray comes from CameraPivot, not the camera — shake must never move the
