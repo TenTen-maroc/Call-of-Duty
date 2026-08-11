@@ -14,7 +14,7 @@ GameObject:
   - component: {fileID: 7593710557869681752}
   - component: {fileID: 7103217745054844457}
   - component: {fileID: 7141562002270325402}
-  m_Layer: 0
+  m_Layer: 2
   m_Name: Fx_ShellCasing
   m_TagString: Untagged
   m_Icon: {fileID: 0}

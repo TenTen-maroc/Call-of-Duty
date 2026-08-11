@@ -56,6 +56,9 @@ MonoBehaviour:
   muzzleFlashPrefab: {fileID: 1871256265865384523, guid: 32d55e14ae42b8944a52013d93a9f603, type: 3}
   shellCasingPrefab: {fileID: 1743636020095211714, guid: b5a65d9b89880a04d93713921dedf92f, type: 3}
   casingLifetime: 3
+  casingEjectSpeed: 2.4
+  casingEjectUpKick: 1.2
+  casingSpinMax: 25
   fireCloseLayer: {fileID: 8300000, guid: 55691346b1b8736ee497e6b55c7a4e6b, type: 3}
   fireTailLayer: {fileID: 8300000, guid: 9c89ddc94eeb7bfff85cc289c4351320, type: 3}
   dryFireClip: {fileID: 8300000, guid: d4eb67c03035d1cf3a420a3329ffadc1, type: 3}
