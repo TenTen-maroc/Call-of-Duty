@@ -22,6 +22,9 @@ namespace CoD.Weapons
         public string displayName = "Assault Rifle";
         public WeaponClass weaponClass = WeaponClass.AssaultRifle;
 
+        [Tooltip("Ordered. Stacking IS the product: a railgun with Pierce and Chain is this list with two entries, not a new class. Purchases append to the RUNTIME copy, never here.")]
+        public EffectModule[] effectModules = System.Array.Empty<EffectModule>();
+
         [Header("Damage")]
         [Tooltip("Against a 100 HP target. 25 = 4 shots to kill.")]
         [Range(1f, 100f)] public float bodyDamage = 25f;

@@ -3,6 +3,7 @@ using System;
 using System.Collections.Generic;
 using CoD.Core;
 using CoD.Enemies;
+using CoD.Weapons;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 
@@ -41,6 +42,8 @@ namespace CoD.Waves
         [SerializeField] private ShopConfig? _shopConfig = null;
         [Tooltip("The player's Health. Its death ends the run — that is permadeath.")]
         [SerializeField] private Health? _playerHealth = null;
+        [Tooltip("Where shop-bought effect modules are installed.")]
+        [SerializeField] private WeaponController? _weapon = null;
 
         [Header("Waves")]
         [Tooltip("Hand-authored waves, in order. Past the last one the endless ramp takes over.")]
@@ -99,7 +102,7 @@ namespace CoD.Waves
                 // drone code knowing either exists.
                 if (_spawner != null) _spawner.SetTokenSource(_tokens);
             }
-            if (_shopConfig != null && _run != null) _shop = new ShopService(_shopConfig, _run);
+            if (_shopConfig != null && _run != null) _shop = new ShopService(_shopConfig, _run, _weapon);
         }
 
         private void OnEnable()

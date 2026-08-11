@@ -20,6 +20,11 @@ writes a modified number back into a config asset.
   by wave.
 - **[Data/Shop](../../Assets/_Project/Data/Shop)** — five `ShopItemConfig` assets,
   one per passive.
+- **[Data/Effects](../../Assets/_Project/Data/Effects)** — the four effect
+  modules, sold from wave 3 at 0.6 weight and one per run: Explosive Rounds
+  ($400), Piercing Rounds ($350), Ricochet Rounds ($375), Chain Lightning ($450).
+  They are the expensive half of the shop and the reason to save rather than
+  spend every break.
 - **[Data/Passives](../../Assets/_Project/Data/Passives)** — Reinforced Plating
   (+25 max HP, ×4), Servo Legs (+10% move, ×3), Quick Hands (+25% reload, ×3),
   Hollow Points (+15% damage, ×5), Scrap Magnet (+25% money, ×3).
@@ -44,7 +49,7 @@ writes a modified number back into a config asset.
 | MaxHealth | `RunContext.ApplyStats` | `Health.ConfigureMax`, which also heals to full |
 | MoveSpeed | `PlayerMotor` | caches a multiplier on `StatsChanged` |
 | ReloadSpeed | `WeaponRuntime.BeginReload` | duration divided by the multiplier |
-| DamageMult | `WeaponController.ResolveHit` | one of three multipliers, see below |
+| DamageMult | `WeaponController.ResolveHit` | one of four multipliers, see below |
 | MoneyGainMult | `RunState.AddMoney` | applied to kills and clear bonuses |
 
 ## Key Behaviors & Non-Obvious Patterns
@@ -52,17 +57,22 @@ writes a modified number back into a config asset.
 - **The sheet is rebuilt, never incremented.** Incremental application works right
   up until one path forgets to undo itself, and then the player has a permanent
   ghost bonus nobody can find.
-- **Three damage multipliers, three owners:** falloff (the weapon), the stat sheet
-  (what the player bought), and `DamageMultiplier` (the cheat). They are separate
-  on purpose — a single combined field would make the cheat indistinguishable
-  from a purchase in a bug report.
+- **Four damage multipliers, four owners:** falloff (the weapon), the stat sheet
+  (what the player bought), `DamageMultiplier` (the cheat), and pierce falloff
+  (how many bodies this round has already passed through). They are separate on
+  purpose — a single combined field would make the cheat indistinguishable from a
+  purchase in a bug report.
 - **No duplicates within one break.** Four identical "Max HP" offers is a break
   with no decision in it.
 - **Buying removes the offer from the list** rather than greying it out, keeping
   the list short enough to read at a glance.
-- **An unimplemented item kind refunds and refuses.** Weapons and effect modules
-  are in the pool's future; until they have handlers, a purchase returns the money
-  rather than taking it for nothing.
+- **Effect modules install on the weapon's RUNTIME list**, never on the
+  WeaponConfig asset — appending to the asset would edit authored data that
+  persists between Play sessions. The shop panel shows the installed stack in
+  execution order, because order is a real rule: a module can only react to what
+  an earlier one produced.
+- **An unimplemented item kind refunds and refuses.** Buying a second weapon has
+  no handler yet, so it returns the money rather than taking it for nothing.
 - **Reload speed is captured when the reload starts** (`WeaponRuntime.ReloadDuration`),
   so cancelling measures against the same number the reload began with.
 - Raising max health tops the player up. Deliberate: the shop only opens between

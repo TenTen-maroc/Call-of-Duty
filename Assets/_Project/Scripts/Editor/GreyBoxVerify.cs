@@ -53,6 +53,7 @@ namespace CoD.EditorTools
             NavMeshData? navMesh = AssetDatabase.LoadAssetAtPath<NavMeshData>(
                 "Assets/_Project/Scenes/NavMesh_GreyBox.asset");
             ShopConfig? shop = Load<ShopConfig>("Assets/_Project/Data/Game/Shop.asset");
+            Explosive? explosive = Load<Explosive>("Assets/_Project/Data/Effects/Effect_Explosive.asset");
 
             foreach (GameObject root in scene.GetRootGameObjects())
             {
@@ -202,7 +203,12 @@ namespace CoD.EditorTools
                 foreach (PlayerMotor motor in root.GetComponentsInChildren<PlayerMotor>(true))
                     Check(motor, "_run", stillNull);
                 foreach (WeaponController weapon in root.GetComponentsInChildren<WeaponController>(true))
+                {
                     Check(weapon, "_run", stillNull);
+                    Check(weapon, "_ownerHealth", stillNull);
+                }
+                foreach (ShopPanel shopPanel in root.GetComponentsInChildren<ShopPanel>(true))
+                    Check(shopPanel, "_weapon", stillNull);
             }
 
             // The drone assets themselves. A DroneConfig with no prefab is the
@@ -219,6 +225,7 @@ namespace CoD.EditorTools
             // nothing — the drone looks like it is working and does no damage.
             CheckAssetRef(rangedBurst, "projectilePrefab", stillNull);
             CheckAssetRef(heavySlam, "slamVfx", stillNull);
+            CheckAssetRef(explosive, "explosionVfx", stillNull);
 
             Debug.Log($"GreyBoxVerify: repaired {repaired}, unresolved {stillNull.Count}\n{report}");
             if (stillNull.Count > 0)

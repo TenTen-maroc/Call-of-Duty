@@ -87,14 +87,54 @@ gunshots are the top reason a shooter sounds cheap. See the folder README.
   kick and spin are `WeaponConfig` numbers. Casings live on the Ignore Raycast
   layer so a tumbling casing never eats a bullet, and `_hitMask` defaults to
   `Physics.DefaultRaycastLayers` to match.
-- `Physics.RaycastNonAlloc` into a pre-sized `RaycastHit[8]`, nearest selected in
-  one pass — no allocation and no sort in the firing path.
+- `Physics.RaycastNonAlloc` into a pre-sized `RaycastHit[16]`, sorted in place by
+  an insertion sort — no allocation in the firing path, and the sort only matters
+  once Pierce lets one ray resolve several targets in order.
 - Damage goes through `IDamageable`, so the weapon has no enemy-specific code.
 - `EffectiveSpreadDegrees` is public so the crosshair can visualise the exact
   cone the raycast will use — movement, crouch and airborne multipliers included.
   Bloom the player cannot see is bloom that only feels like bad luck.
 - The controller pushes its ADS progress into `WeaponSway` rather than the sway
   polling it, so there is one owner of the blend.
+
+## Effect modules — the "without limits" engine
+
+A weapon's real behaviour is `WeaponConfig` **plus an ordered list of
+`EffectModule` assets**. Stacking is the product: a rifle with Pierce and Chain
+is that list with two entries, not a new class. The shop sells them, and they are
+installed on the **runtime** list — never appended to the config asset, which
+would edit authored data that survives into the next Play session.
+
+| Module | What it does | Shape |
+| --- | --- | --- |
+| [Explosive.cs](../../Assets/_Project/Scripts/Weapons/Explosive.cs) | every hit detonates for a fraction of the shot | queues Damage follow-ups |
+| [Pierce.cs](../../Assets/_Project/Scripts/Weapons/Pierce.cs) | passes through bodies, losing damage per target | changes the **ray budget** |
+| [Ricochet.cs](../../Assets/_Project/Scripts/Weapons/Ricochet.cs) | bounces off the surface it hit | queues Ray follow-ups |
+| [Chain.cs](../../Assets/_Project/Scripts/Weapons/Chain.cs) | jumps to nearby untouched targets | queues Damage follow-ups |
+
+### The three rules
+
+1. **Modules are stateless.** One asset is shared by every weapon carrying it, so
+   all per-shot state lives on the weapon: the already-hit set, the overlap
+   buffer, the follow-up queue.
+2. **Modules never apply damage.** They enqueue follow-ups and the weapon applies
+   them. Double-dip prevention, the already-hit set and the depth counter then
+   live in exactly one place instead of four.
+3. **A module runs at depth 0 only, unless it opts in with `maxDepth`.**
+   Follow-ups resolve at `depth + 1`. Without this rule
+   Explosive → Chain → Explosive never terminates. Explosive, Ricochet and Chain
+   ship at `maxDepth 1` — they react to each other exactly once, deliberately.
+
+**Pierce is the exception that proves the shape.** It has no after-effect at all:
+`Resolve` is empty, and it works by contributing `ExtraRayBudget` and
+`PierceDamageFalloff`, which the weapon reads *before* the cast. Ricochet and
+Chain work through the aftermath; a piercing bullet has to keep going during the
+same cast.
+
+Two independent bounds stop a mis-authored module from freezing a frame: the
+`FollowUpBuffer` has a fixed capacity (dropped work is a missing spark), and
+`DrainFollowUps` caps iterations per shot. The depth rules are the real limit;
+those are the seatbelt.
 
 ## Targets
 
@@ -110,6 +150,8 @@ they despawn through the pool.
 
 - [pooling.md](pooling.md) — every muzzle flash, casing, decal and spark.
 - [player.md](player.md) — supplies input, aim ray, motion state, and takes recoil.
+- [shop.md](shop.md) — sells the effect modules and the damage/reload passives.
+- [drones.md](drones.md) — what the modules are aimed at.
 
 ## Gotchas
 
@@ -119,6 +161,14 @@ they despawn through the pool.
   but each pellet re-rolls the cone.
 - Feedback prefabs on `WeaponConfig` must be registered in the pool prewarm list
   or the first shot allocates.
+- **The already-hit set is cleared per shot, not per frame.** Leaving it would
+  make chains stop working after the first magazine; clearing it too early lets a
+  chain bounce between two drones forever.
+- A pierce budget is spent on **bodies only**. `ResolveHit` returns whether it
+  damaged something, and the cast stops at the first thing that is not
+  damageable — otherwise a piercing round shoots through the arena wall.
+- `_hitBuffer` is 16 entries because a piercing round has to find several bodies
+  *and* the wall behind them in one cast.
 - Verified in play: firing, ammo, HUD and audio. NOT yet verified: damage
   falloff at range, shotgun pellet spread, reload cancelling, burst mode,
   headshots on the dummy's head, casing ejection arcs, and target respawn —

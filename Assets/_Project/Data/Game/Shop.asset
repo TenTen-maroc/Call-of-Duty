@@ -61,3 +61,19 @@ MonoBehaviour:
     weight: 1
     minWave: 1
     maxOwned: 3
+  - item: {fileID: 11400000, guid: 723a1dba73b4e9e4c9d0979332a091f0, type: 2}
+    weight: 0.6
+    minWave: 3
+    maxOwned: 1
+  - item: {fileID: 11400000, guid: dac112387de05c54aabff2b7e02bd080, type: 2}
+    weight: 0.6
+    minWave: 3
+    maxOwned: 1
+  - item: {fileID: 11400000, guid: d177ba0192ece8b47a32ad196c882487, type: 2}
+    weight: 0.6
+    minWave: 3
+    maxOwned: 1
+  - item: {fileID: 11400000, guid: 923a1e2391d19054c944f03c96283fa7, type: 2}
+    weight: 0.6
+    minWave: 3
+    maxOwned: 1

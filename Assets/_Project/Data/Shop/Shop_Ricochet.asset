@@ -10,13 +10,13 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: c3f5b576b355ce647916fb3c7692d324, type: 3}
-  m_Name: Shop_MoveSpeed
+  m_Name: Shop_Ricochet
   m_EditorClassIdentifier: 
-  stableId: shop_passive_move_speed
-  displayName: Servo Legs
-  description: +10% movement speed
-  cost: 175
-  kind: 0
-  passive: {fileID: 11400000, guid: 91bb391b56ca16e4ba3f9e6ab3ad41e7, type: 2}
+  stableId: shop_effect_ricochet
+  displayName: Ricochet Rounds
+  description: hits bounce into whatever is nearby
+  cost: 375
+  kind: 2
+  passive: {fileID: 0}
   weapon: {fileID: 0}
-  effect: {fileID: 0}
+  effect: {fileID: 11400000, guid: b88b5f5b3ce5e984aa8c19c54ee71c7a, type: 2}

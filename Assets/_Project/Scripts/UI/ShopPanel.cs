@@ -2,6 +2,7 @@
 using System.Text;
 using CoD.Core;
 using CoD.Waves;
+using CoD.Weapons;
 using UnityEngine;
 using UnityEngine.InputSystem;
 using UnityEngine.UI;
@@ -28,6 +29,9 @@ namespace CoD.UI
         [SerializeField] private Text? _titleLabel = null;
         [SerializeField] private Text? _offersLabel = null;
         [SerializeField] private Text? _footerLabel = null;
+        [Tooltip("Shows the weapon's installed effect modules, in order. Stacking is the product; an unreadable stack is an unsold stack.")]
+        [SerializeField] private Text? _loadoutLabel = null;
+        [SerializeField] private WeaponController? _weapon = null;
         [SerializeField] private AudioSource? _audio = null;
         [SerializeField] private AudioClip? _buyClip = null;
         [SerializeField] private AudioClip? _refusedClip = null;
@@ -139,6 +143,34 @@ namespace CoD.UI
             {
                 _footerLabel.text = "R)  reroll  $" + shop.RerollCost + "        SPACE)  next wave";
             }
+
+            RedrawLoadout();
+        }
+
+        /// <summary>
+        /// The installed module list, in execution order. Order is a real rule —
+        /// a module can only react to what an earlier one produced — so showing it
+        /// as an ordered line is showing the mechanic, not decoration.
+        /// </summary>
+        private void RedrawLoadout()
+        {
+            if (_loadoutLabel == null) return;
+            if (_weapon == null || _weapon.EffectModuleCount == 0)
+            {
+                _loadoutLabel.text = "RIFLE:  no effect modules installed";
+                return;
+            }
+
+            _builder.Clear();
+            _builder.Append("RIFLE:  ");
+            for (int i = 0; i < _weapon.EffectModuleCount; i++)
+            {
+                EffectModule? module = _weapon.EffectModuleAt(i);
+                if (module == null) continue;
+                if (i > 0) _builder.Append("  >  ");
+                _builder.Append(module.name.Replace("Effect_", string.Empty));
+            }
+            _loadoutLabel.text = _builder.ToString();
         }
     }
 }

@@ -1,5 +1,6 @@
 #nullable enable
 using System;
+using System.Collections.Generic;
 using CoD.Core;
 using CoD.Player;
 using UnityEngine;
@@ -37,6 +38,8 @@ namespace CoD.Weapons
         [SerializeField] private Light? _muzzleLight = null;
         [SerializeField] private AudioSource? _audioClose = null;
         [SerializeField] private AudioSource? _audioTail = null;
+        [Tooltip("The shooter's own Health, so effect modules never damage the player who fired.")]
+        [SerializeField] private Health? _ownerHealth = null;
         [Tooltip("What bullets can hit. Leave the player's own layer out of this.")]
         [SerializeField] private LayerMask _hitMask = Physics.DefaultRaycastLayers;
 
@@ -50,8 +53,23 @@ namespace CoD.Weapons
         private float _statReloadSpeed = 1f;
 
         // Pre-sized buffer: RaycastNonAlloc never allocates, which matters once
-        // hundreds of shots per minute are flying.
-        private readonly RaycastHit[] _hitBuffer = new RaycastHit[8];
+        // hundreds of shots per minute are flying. Sized for a piercing round
+        // finding several bodies plus the wall behind them.
+        private readonly RaycastHit[] _hitBuffer = new RaycastHit[16];
+
+        // Effect-module scratch, all owned here rather than by the modules:
+        // modules are shared assets, so a buffer on one would be written by every
+        // weapon carrying it.
+        private readonly FollowUpBuffer _followUps = new(64);
+        private readonly List<Health> _alreadyHit = new(24);
+        private readonly Collider[] _effectOverlap = new Collider[24];
+
+        /// <summary>
+        /// Hard stop on follow-up work per shot. Not a tuning value — a hang guard.
+        /// The depth rules are the real limit; this is what catches a mis-authored
+        /// module before it freezes a frame.
+        /// </summary>
+        private const int MAX_FOLLOW_UPS_PER_SHOT = 96;
 
         /// <summary>Fired for every confirmed hit; the bool is true when it killed. The UI listens, and the weapon never learns the UI exists.</summary>
         public event Action<bool>? Hit;
@@ -71,6 +89,39 @@ namespace CoD.Weapons
         /// <summary>Sandbox cheats flip these. The console that sets them is dev-build gated.</summary>
         public bool InfiniteAmmo { get; set; }
         public float DamageMultiplier { get; set; } = 1f;
+
+        // ---------- what effect modules are allowed to touch ----------
+
+        public ObjectPool? EffectPool => _pool;
+        public LayerMask HitMask => _hitMask;
+        /// <summary>Shared scratch for module overlap queries. Contents are only valid inside one Resolve call.</summary>
+        public Collider[] EffectOverlapBuffer => _effectOverlap;
+        /// <summary>The shooter's own Health, so modules never damage the player who fired.</summary>
+        public Health? OwnerHealth => _ownerHealth;
+
+        /// <summary>True when this shot has already damaged that target. The reason a chain cannot bounce between two drones forever.</summary>
+        public bool HasHit(Health health) => _alreadyHit.Contains(health);
+
+        public void MarkHit(Health health)
+        {
+            if (_alreadyHit.Contains(health)) return;
+            _alreadyHit.Add(health);
+        }
+
+        /// <summary>
+        /// Bought in the shop. The module list lives on the RUNTIME, never on the
+        /// WeaponConfig asset — appending to the asset would edit authored data
+        /// that persists between Play sessions.
+        /// </summary>
+        public void AddEffectModule(EffectModule module)
+        {
+            if (_runtime == null || module == null) return;
+            _runtime.Modules.Add(module);
+        }
+
+        public int EffectModuleCount => _runtime != null ? _runtime.Modules.Count : 0;
+        public EffectModule? EffectModuleAt(int index) =>
+            _runtime != null && index >= 0 && index < _runtime.Modules.Count ? _runtime.Modules[index] : null;
 
         private void Awake()
         {
@@ -241,23 +292,64 @@ namespace CoD.Weapons
 
         private void CastOneRay(WeaponConfig config, float spreadDegrees)
         {
-            if (_look == null) return;
+            if (_look == null || _runtime == null) return;
 
             Ray aim = _look.AimRay;
             Vector3 direction = spreadDegrees <= 0f ? aim.direction : ApplyCone(aim.direction, spreadDegrees);
 
             int count = Physics.RaycastNonAlloc(aim.origin, direction, _hitBuffer, config.maxRange,
                 _hitMask, QueryTriggerInteraction.Ignore);
-            if (count <= 0) return;
-
-            // Nearest hit wins. Sorting the buffer would allocate; one pass does not.
-            int nearest = 0;
-            for (int i = 1; i < count; i++)
+            if (count <= 0)
             {
-                if (_hitBuffer[i].distance < _hitBuffer[nearest].distance) nearest = i;
+                DrainFollowUps(config);
+                return;
             }
 
-            ResolveHit(config, _hitBuffer[nearest], direction);
+            // Pierce is resolved BEFORE the cast, not after: it changes how many
+            // targets this one ray is allowed to find. Everything else works
+            // through follow-ups.
+            int budget = 1;
+            float pierceFalloff = 1f;
+            for (int i = 0; i < _runtime.Modules.Count; i++)
+            {
+                EffectModule? module = _runtime.Modules[i];
+                if (module == null) continue;
+                budget += module.ExtraRayBudget;
+                pierceFalloff *= module.PierceDamageFalloff;
+            }
+
+            SortHitsByDistance(count);
+
+            float multiplier = 1f;
+            int resolved = 0;
+            for (int i = 0; i < count && resolved < budget; i++)
+            {
+                bool damagedSomething = ResolveHit(config, _hitBuffer[i], direction, multiplier, depth: 0);
+                resolved++;
+                // A bullet passes through bodies, never through the wall behind
+                // them: a pierce budget spent on geometry would shoot through the
+                // arena.
+                if (!damagedSomething) break;
+                multiplier *= pierceFalloff;
+            }
+
+            DrainFollowUps(config);
+        }
+
+        /// <summary>Insertion sort over the live part of the buffer. In-place, so it never allocates, and n is at most the buffer length.</summary>
+        private void SortHitsByDistance(int count)
+        {
+            for (int i = 1; i < count; i++)
+            {
+                RaycastHit current = _hitBuffer[i];
+                int j = i - 1;
+                while (j >= 0 && _hitBuffer[j].distance > current.distance)
+                {
+                    _hitBuffer[j + 1] = _hitBuffer[j];
+                    j--;
+                }
+                _hitBuffer[j + 1] = current;
+            }
         }
 
         private static Vector3 ApplyCone(Vector3 forward, float degrees)
@@ -276,11 +368,15 @@ namespace CoD.Weapons
             return (forward + offset).normalized;
         }
 
-        private void ResolveHit(WeaponConfig config, in RaycastHit hit, Vector3 direction)
+        /// <summary>Resolves one impact. Returns true when something damageable took the hit — that is what a pierce budget is spent on.</summary>
+        private bool ResolveHit(WeaponConfig config, in RaycastHit hit, Vector3 direction,
+            float pierceMultiplier, int depth)
         {
-            // Three multipliers, three owners: falloff is the weapon, the stat
-            // sheet is what the player bought, DamageMultiplier is the cheat.
-            float damage = config.DamageAtDistance(hit.distance) * DamageMultiplier * _statDamageMultiplier;
+            // Four multipliers, four owners: falloff is the weapon, the stat sheet
+            // is what the player bought, DamageMultiplier is the cheat, and pierce
+            // falloff is how many bodies this round has already passed through.
+            float damage = config.DamageAtDistance(hit.distance) * DamageMultiplier
+                           * _statDamageMultiplier * pierceMultiplier;
 
             // A weakpoint collider relays to its owner's Health, and the bonus is
             // applied HERE and only here: WeaponConfig.headshotMultiplier is the
@@ -308,10 +404,102 @@ namespace CoD.Weapons
                 target.ApplyDamage(in info);
                 damaged = true;
                 killed = !target.IsAlive;
+                if (target is Health health) MarkHit(health);
             }
 
             SpawnImpact(hit);
             if (damaged) Hit?.Invoke(killed);
+
+            RunEffectModules(new HitContext(this, config, hit.point, hit.normal, direction,
+                target as Health, damage, depth));
+            return damaged;
+        }
+
+        /// <summary>
+        /// Gives every module carried by this weapon a look at the hit, in the
+        /// order they were bought. Order is the stacking rule: a module that
+        /// queues damage can only be reacted to by a module that runs deeper.
+        /// </summary>
+        private void RunEffectModules(in HitContext context)
+        {
+            if (_runtime == null) return;
+
+            for (int i = 0; i < _runtime.Modules.Count; i++)
+            {
+                EffectModule? module = _runtime.Modules[i];
+                if (module == null) continue;
+                // The recursion guard, enforced in one place: without it,
+                // Explosive -> Chain -> Explosive never terminates.
+                if (!module.RunsAtDepth(context.Depth)) continue;
+                module.Resolve(in context, _followUps);
+            }
+        }
+
+        /// <summary>
+        /// Applies everything the modules queued, then lets modules react to those
+        /// hits one depth further down. Bounded twice — by the buffer's capacity
+        /// and by this loop's iteration cap — because a hang is a worse bug than a
+        /// missing spark.
+        /// </summary>
+        private void DrainFollowUps(WeaponConfig config)
+        {
+            int guard = 0;
+            while (guard++ < MAX_FOLLOW_UPS_PER_SHOT && _followUps.TryDequeue(out FollowUp followUp))
+            {
+                if (followUp.Kind == FollowUpKind.Damage) ApplyFollowUpDamage(config, in followUp);
+                else ApplyFollowUpRay(config, in followUp);
+            }
+
+            // Per-shot state, cleared per shot: the already-hit set must not leak
+            // into the next trigger pull or chains stop working after a magazine.
+            _followUps.Clear();
+            _alreadyHit.Clear();
+        }
+
+        private void ApplyFollowUpDamage(WeaponConfig config, in FollowUp followUp)
+        {
+            Health? target = followUp.Target;
+            if (target == null || !target.IsAlive) return;
+
+            var info = new DamageInfo(followUp.Damage, followUp.Origin, -followUp.Direction,
+                followUp.Direction, false);
+            target.ApplyDamage(in info);
+            MarkHit(target);
+            Hit?.Invoke(!target.IsAlive);
+
+            RunEffectModules(new HitContext(this, config, target.transform.position, -followUp.Direction,
+                followUp.Direction, target, followUp.Damage, followUp.Depth));
+        }
+
+        private void ApplyFollowUpRay(WeaponConfig config, in FollowUp followUp)
+        {
+            int count = Physics.RaycastNonAlloc(followUp.Origin, followUp.Direction, _hitBuffer,
+                followUp.Range, _hitMask, QueryTriggerInteraction.Ignore);
+            if (count <= 0) return;
+
+            SortHitsByDistance(count);
+            RaycastHit hit = _hitBuffer[0];
+
+            Health? target = null;
+            if (hit.collider.TryGetComponent(out Weakpoint weakpoint) && weakpoint.Owner != null)
+            {
+                target = weakpoint.Owner;
+            }
+            else if (hit.collider.TryGetComponent(out Health direct))
+            {
+                target = direct;
+            }
+
+            SpawnImpact(hit);
+            if (target == null || !target.IsAlive) return;
+
+            var info = new DamageInfo(followUp.Damage, hit.point, hit.normal, followUp.Direction, false);
+            target.ApplyDamage(in info);
+            MarkHit(target);
+            Hit?.Invoke(!target.IsAlive);
+
+            RunEffectModules(new HitContext(this, config, hit.point, hit.normal, followUp.Direction,
+                target, followUp.Damage, followUp.Depth));
         }
 
         private void SpawnImpact(in RaycastHit hit)

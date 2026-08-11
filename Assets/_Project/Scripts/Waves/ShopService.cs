@@ -1,6 +1,7 @@
 #nullable enable
 using System.Collections.Generic;
 using CoD.Core;
+using CoD.Weapons;
 using UnityEngine;
 
 namespace CoD.Waves
@@ -17,16 +18,19 @@ namespace CoD.Waves
     {
         private readonly ShopConfig _config;
         private readonly RunContext _run;
+        /// <summary>Where effect modules are installed. Optional: without a weapon the shop simply never offers them.</summary>
+        private readonly WeaponController? _weapon;
         private readonly List<ShopItemConfig> _offers = new(8);
         private readonly List<int> _prices = new(8);
         private readonly List<ShopConfig.PoolEntry> _eligible = new(32);
 
         private int _rerollsThisBreak;
 
-        public ShopService(ShopConfig config, RunContext run)
+        public ShopService(ShopConfig config, RunContext run, WeaponController? weapon)
         {
             _config = config;
             _run = run;
+            _weapon = weapon;
         }
 
         /// <summary>Current offers. Index-aligned with <see cref="Prices"/>.</summary>
@@ -69,11 +73,21 @@ namespace CoD.Waves
                 case ShopItemKind.Passive:
                     if (item.passive != null) _run.BuyPassive(item.passive);
                     break;
-                case ShopItemKind.Weapon:
                 case ShopItemKind.EffectModule:
-                    // Weapons and modules land with the arsenal milestone. Refuse
-                    // rather than take the money: a purchase that does nothing is
-                    // worse than an item that cannot be bought yet.
+                    if (_weapon == null || item.effect == null)
+                    {
+                        // Refuse and refund rather than take the money for nothing.
+                        GameLog.Warn($"'{item.displayName}' has no weapon to install into; refunding.");
+                        _run.AddMoney(price);
+                        return false;
+                    }
+                    // Installed on the weapon's RUNTIME list, never on the config
+                    // asset — see WeaponController.AddEffectModule.
+                    _weapon.AddEffectModule(item.effect);
+                    break;
+                case ShopItemKind.Weapon:
+                    // Buying a second weapon lands with the arsenal work; refuse
+                    // rather than take the money for nothing.
                     GameLog.Warn($"Shop item '{item.displayName}' has no handler yet; refunding.");
                     _run.AddMoney(price);
                     return false;
@@ -119,8 +133,18 @@ namespace CoD.Waves
             }
         }
 
-        private int OwnedCount(ShopItemConfig item) =>
-            item.kind == ShopItemKind.Passive && item.passive != null ? _run.State.StacksOf(item.passive) : 0;
+        private int OwnedCount(ShopItemConfig item)
+        {
+            if (item.kind == ShopItemKind.Passive && item.passive != null) return _run.State.StacksOf(item.passive);
+            if (item.kind != ShopItemKind.EffectModule || item.effect == null || _weapon == null) return 0;
+
+            int owned = 0;
+            for (int i = 0; i < _weapon.EffectModuleCount; i++)
+            {
+                if (_weapon.EffectModuleAt(i) == item.effect) owned++;
+            }
+            return owned;
+        }
 
         private int PickWeighted()
         {

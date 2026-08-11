@@ -10,13 +10,13 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: c3f5b576b355ce647916fb3c7692d324, type: 3}
-  m_Name: Shop_MoveSpeed
+  m_Name: Shop_Explosive
   m_EditorClassIdentifier: 
-  stableId: shop_passive_move_speed
-  displayName: Servo Legs
-  description: +10% movement speed
-  cost: 175
-  kind: 0
-  passive: {fileID: 11400000, guid: 91bb391b56ca16e4ba3f9e6ab3ad41e7, type: 2}
+  stableId: shop_effect_explosive
+  displayName: Explosive Rounds
+  description: every hit detonates for 80% of the shot
+  cost: 400
+  kind: 2
+  passive: {fileID: 0}
   weapon: {fileID: 0}
-  effect: {fileID: 0}
+  effect: {fileID: 11400000, guid: ec66b6ebe32de0a40aab9ce95de83436, type: 2}

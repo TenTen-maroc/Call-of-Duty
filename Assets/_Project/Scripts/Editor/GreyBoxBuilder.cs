@@ -38,6 +38,7 @@ namespace CoD.EditorTools
         private const string DataWaves = "Assets/_Project/Data/Waves";
         private const string DataShop = "Assets/_Project/Data/Shop";
         private const string DataPassives = "Assets/_Project/Data/Passives";
+        private const string DataEffects = "Assets/_Project/Data/Effects";
         private const string Materials = "Assets/_Project/Art/Materials";
         private const string Prefabs = "Assets/_Project/Prefabs";
         private const string Scenes = "Assets/_Project/Scenes";
@@ -150,7 +151,8 @@ namespace CoD.EditorTools
             // The run layer: passives, the shop that sells them, and the ten
             // authored waves the endless ramp takes over from.
             PassiveConfig[] passives = BuildPassives();
-            ShopItemConfig[] shopItems = BuildShopItems(passives);
+            EffectModule[] effects = BuildEffectModules(explosion);
+            ShopItemConfig[] shopItems = BuildShopItems(passives, effects);
             ShopConfig shopConfig = LoadOrCreate<ShopConfig>(DataGame + "/Shop.asset", ConfigureShop);
             EnsureShopPool(shopConfig, shopItems);
             WaveConfig[] waves = BuildWaves(rusher, shooter, tank);
@@ -443,10 +445,58 @@ namespace CoD.EditorTools
             });
         }
 
-        private static ShopItemConfig[] BuildShopItems(PassiveConfig[] passives)
+        /// <summary>
+        /// The four effect modules. Explosive and Chain ship with maxDepth 1 so
+        /// they react to each other exactly once — that pair is precisely what the
+        /// depth rule exists for, and setting it here makes the intent explicit
+        /// rather than leaving the interesting case untested.
+        /// </summary>
+        private static EffectModule[] BuildEffectModules(GameObject explosionVfx)
+        {
+            Explosive explosive = LoadOrCreate<Explosive>(DataEffects + "/Effect_Explosive.asset", config =>
+            {
+                config.radius = 3f;
+                // A fraction of the shot, not a flat number, so it scales with the
+                // weapon and with damage passives instead of replacing them.
+                config.damageFraction = 0.8f;
+                config.minMultiplier = 0.35f;
+                config.explosionLifetime = 1f;
+                config.maxDepth = 1;
+            });
+            SetRef(explosive, "explosionVfx", explosionVfx);
+            EditorUtility.SetDirty(explosive);
+
+            Pierce pierce = LoadOrCreate<Pierce>(DataEffects + "/Effect_Pierce.asset", config =>
+            {
+                config.maxTargets = 2;
+                config.damageFalloffPerTarget = 0.75f;
+                config.maxDepth = 0;   // it changes the cast; depth is meaningless here
+            });
+
+            Ricochet ricochet = LoadOrCreate<Ricochet>(DataEffects + "/Effect_Ricochet.asset", config =>
+            {
+                config.bouncesPerHit = 1;
+                config.bounceRange = 12f;
+                config.damageFraction = 0.7f;
+                config.scatterDegrees = 8f;
+                config.maxDepth = 1;   // one bounce off a bounce, then it stops
+            });
+
+            Chain chain = LoadOrCreate<Chain>(DataEffects + "/Effect_Chain.asset", config =>
+            {
+                config.jumpsPerHit = 2;
+                config.jumpRange = 8f;
+                config.damageFraction = 0.6f;
+                config.maxDepth = 1;
+            });
+
+            return new EffectModule[] { explosive, pierce, ricochet, chain };
+        }
+
+        private static ShopItemConfig[] BuildShopItems(PassiveConfig[] passives, EffectModule[] effects)
         {
             int[] costs = { 150, 175, 160, 220, 200 };
-            var items = new ShopItemConfig[passives.Length];
+            var items = new ShopItemConfig[passives.Length + effects.Length];
             for (int i = 0; i < passives.Length; i++)
             {
                 PassiveConfig passive = passives[i];
@@ -466,6 +516,38 @@ namespace CoD.EditorTools
                 SetRef(item, "passive", passive);
                 items[i] = item;
             }
+
+            // Effect modules: the expensive half of the shop, and the reason to
+            // save rather than spend every break.
+            (string label, string description, int cost)[] effectMeta =
+            {
+                ("Explosive Rounds", "every hit detonates for 80% of the shot", 400),
+                ("Piercing Rounds", "punches through two more bodies", 350),
+                ("Ricochet Rounds", "hits bounce into whatever is nearby", 375),
+                ("Chain Lightning", "hits jump to two nearby drones", 450),
+            };
+
+            for (int i = 0; i < effects.Length; i++)
+            {
+                EffectModule effect = effects[i];
+                (string label, string description, int cost) = i < effectMeta.Length
+                    ? effectMeta[i]
+                    : (effect.name, string.Empty, 400);
+
+                ShopItemConfig item = LoadOrCreate<ShopItemConfig>(
+                    DataShop + "/Shop_" + effect.name.Replace("Effect_", string.Empty) + ".asset",
+                    shopItem =>
+                    {
+                        shopItem.stableId = "shop_" + effect.name.ToLowerInvariant();
+                        shopItem.displayName = label;
+                        shopItem.description = description;
+                        shopItem.cost = cost;
+                        shopItem.kind = ShopItemKind.EffectModule;
+                    });
+                SetRef(item, "effect", effect);
+                items[passives.Length + i] = item;
+            }
+
             return items;
         }
 
@@ -487,10 +569,13 @@ namespace CoD.EditorTools
                 SerializedProperty element = pool.GetArrayElementAtIndex(i);
                 element.FindPropertyRelative("item").objectReferenceValue = items[i];
                 if (!rebuild) continue;
-                element.FindPropertyRelative("weight").floatValue = 1f;
-                element.FindPropertyRelative("minWave").intValue = 1;
-                element.FindPropertyRelative("maxOwned").intValue =
-                    items[i].passive != null ? items[i].passive!.maxStacks : 0;
+                bool isEffect = items[i].kind == ShopItemKind.EffectModule;
+                // Modules are rarer, gated to wave 3+, and one per run: a second
+                // copy of Pierce does nothing the first one did not.
+                element.FindPropertyRelative("weight").floatValue = isEffect ? 0.6f : 1f;
+                element.FindPropertyRelative("minWave").intValue = isEffect ? 3 : 1;
+                element.FindPropertyRelative("maxOwned").intValue = isEffect ? 1
+                    : items[i].passive != null ? items[i].passive!.maxStacks : 0;
             }
             serialized.ApplyModifiedProperties();
             EditorUtility.SetDirty(shop);
@@ -1076,7 +1161,9 @@ namespace CoD.EditorTools
             SetRef(runner, "_difficulty", drones.Difficulty);
             SetRef(runner, "_shopConfig", runAssets.Shop);
             SetRef(runner, "_playerHealth", playerHealth);
+            SetRef(runner, "_weapon", weapon);          // where bought modules install
             SetArrayRef(runner, "_waves", runAssets.Waves);
+            SetRef(weapon, "_ownerHealth", playerHealth);   // modules never damage the shooter
 
             BuildHud(weapon, playerHealth, game, pool, dummyPrefab, muzzle, spawner, registry, cameraTransform,
                 run, runner);
@@ -1480,7 +1567,7 @@ namespace CoD.EditorTools
             SetRef(hud, "_lowAmmoTint", lowAmmoImage);
 
             BuildDamageFeedback(canvasObject, game, playerHealth, cameraTransform, hudAudio);
-            BuildRunUi(canvasObject, run, runner, hudAudio);
+            BuildRunUi(canvasObject, run, runner, weapon, hudAudio);
 
             CheatConsole console = canvasObject.AddComponent<CheatConsole>();
             SetRef(console, "_config", game);
@@ -1552,7 +1639,7 @@ namespace CoD.EditorTools
         /// every break for a four-line list.
         /// </summary>
         private static void BuildRunUi(GameObject canvasObject, RunContext run, WaveRunner runner,
-            AudioSource audio)
+            WeaponController weapon, AudioSource audio)
         {
             Text wave = BuildLabel(canvasObject, "WaveLabel", new Vector2(90f, -60f),
                 TextAnchor.UpperLeft, new Vector2(0f, 1f), 34);
@@ -1589,6 +1676,11 @@ namespace CoD.EditorTools
             Text shopFooter = BuildLabel(shopRoot, "Footer", new Vector2(0f, 120f),
                 TextAnchor.LowerCenter, new Vector2(0.5f, 0f), 28);
             shopFooter.rectTransform.sizeDelta = new Vector2(1100f, 60f);
+            // The installed module list, in execution order — the stack IS the
+            // build, so it gets its own line rather than being implied.
+            Text shopLoadout = BuildLabel(shopRoot, "Loadout", new Vector2(0f, 190f),
+                TextAnchor.LowerCenter, new Vector2(0.5f, 0f), 26);
+            shopLoadout.rectTransform.sizeDelta = new Vector2(1100f, 50f);
 
             ShopPanel shop = canvasObject.AddComponent<ShopPanel>();
             SetRef(shop, "_runner", runner);
@@ -1597,6 +1689,8 @@ namespace CoD.EditorTools
             SetRef(shop, "_titleLabel", shopTitle);
             SetRef(shop, "_offersLabel", shopOffers);
             SetRef(shop, "_footerLabel", shopFooter);
+            SetRef(shop, "_loadoutLabel", shopLoadout);
+            SetRef(shop, "_weapon", weapon);
             SetRef(shop, "_audio", audio);
             SetRef(shop, "_buyClip", LoadClip("Shop_Buy"));
             SetRef(shop, "_refusedClip", LoadClip("Shop_Refused"));
@@ -1704,7 +1798,7 @@ namespace CoD.EditorTools
             {
                 "Assets/_Project/Art", Materials, "Assets/_Project/Audio",
                 "Assets/_Project/Data", DataGame, DataWeapons, DataDrones, DataAttacks,
-                DataWaves, DataShop, DataPassives, Audio,
+                DataWaves, DataShop, DataPassives, DataEffects, Audio,
                 Prefabs, Scenes,
             };
             foreach (string folder in folders)

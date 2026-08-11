@@ -1,4 +1,5 @@
 #nullable enable
+using System.Collections.Generic;
 using UnityEngine;
 
 namespace CoD.Weapons
@@ -29,12 +30,26 @@ namespace CoD.Weapons
         public bool IsReloading;
         public int BurstShotsRemaining;
 
+        /// <summary>
+        /// The effect modules this weapon is actually carrying right now. Seeded
+        /// from the config and then appended to by shop purchases — the config
+        /// asset is never modified, because a runtime write to authored data
+        /// persists between Play sessions with Domain Reload off.
+        /// </summary>
+        public readonly List<EffectModule> Modules = new(4);
+
         public WeaponRuntime(WeaponConfig config)
         {
             Config = config;
             CurrentAmmo = config.magazineSize;
             ReserveAmmo = config.reserveAmmo;
             CurrentSpread = config.baseSpread;
+
+            for (int i = 0; i < config.effectModules.Length; i++)
+            {
+                EffectModule? module = config.effectModules[i];
+                if (module != null) Modules.Add(module);
+            }
         }
 
         public bool IsMagazineEmpty => CurrentAmmo <= 0;

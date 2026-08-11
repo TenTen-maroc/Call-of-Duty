@@ -26,6 +26,7 @@ namespace CoD.Waves
         public ShopItemKind kind = ShopItemKind.Passive;
         public PassiveConfig? passive;
         public WeaponConfig? weapon;
+        public EffectModule? effect;
 
         /// <summary>Human-readable line for the shop list. Built once per offer, not per frame.</summary>
         public string Summary => string.IsNullOrEmpty(description) ? displayName : displayName + " — " + description;
@@ -34,6 +35,7 @@ namespace CoD.Waves
         {
             ShopItemKind.Passive => passive != null,
             ShopItemKind.Weapon => weapon != null,
+            ShopItemKind.EffectModule => effect != null,
             _ => false,
         };
 
