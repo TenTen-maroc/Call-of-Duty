@@ -79,6 +79,12 @@ namespace CoD.EditorTools
 
             AssetDatabase.SaveAssets();
             AssetDatabase.Refresh();
+
+            // Never report success without reading the scene back from disk. The
+            // first build claimed "done" and produced a scene with every config
+            // reference null.
+            GreyBoxVerify.VerifyAndRepair();
+
             Debug.Log("Grey box built. Open " + GreyBoxScenePath + " and press Play.");
         }
 
@@ -250,6 +256,7 @@ namespace CoD.EditorTools
             BuildTargets(dummyPrefab, targetMat);
             BuildHud(weapon, playerHealth, game, pool, dummyPrefab, muzzle);
 
+            EditorSceneManager.MarkSceneDirty(scene);
             EditorSceneManager.SaveScene(scene, GreyBoxScenePath);
         }
 
@@ -549,7 +556,8 @@ namespace CoD.EditorTools
                 element.FindPropertyRelative("prefab").objectReferenceValue = prefabs[i];
                 element.FindPropertyRelative("count").intValue = i < counts.Length ? counts[i] : 8;
             }
-            serialized.ApplyModifiedPropertiesWithoutUndo();
+            serialized.ApplyModifiedProperties();
+            EditorUtility.SetDirty(pool);
         }
 
         /// <summary>
@@ -567,7 +575,17 @@ namespace CoD.EditorTools
                 return;
             }
             property.objectReferenceValue = value;
-            serialized.ApplyModifiedPropertiesWithoutUndo();
+            // ApplyModifiedProperties + SetDirty rather than ...WithoutUndo().
+            // Note this is NOT sufficient on its own: assignments made while the
+            // scene has never been saved still lose their ASSET references (scene
+            // -object references survive, and nothing errors, so the first build
+            // produced a scene that looked fine and did nothing on Play). What
+            // actually guarantees the links is the VerifyAndRepair pass at the end
+            // of Build(), which re-opens the saved scene and re-assigns anything
+            // that did not survive. Both are kept: this is the cheap correct path,
+            // that is the proof.
+            serialized.ApplyModifiedProperties();
+            EditorUtility.SetDirty(target);
         }
 
         private static void SetArrayRef(Object target, string field, Object[] values)
@@ -584,7 +602,8 @@ namespace CoD.EditorTools
             {
                 property.GetArrayElementAtIndex(i).objectReferenceValue = values[i];
             }
-            serialized.ApplyModifiedPropertiesWithoutUndo();
+            serialized.ApplyModifiedProperties();
+            EditorUtility.SetDirty(target);
         }
     }
 }

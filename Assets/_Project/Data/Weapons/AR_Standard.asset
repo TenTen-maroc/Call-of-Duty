@@ -1,0 +1,65 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 562f233c3d4d60408284231b35233590, type: 3}
+  m_Name: AR_Standard
+  m_EditorClassIdentifier: 
+  stableId: wpn_ar_standard
+  displayName: Assault Rifle
+  weaponClass: 0
+  bodyDamage: 25
+  headshotMultiplier: 1.5
+  falloffRange: {x: 25, y: 60}
+  minDamageMultiplier: 0.6
+  maxRange: 200
+  roundsPerMinute: 700
+  fireMode: 2
+  burstCount: 3
+  burstPause: 0.12
+  magazineSize: 30
+  reserveAmmo: 180
+  pelletsPerShot: 1
+  adsTime: 0.25
+  sprintToFireTime: 0.2
+  reloadTime: 2
+  reloadEmptyTime: 2.6
+  swapTime: 0.6
+  reloadCommitPoint: 0.75
+  verticalKickFirstShot: 0.6
+  verticalKickAtShotEight: 1.2
+  horizontalKickMax: 0.35
+  recoilSeed: 1337
+  recoveryDelay: 0.09
+  recoveryDuration: 0.25
+  recoveryCompleteness: 0.85
+  adsRecoilMultiplier: 0.6
+  crouchRecoilMultiplier: 0.8
+  baseSpread: 2.5
+  spreadPerShot: 0.35
+  maxSpread: 6
+  spreadDecayRate: 4
+  movingMultiplier: 1.4
+  crouchedMultiplier: 0.7
+  airborneMultiplier: 2
+  adsFovMultiplier: 0.75
+  adsSensitivityMultiplier: 0.75
+  fovKickOnFire: 1.5
+  fovKickDuration: 0.06
+  muzzleFlashPrefab: {fileID: 1871256265865384523, guid: 32d55e14ae42b8944a52013d93a9f603, type: 3}
+  shellCasingPrefab: {fileID: 1743636020095211714, guid: b5a65d9b89880a04d93713921dedf92f, type: 3}
+  casingLifetime: 3
+  fireCloseLayer: {fileID: 0}
+  fireTailLayer: {fileID: 0}
+  dryFireClip: {fileID: 0}
+  reloadClip: {fileID: 0}
+  cameraShakeAmplitude: 0.6
+  muzzleLightDuration: 0.03
+  muzzleLightIntensity: 12
