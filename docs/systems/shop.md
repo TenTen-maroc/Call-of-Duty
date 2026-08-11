@@ -106,6 +106,61 @@ writes a modified number back into a config asset.
   nothing else heals. See [player.md](player.md).
 
 
+## Consumables, the always-offered rows, and skipping (2026-08-11)
+
+**Not verified in play.** Every number below is a tuning-card question.
+
+A break could roll four offers the player did not want, and a whole wave's income
+was then simply wasted — the least interesting outcome a shop can produce, and the
+honest answer to tuning-card item 3.
+
+### The floor under a bad roll
+
+`ShopConfig.alwaysOffered` holds `ShopItemConfig`s appended to `Offers`/`Prices`
+**after** the weighted draw and never entered into the pool, so they cannot crowd
+out the offers that make a break interesting. Priced through the existing
+`PriceAtWave`, so they scale with the wave like everything else.
+
+- **Field Repair** ($120) — `Consumable_Repair`, restores half of MAX health.
+- **Resupply** ($90) — `Consumable_Ammo`, half a full reserve for whatever is held.
+
+`ShopItemKind.Consumable` carries a
+[ConsumableConfig](../../Assets/_Project/Scripts/Waves/ConsumableConfig.cs) with
+**fractions, not flat amounts**, so one asset stays correct after a MaxHP passive
+or a weapon swap changes what "full" means.
+
+`ShopItemConfig.repeatable` keeps a row on the shelf after it sells. One repair is
+rarely the whole answer, and a shelf that empties on a single click is the bad-roll
+problem all over again.
+
+**Buying a no-op refuses and refunds.** At full health with a full reserve there is
+nothing to sell, and quietly taking the money is the one thing that would make
+these rows feel like a trap. `Health.Heal` and `WeaponController.RefillReserve`
+both report whether they actually did anything, which is what makes that possible.
+
+### Skipping the break
+
+`TAB` calls `WaveRunner.SkipShopForBonus()`: leave without buying and the **next**
+clear pays `ShopConfig.skipBonusMultiplier` (1.75) times its bonus. Buying is
+always correct when the offers are good, so a good break was never a choice — it
+was a menu. Skipping trades the upgrade for money you only collect if you survive
+the wave without it, and dying in that wave means neither.
+
+The pending multiplier is run state on `WaveRunner`, never the config, and it is
+consumed **only when a clear actually pays** — the recovery paths end a wave that
+never happened, and eating the gamble for a fight the player was never given is the
+worst possible moment to take it. `WaveRunner.ApplySkipBonus` is a pure static so
+the arithmetic is testable exactly; a money total already has kill rewards folded
+in and could never prove the multiplication on its own.
+
+### Rows and the number row
+
+The shop is bought with the digits, so a break can only show as many rows as there
+are keys. `ShopPanel.BuyKeys` covers 1–9, and `ShopConfig.OnValidate` errors if
+`offersPerBreak + alwaysOffered.Length` would exceed that — otherwise the extra
+rows are printed, priced, and impossible to buy, which reads as the shop being
+broken rather than as a configuration mistake.
+
 ## Related Systems
 
 - [waves.md](waves.md) — owns the ShopService and decides when a break happens.

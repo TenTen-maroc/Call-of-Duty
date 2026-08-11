@@ -43,6 +43,35 @@ arena teaches is that backing up puts something between you and the room.
   at runtime: the wave spawns and nothing ever arrives. That test is why the
   arena can be rearranged confidently.
 
+## Lighting, trim and the beacon (2026-08-11)
+
+**Not verified in play.**
+
+One directional sun plus ambient and fog left every lane looking identical. In a
+grey box the lighting IS the level art — it is the only thing that says "they come
+from over there" without putting a marker on the HUD.
+
+- Three warm lane lights at `(±14.5, 4.2, 4)` and `(0, 4.2, 14)`, one cool key
+  over the centre bunker at `(0, 4.6, 2)`. All `LightShadows.None`; the sun stays
+  the only caster, because four more shadow maps is real frame time on the 3050.
+- They are dim and desaturated on purpose. Bright saturated colour belongs to
+  drone cores, so that red always means something is trying to kill you.
+- **Emissive edge trim** along the tops of the bunker, the four dividers, the four
+  pillars and `Cover_S`. Untextured grey loses its silhouette under fog at exactly
+  the range where "can I back behind that" matters. Cool blue — architecture is
+  never warm.
+- **Trim carries no collider.** `BakeNavMesh` collects from `PhysicsColliders`, so
+  a trim strip with the collider `CreatePrimitive` hands out would carve a floating
+  obstacle into the navmesh. A PlayMode test asserts every `Trim_*` object has none,
+  and the existing no-islands test proves the bake still covers the arena.
+
+**Beacon anchors** — one per lane, all clear of the geometry in `BuildRoom`:
+`(-14.5, 0, -4)`, `(14.5, 0, -4)`, `(0, 0, 15)`. Never the origin; that is inside
+the centre bunker, the arena's oldest trap. See [waves.md](waves.md).
+
+Surfaces now carry smoothness, metallic and a shared generated detail normal —
+see [rendering.md](rendering.md).
+
 ## Related Systems
 
 - [drones.md](drones.md) — what paths through it, and the agent radii it is baked for.

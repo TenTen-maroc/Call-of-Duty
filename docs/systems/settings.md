@@ -7,8 +7,9 @@
 
 ## Overview
 
-Mouse sensitivity, vertical FOV, invert-look and master volume: the four things
-a player changes before they will judge anything else about a shooter. All four
+Mouse sensitivity, vertical FOV, invert-look, master volume, post-processing and
+anti-aliasing: the things a player changes before they will judge anything else
+about a shooter. All four
 live on disk in the same versioned save as the run record, are bounded by a
 ScriptableObject, and are held at runtime in a plain C# object that is never a
 ScriptableObject.
@@ -96,6 +97,39 @@ never reach the camera, which is precisely the old bug in a new place.
   the menus call it rather than touching `Cursor` themselves.
 - **`PlayerLook.BaseFov` now returns the live FOV**, so the weapon's ADS offset
   is computed against what the player actually set.
+
+## The graphics rows (schema 3)
+
+Two rows added when the image pipeline was turned on:
+[rendering.md](rendering.md).
+
+| Row | Values | Applied by |
+| --- | --- | --- |
+| POST-PROCESSING | ON / OFF | `CameraGraphics` → `UniversalAdditionalCameraData.renderPostProcessing` |
+| ANTI-ALIASING | OFF / FXAA / SMAA | `CameraGraphics` → `UniversalAdditionalCameraData.antialiasing` |
+
+**Why the camera and not MSAA.** MSAA lives on the
+`UniversalRenderPipelineAsset`, which is a ScriptableObject. Domain Reload is off
+here, so a runtime write to one survives into the next Play session and
+permanently rewrites the shipped default — the same trap that produced
+`WaveScaling`, `StatSheet` and this class itself. Camera state is scene state and
+dies with the scene, so post-processing and post AA are the two knobs that can be
+player-facing without paying that cost. MSAA stays off in the pipeline asset.
+
+**Why `CoD.Player` hosts the applier.** `CameraGraphics` needs the render
+pipeline assembly and `CoD.Core` must not have one — everything depends on Core.
+`PlayerLook` and `CameraShake` already own camera concerns, so it sits beside
+them. The main menu hosts one too; that scene has a camera and a `SettingsHub`,
+which is all it needs.
+
+**Defaults still live in the config.** `SettingsConfig.postProcessingDefault` and
+`.antiAliasingDefault`, seeded into the save by `SettingsHub.Resolve` when
+`graphicsInitialised` is false. The 2 → 3 migration writes nothing at all — see
+[save.md](save.md).
+
+**`AntiAliasingMode` is ours, not URP's.** Three values in `CoD.Core`, mapped to
+`UnityEngine.Rendering.Universal.AntialiasingMode` inside `CameraGraphics`. It is
+serialised as a number, so the order is a file format.
 
 ## Why no AudioMixer
 

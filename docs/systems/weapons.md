@@ -225,3 +225,32 @@ already lived.
   falloff at range, shotgun pellet spread, reload cancelling, burst mode,
   headshots on the dummy's head, casing ejection arcs, and target respawn —
   all newly wired and awaiting a grey-box rebuild plus a play test.
+
+## Sandbox module depth and resupply (2026-08-11)
+
+**Not verified in play.**
+
+`EffectModule.maxDepth` capped stacking everywhere, including the mode whose whole
+purpose is play without consequences. `GameConfig.sandboxExtraEffectDepth` (1)
+grants Sandbox one extra level; a Run always gets zero.
+
+The bonus shifts the depth the module is **asked** about —
+`module.RunsAtDepth(context.Depth - _extraEffectDepth)` — rather than the maxDepth
+it declares. maxDepth lives on a shared config asset and Domain Reload is off, so
+writing to it would rewrite the shipped balance for every Play session afterwards.
+
+`MAX_FOLLOW_UPS_PER_SHOT` and the fixed-capacity `FollowUpBuffer` are untouched.
+They are the hard backstop that makes deeper recursion a bigger effect rather than
+a frozen frame, and they are the whole reason it is safe to let Sandbox off the
+leash at all.
+
+Resolved in `Start`, not `Awake`: `RunContext` reads the save in its own `Awake`
+and `Mode` comes from that save, so a frame earlier would depend on undefined
+script execution order. It reads `RunContext.Config` rather than carrying its own
+serialized `GameConfig` — every extra asset reference in a scene is another one
+that can come back `{fileID: 0}` after a save and fail silently.
+
+**`WeaponController.RefillReserve(fraction)`** tops the held weapon's reserve up by
+a fraction of its CONFIG reserve, so one consumable asset stays correct across both
+weapons. It returns false when there is nothing to add, which is what lets the shop
+refuse the sale instead of taking money for nothing — see [shop.md](shop.md).

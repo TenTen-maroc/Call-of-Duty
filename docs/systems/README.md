@@ -20,14 +20,15 @@ obvious, emphasise the non-obvious.
 | [shop.md](shop.md) | `ShopConfig`, `ShopItemConfig`, `PassiveConfig`, `StatSheet` rebuild | ✅ passives + modules |
 | [save.md](save.md) | Versioned JSON, `schemaVersion` migration, atomic write, `.bak` | ✅ |
 | [arena.md](arena.md) | The three-lane arena, cover heights, navmesh bake | ✅ |
-| [settings.md](settings.md) | Sensitivity, FOV, invert, volume — bounds, the runtime layer, schema 2 | ✅ |
+| [settings.md](settings.md) | Sensitivity, FOV, invert, volume, post-processing, anti-aliasing — bounds, the runtime layer, schema 3 | ✅ |
+| [rendering.md](rendering.md) | Post-processing stack, arena lighting, surface response, the generated detail normal | ✅ |
 | [menus.md](menus.md) | Main menu, pause, the shared settings page, Run vs Sandbox | ✅ |
 | [build.md](build.md) | Producing the Windows .exe, and the smoke test that proves it runs | ✅ |
 | [performance.md](performance.md) | The two caps under load, the allocation budget, what headless cannot prove | ✅ |
 
 ## Automated verification
 
-Beyond `typecheck.mjs` and the guards, the project has 84 tests:
+Beyond `typecheck.mjs` and the guards, the project has 108 tests:
 
 ```
 Unity.exe -batchmode -runTests -projectPath . -testPlatform EditMode -testResults Logs/tests-editmode.xml

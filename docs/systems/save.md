@@ -16,7 +16,7 @@ decision is why this system is one page instead of a migration problem.
 
 ```json
 {
-  "schemaVersion": 2,
+  "schemaVersion": 3,
   "bestRound": 0,
   "totalKills": 0,
   "totalRuns": 0,
@@ -26,9 +26,15 @@ decision is why this system is one page instead of a migration problem.
   "mouseSensitivity": 0.12,
   "fovVertical": 62.0,
   "masterVolume": 1.0,
-  "invertLook": false
+  "invertLook": false,
+  "graphicsInitialised": true,
+  "postProcessing": true,
+  "antiAliasing": 2
 }
 ```
+
+`antiAliasing` is `0` Off, `1` FXAA, `2` SMAA. The enum's ORDER is a file format:
+append new modes, never reorder the existing ones.
 
 `lastMode` is `0` for Run and `1` for Sandbox. It is how the menu's mode choice
 reaches the next scene without a mutable static — Domain Reload is off, so a
@@ -36,6 +42,17 @@ static would survive into the following Play session and start a Run in Sandbox.
 
 Written to `Application.persistentDataPath`:
 `cod_save.json`, with `cod_save.bak.json` alongside it.
+
+## Schema history
+
+| Version | Added | Migration |
+| --- | --- | --- |
+| 1 → 2 | the settings block (fov, invert, the initialised flag) and the remembered mode | Clears `settingsInitialised`. v1 wrote `mouseSensitivity` and `masterVolume` that nothing ever read, so there was no player choice to preserve. |
+| 2 → 3 | the graphics block (`graphicsInitialised`, `postProcessing`, `antiAliasing`) | **Deliberately a no-op.** `graphicsInitialised` defaults to false, which is exactly what makes `SettingsHub` seed the block from `SettingsConfig` on the next resolve — the same path a brand-new save takes. Writing real values in `Migrate` would put a tuning number in a migration, and tuning numbers live in ScriptableObjects. |
+
+The version is bumped even when the migration does nothing, because the number is
+what tells a **downgraded** build that this file holds fields it cannot represent.
+`Save` refuses to overwrite a file from the future for exactly that reason.
 
 ## Runtime Types
 

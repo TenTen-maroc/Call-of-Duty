@@ -82,3 +82,39 @@ open. That is item 9 on the tuning card.
 - `TheAttackTokenCap_IsReached_AndNeverExceeded` asserts the peak is **greater
   than zero**. Without that clause the test passes trivially on an arena where
   nothing ever got close enough to attack.
+
+## What the image pipeline changed (2026-08-11)
+
+**None of this is measured.** A `-batchmode` run does almost no GPU work, so the
+headless suites cannot see the cost of anything below. Tuning-card item 9 — frame
+time on the 3050 with 40 alive — is still the only way to find out, and it now
+matters more than it did.
+
+- Post-processing is ON in both scenes: Neutral tonemapping, bloom, vignette,
+  colour adjustments, film grain, plus SMAA on the camera. Bloom is the expensive
+  one and its intensity is a field on `PostFx_Arena.asset`, tunable in Play Mode.
+- **The escape hatch is a setting.** POST-PROCESSING can be turned off from the
+  menu, which is the intended answer if the 3050 cannot hold frame time.
+- Four extra point lights in the arena, all with shadows OFF.
+  `m_AdditionalLightsPerObjectLimit` stays at **4**: the explosion light and the
+  muzzle light can already reach a surface alongside the static ones, and URP
+  degrades by picking the strongest rather than failing. Raising it costs frame
+  time on exactly the hardware in question.
+- One 1024 detail normal, compressed, Read/Write off, shared by floor and walls.
+  Within the playbook's texture budget.
+
+## The blast overlap buffer (2026-08-11)
+
+`DroneController._overlapBuffer` is **256**, up from 64.
+
+`OverlapSphereNonAlloc` fills a full buffer with an arbitrary subset and reports no
+overflow, so a truncated query can come back holding only drones and miss the
+player entirely — the attack goes off and does nothing, which reads as the enemy
+being broken. `Blast.Apply` warns when the buffer fills, and under a full arena it
+fired for real and failed `HordeLoadTests`.
+
+The query is not layer-filtered down to colliders carrying `Health`, so a blast
+near the ground also collects the floor, the walls and every cover box in radius.
+Raised rather than mask-tightened: the mask comes from the attack configs, so
+narrowing it would be a silent behaviour change, while a larger buffer can only
+make the result more complete. 2 KB per drone, ~82 KB across the alive cap.

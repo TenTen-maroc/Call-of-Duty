@@ -253,6 +253,14 @@ namespace CoD.Tests
             float hurt = health.Current;
             Assert.Less(hurt, health.Max);
 
+            // Godmode for the duration. The player has to stand still on the pad
+            // while a live wave converges on them, so without this the test is a
+            // coin flip on whether a Rusher reaches them first — and a dead player
+            // leaves RunPhase.Wave, which stops the beacon healing at all. This
+            // fixes the test's determinism, not the behaviour being asserted:
+            // Invulnerable blocks ApplyDamage and does nothing to Heal.
+            health.Invulnerable = true;
+
             motor.transform.position = first + Vector3.up * 0.1f;
             float budget = objective.BudgetRemaining;
             Assert.Greater(budget, 0f, "the beacon starts a wave with nothing to give");
@@ -264,6 +272,8 @@ namespace CoD.Tests
             Assert.LessOrEqual(health.Current, health.Max, "healing went past the maximum");
             Assert.LessOrEqual(health.Current - hurt, budget + 1f,
                 "the beacon gave more than its per-wave budget allows");
+
+            health.Invulnerable = false;
 
             // And it moves. Never the same lane twice in a row, so one wave is enough.
             yield return WaitUntil(() => runner!.Phase == RunPhase.Shop, 90f, "the break",

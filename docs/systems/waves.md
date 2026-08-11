@@ -105,6 +105,65 @@ ten wave assets and read by nothing; `StartWave` now passes it to the spawner.
 0 still means "use `DifficultyConfig.maxAliveDrones`".
 
 
+## Wave identity, the beacon, and skipping (2026-08-11)
+
+**Not verified in play.** Every number below is a tuning-card question.
+
+### Identity, not a ramp
+
+The ten authored waves used to add roughly two drones each with the same mix
+throughout. That is a difficulty curve but not a memory: no wave was recognisable,
+so nothing taught anything specific and nothing was worth dreading.
+
+| # | Name | Shape |
+| --- | --- | --- |
+| 1 | CONTACT | 3 rushers. Learn the rifle and the fuse. |
+| 2 | PROBE | 5 rushers. |
+| 3 | OVERWATCH | 5 rushers, 3 shooters — room for the deliberate first miss to land. |
+| 4 | SWARM | 14 rushers over 8 s, **no ranged threat at all**. |
+| 5 | SIEGE | 4 rushers, 7 shooters. The wave that makes the lane dividers worth using. |
+| 6 | BREACH | 10 / 4 / 1 — the first tank. |
+| 7 | ANVIL | 6 / 3 / **3 tanks**. Walking away is meant to be the right answer. |
+| 8 | SWARM II | 20 rushers over 10 s, 2 shooters. |
+| 9 | CROSSFIRE | 8 / 9 / 1. |
+| 10 | OVERRUN | 16 / 7 / 3. |
+
+`WaveConfig.displayName` shows in the HUD next to the number, because identity the
+player cannot see is not identity.
+
+**`WaveConfig.designVersion` is what makes a redesign land.** `WriteWave`'s old
+rebuild test was array length alone, so changing 7 rushers to 14 while keeping one
+entry looked applied and did nothing. `LoadOrCreate` has the same trap from the
+other side — its configure callback runs on CREATE only — which is why the payout
+and the name are written in `WriteWave` rather than there. Drone references are
+still re-linked unconditionally; a broken one is a wave that spawns nothing.
+
+**The endless seam moved with it.** Raising wave 10 to 320 put the ramp's opening
+wave below it, a pay cut on exactly the wave where count, health and shop prices
+all step up together. `endlessClearBonusPerWave` is 20, in the asset and in the
+builder default. `CoreLogicTests` guards the seam.
+
+### The repair beacon
+
+[ArenaObjective](../../Assets/_Project/Scripts/Waves/ArenaObjective.cs) plus
+`Objective_Beacon.asset`. The arena has three lanes and nothing gave the player a
+reason to be in one rather than another, so the correct play was to find a corner
+with good sightlines and never leave it.
+
+On every `WaveStarted` the beacon moves to a different lane anchor and its heal
+budget resets. Standing inside `radius` (2.5 m, measured on the floor plane) heals
+`healPerSecond` (6) up to `healBudgetPerWave` (35).
+
+- Only what was **actually** restored comes off the budget, so standing on it at
+  full health cannot quietly burn the allowance.
+- Only heals during `RunPhase.Wave`. Through the break the budget would be free.
+- Never the same lane twice running — chosen from a range one shorter with a step
+  over the previous index, so it is uniform and never loops to reroll.
+
+### Skipping the shop
+
+`WaveRunner.SkipShopForBonus()` on `TAB`. See [shop.md](shop.md).
+
 ## Related Systems
 
 - [drones.md](drones.md) — what a wave is made of; the token interface lives there.

@@ -202,3 +202,26 @@ inventing work to look busy.
 **As of 2026-08-11 they are all finished.** M4 is the blocker. There is no
 machine-checkable work left that would not be guessing at what a person has to
 judge — and the M5 content list must not start until they have judged it.
+
+## 2026-08-11 — the image pipeline and the content gate override
+
+Two things landed in one session.
+
+**R1-R2, the render pass.** The project had been rendering with post-processing
+switched off for its whole life and no gate noticed: the camera had no
+`UniversalAdditionalCameraData`, so the emissive drone cores and the attack
+telegraph that ramps them clipped flat instead of glowing. Turning it on, plus
+arena lighting, surface response and a generated detail normal, is
+[docs/systems/rendering.md](systems/rendering.md). Anti-aliasing and
+post-processing became player-facing settings (save schema 3).
+
+**G1-G5, the content gate override.** CLAUDE.md gates the content list behind a
+play session that has not happened. The user was shown that gate and chose the
+full scope anyway, so wave identity, shop consumables, the skip-the-break gamble,
+the repair beacon and sandbox module depth all shipped ahead of it.
+
+For autopilot, the standing consequence is this: **G1-G5 are the least proven
+work in the repo.** They compile, they hold under 108 tests, and nobody has felt
+any of them. Treat a play report that contradicts one of them as authoritative
+over the design intent recorded in the commit message, and expect to move their
+numbers rather than defend them.

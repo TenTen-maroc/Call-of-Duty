@@ -10,7 +10,7 @@ Keep this file updated as milestones land — it is the handoff, not a snapshot.
 
 ## THE PLAY SESSION — the tuning card
 
-Everything a machine can check is checked: 84 tests, six guards, nine clean
+Everything a machine can check is checked: 108 tests, six guards, nine clean
 assemblies, and a Windows `.exe` that has been built and run outside the editor.
 What is left is the one input automation does not have — **is it fun** — and it
 needs you in front of the game.
@@ -54,8 +54,28 @@ wrong, say so before touching the feel items.
 | 8 | **The arena lanes.** Does breaking line of sight actually change a fight, or do drones still arrive as one mass? | the block positions in `GreyBoxBuilder.BuildRoom` |
 | 9 | **40 alive on the 3050.** Watch the frame time. This is the ONE thing no test can answer — headless runs have no GPU work at all. | `Difficulty.maxAliveDrones` — the one number not to raise |
 
-**Nine and A1-A6, not "a vibe check".** Report per number. Anything you cannot
-reach (a wave you never survived to, a module you never afforded) says so —
+## Part C — the new stuff, none of it ever played
+
+Added 2026-08-11. The render pass (C1-C4) went in **before** this session on
+purpose, so you judge the renderer that will actually ship. The gameplay items
+(C5-C9) were shipped ahead of the play session **by explicit instruction**,
+overriding the content gate in CLAUDE.md — so they are the least proven things
+in the project and the most likely to need moving.
+
+| # | What to feel | If it is wrong, move this |
+| --- | --- | --- |
+| C1 | **Does anything glow now.** The drone cores are emissive and the attack telegraph ramps them ~3.9x. Until this pass none of it resolved. Is the Rusher fuse readable across the arena? Is bloom too much? | `PostFx_Arena.asset` → Bloom `intensity` (0.35) · `threshold` (1.05) |
+| C2 | **The tonemapper.** Neutral, deliberately not ACES, so the red/amber/crimson cores stay distinguishable. If the image looks flat or washed, try ACES and tell me which reads better. | `PostFx_Arena.asset` → Tonemapping `mode` |
+| C3 | **The lane lights.** Warm, dim, one per lane, plus a cool key on the bunker. Do they say "they come from there", or is the arena just darker? | `GreyBoxBuilder.BuildArenaLights` colours and intensities |
+| C4 | **Frame time with post ON, 40 alive.** THE question. Headless runs do no GPU work, so nothing automated can answer it. If it drops, turn POST-PROCESSING off in the settings menu and measure again — that is what the toggle is for. | `Difficulty.maxAliveDrones` is still not the knob. Bloom intensity is. |
+| C5 | **Wave identity.** SWARM (14 rushers, nothing ranged) then SIEGE (4 rushers, 7 shooters). Do they feel like different fights, or just different counts? | the `plan` table in `GreyBoxBuilder.BuildWaves` — and bump `WaveDesignVersion` or the change will not land |
+| C6 | **Field Repair / Resupply.** Always on the shelf at $120 / $90. Do they make a bad roll survivable, or are they just always the correct buy? | `Shop_Repair.cost` · `Shop_Resupply.cost` · `Consumable_Repair.healFraction` (0.5) |
+| C7 | **Skipping the break (TAB).** Next clear pays x1.75. Is that enough to ever tempt you, or so much it is always right? | `Shop.skipBonusMultiplier` |
+| C8 | **The repair beacon.** Moves lane every wave, 6 HP/s up to 35 for the wave. Does it pull you out of a good corner, or is walking to it just a way to die? | `Objective_Beacon.radius` (2.5) · `.healPerSecond` (6) · `.healBudgetPerWave` (35) |
+| C9 | **Sandbox module depth.** Explosive + Chain in Sandbox now resolves one level deeper than in a Run. Absurd in the good way, or a frame-rate event? | `GameConfig.sandboxExtraEffectDepth` (1) |
+
+**Nine, A1-A6, and C1-C9 — not "a vibe check".** Report per number. Anything you
+cannot reach (a wave you never survived to, a module you never afforded) says so —
 "couldn't get there" is itself a finding about pacing.
 
 ---
@@ -70,6 +90,15 @@ reach (a wave you never survived to, a module you never afforded) says so —
 - The built `.exe` boots, reaches the menu and loads the arena with zero errors,
   in both release and development configurations.
 - The release binary contains no cheat-console code at all.
+- Post-processing is ON in both scenes and the profile keeps its overrides through
+  a save; the settings reach the camera; the arena trim carries no colliders and
+  the navmesh still has no islands. All asserted by RenderingTests.
+- The beacon relocates between waves and heals only within its per-wave budget.
+- Skipping a break arms the bonus and spends it exactly once.
+
+**One tuning interaction to watch:** the post `Vignette` (0.28) sits underneath
+`PlayerDamageFeedback._lowHealthTint`, which is a separate full-screen image. Not
+a conflict, but tune them together or the low-health cue reads as too strong.
 
 ---
 
@@ -95,7 +124,7 @@ Code-complete and shippable-shaped: main menu, Run and Sandbox modes, pause,
 working settings, a Windows .exe proven to run outside the editor, and the whole
 loop — two weapons, three drone archetypes, timed waves, a between-wave shop
 selling passives and four stacking effect modules, permadeath with a versioned
-save, and a three-lane arena. 84 tests, six guards, nine clean assemblies.
+save, and a three-lane arena. 108 tests, six guards, nine clean assemblies.
 
 THE ONLY OPEN QUESTION IS WHETHER IT IS FUN. Phases 4-7 have never been played.
 The card at the top of docs/NEXT-SESSION-PROMPT.md is the list, each item naming
