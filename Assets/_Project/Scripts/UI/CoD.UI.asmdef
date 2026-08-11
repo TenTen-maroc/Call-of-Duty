@@ -4,6 +4,7 @@
     "references": [
         "CoD.Core",
         "CoD.Weapons",
+        "CoD.Enemies",
         "CoD.Player",
         "Unity.InputSystem"
     ],

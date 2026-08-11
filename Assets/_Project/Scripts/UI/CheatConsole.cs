@@ -1,5 +1,6 @@
 #nullable enable
 using CoD.Core;
+using CoD.Enemies;
 using CoD.Weapons;
 using UnityEngine;
 using UnityEngine.InputSystem;
@@ -26,6 +27,11 @@ namespace CoD.UI
         [Tooltip("Spawned by the 'spawn dummy' cheat. Must be registered in the pool.")]
         [SerializeField] private GameObject? _dummyTargetPrefab = null;
         [SerializeField] private Transform? _spawnOrigin = null;
+        [Tooltip("Sandbox drone spawning. The fastest way to test the horde without waiting for a wave.")]
+        [SerializeField] private DroneSpawner? _droneSpawner = null;
+        [SerializeField] private DroneRegistry? _droneRegistry = null;
+        [Tooltip("How many drones the spawn cheat releases at once.")]
+        [SerializeField] private int _droneBurstSize = 3;
         [SerializeField] private Key _toggleKey = Key.Backquote;
 
         private bool _open;
@@ -52,6 +58,8 @@ namespace CoD.UI
             if (keyboard[Key.Digit3].wasPressedThisFrame) ToggleSlowMo();
             if (keyboard[Key.Digit4].wasPressedThisFrame) SpawnDummy();
             if (keyboard[Key.Digit5].wasPressedThisFrame) CycleDamageMultiplier();
+            if (keyboard[Key.Digit6].wasPressedThisFrame) SpawnDrones();
+            if (keyboard[Key.Digit7].wasPressedThisFrame) DespawnDrones();
         }
 
         private void Toggle()
@@ -96,6 +104,27 @@ namespace CoD.UI
             GameLog.Info("spawned dummy target", this);
         }
 
+        private void SpawnDrones()
+        {
+            if (_droneSpawner == null) return;
+            DroneConfig? config = _droneSpawner.DefaultDrone;
+            if (config == null)
+            {
+                GameLog.Warn("No default drone assigned on the spawner.", this);
+                return;
+            }
+            int spawned = _droneSpawner.SpawnBurst(config, _droneBurstSize);
+            GameLog.Info($"spawned {spawned} x {config.displayName} (alive {_droneSpawner.AliveCount})", this);
+        }
+
+        private void DespawnDrones()
+        {
+            if (_droneRegistry == null) return;
+            int before = _droneRegistry.AliveCount;
+            _droneRegistry.DespawnAll();
+            GameLog.Info($"despawned {before} drones", this);
+        }
+
         private void CycleDamageMultiplier()
         {
             if (_weapon == null) return;
@@ -110,13 +139,15 @@ namespace CoD.UI
             // IMGUI is fine here: this panel only exists in dev builds, and it
             // costs nothing to maintain compared to a uGUI hierarchy.
             const float width = 260f;
-            GUILayout.BeginArea(new Rect(12f, 12f, width, 190f), GUI.skin.box);
+            GUILayout.BeginArea(new Rect(12f, 12f, width, 240f), GUI.skin.box);
             GUILayout.Label("SANDBOX CONSOLE");
             GUILayout.Label("1  godmode          " + _godMode);
             GUILayout.Label("2  infinite ammo    " + (_weapon != null && _weapon.InfiniteAmmo));
             GUILayout.Label("3  slow-mo          " + _slowMo);
             GUILayout.Label("4  spawn dummy");
             GUILayout.Label("5  damage x         " + (_weapon != null ? _weapon.DamageMultiplier : 1f));
+            GUILayout.Label("6  spawn " + _droneBurstSize + " drones");
+            GUILayout.Label("7  clear drones     " + (_droneRegistry != null ? _droneRegistry.AliveCount : 0) + " alive");
             GUILayout.EndArea();
         }
 

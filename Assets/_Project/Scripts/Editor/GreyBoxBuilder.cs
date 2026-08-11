@@ -1,11 +1,14 @@
 #nullable enable
 using CoD.Core;
+using CoD.Enemies;
 using CoD.Player;
 using CoD.UI;
 using CoD.Weapons;
+using Unity.AI.Navigation;
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
+using UnityEngine.AI;
 using UnityEngine.SceneManagement;
 using UnityEngine.UI;
 
@@ -28,6 +31,8 @@ namespace CoD.EditorTools
     {
         private const string DataGame = "Assets/_Project/Data/Game";
         private const string DataWeapons = "Assets/_Project/Data/Weapons";
+        private const string DataDrones = "Assets/_Project/Data/Drones";
+        private const string DataAttacks = "Assets/_Project/Data/Attacks";
         private const string Materials = "Assets/_Project/Art/Materials";
         private const string Prefabs = "Assets/_Project/Prefabs";
         private const string Scenes = "Assets/_Project/Scenes";
@@ -35,6 +40,7 @@ namespace CoD.EditorTools
 
         private const string GreyBoxScenePath = Scenes + "/10_GreyBox.unity";
         private const string BootScenePath = Scenes + "/00_Boot.unity";
+        private const string NavMeshPath = Scenes + "/NavMesh_GreyBox.asset";
 
         [MenuItem("CoD/Build Grey Box", false, 0)]
         public static void Build()
@@ -64,11 +70,37 @@ namespace CoD.EditorTools
             Material gunmetal = LoadOrCreateMaterial(Materials + "/Weapon_Body.mat", new Color(0.10f, 0.105f, 0.115f));
             Material gunAccent = LoadOrCreateMaterial(Materials + "/Weapon_Accent.mat", new Color(0.055f, 0.06f, 0.065f));
 
+            // Drone palette: a dark hull so the glowing core is the only thing the
+            // eye tracks, and the core is what the telegraph tints.
+            Material droneHull = LoadOrCreateMaterial(Materials + "/Drone_Hull.mat", new Color(0.13f, 0.14f, 0.17f));
+            Material droneCore = LoadOrCreateEmissiveMaterial(Materials + "/Drone_Core.mat",
+                new Color(0.75f, 0.12f, 0.10f), 1.6f);
+
             GameObject decal = BuildDecalPrefab(hot);
             GameObject sparks = BuildSparksPrefab();
             GameObject flash = BuildMuzzleFlashPrefab(hot);
             GameObject casing = BuildCasingPrefab(hot);
             GameObject dummy = BuildDummyTargetPrefab(targetMat, targetHealth);
+
+            GameObject explosion = BuildExplosionPrefab(hot);
+            GameObject droneDeath = BuildDroneDeathPrefab(hot);
+            GameObject dronePrefab = BuildDronePrefab(droneHull, droneCore);
+
+            DifficultyConfig difficulty = LoadOrCreate<DifficultyConfig>(DataGame + "/Difficulty.asset", ConfigureDifficulty);
+            ContactDetonate detonate = LoadOrCreate<ContactDetonate>(
+                DataAttacks + "/ContactDetonate_Std.asset", ConfigureContactDetonate);
+            DroneConfig rusher = LoadOrCreate<DroneConfig>(DataDrones + "/Drone_Rusher.asset", ConfigureRusher);
+
+            SetRef(detonate, "explosionVfx", explosion);
+            SetRef(detonate, "alertClip", LoadClip("Drone_Alert"));
+            EditorUtility.SetDirty(detonate);
+
+            SetRef(rusher, "prefab", dronePrefab);
+            SetRef(rusher, "attack", detonate);
+            SetRef(rusher, "deathVfx", droneDeath);
+            EditorUtility.SetDirty(rusher);
+
+            var drones = new DroneAssets(rusher, dronePrefab, explosion, droneDeath, difficulty);
 
             SetRef(impact, "decalPrefab", decal);
             SetRef(impact, "particlePrefab", sparks);
@@ -83,7 +115,7 @@ namespace CoD.EditorTools
             EditorUtility.SetDirty(rifle);
 
             BuildGreyBoxScene(game, loadout, impact, grey, wall, targetMat, gunmetal, gunAccent,
-                dummy, decal, sparks, flash, casing);
+                dummy, decal, sparks, flash, casing, drones);
             BuildBootScene();
             RegisterScenes();
 
@@ -110,6 +142,33 @@ namespace CoD.EditorTools
             {
                 Debug.LogError("Grey box build failed: " + exception);
                 EditorApplication.Exit(1);
+            }
+        }
+
+        /// <summary>
+        /// Everything the Rusher milestone adds, in one parameter. The scene
+        /// builder already takes a dozen references; grouping each milestone's
+        /// assets keeps that from becoming a twenty-argument signature nobody can
+        /// read. A readonly struct with a constructor, not an object initializer —
+        /// under `#nullable enable` an initializer would leave the fields
+        /// provably-unassigned and the build gate fails on warnings.
+        /// </summary>
+        private readonly struct DroneAssets
+        {
+            public readonly DroneConfig Rusher;
+            public readonly GameObject Prefab;
+            public readonly GameObject Explosion;
+            public readonly GameObject DeathVfx;
+            public readonly DifficultyConfig Difficulty;
+
+            public DroneAssets(DroneConfig rusher, GameObject prefab, GameObject explosion,
+                GameObject deathVfx, DifficultyConfig difficulty)
+            {
+                Rusher = rusher;
+                Prefab = prefab;
+                Explosion = explosion;
+                DeathVfx = deathVfx;
+                Difficulty = difficulty;
             }
         }
 
@@ -145,6 +204,50 @@ namespace CoD.EditorTools
             config.sprintToFireTime = 0.2f;
             config.reloadTime = 2f;
             config.reloadEmptyTime = 2.6f;
+        }
+
+        private static void ConfigureDifficulty(DifficultyConfig config)
+        {
+            // Both caps are load-bearing, not tuning knobs: 40 protects a 4 GB
+            // GPU, and 3 attackers is why a crowd reads as fair.
+            config.maxAliveDrones = 40;
+            config.maxSimultaneousAttackers = 3;
+            config.minSpawnDistanceFromPlayer = 12f;
+            config.spawnSampleRadius = 4f;
+            config.attackTokenTimeout = 6f;
+        }
+
+        private static void ConfigureContactDetonate(ContactDetonate config)
+        {
+            config.triggerRadius = 2.2f;
+            // The fuse is the difference between a threat and a coin flip. Half a
+            // second is enough to shoot it or step away, not enough to ignore.
+            config.fuseSeconds = 0.55f;
+            config.lungeSpeedMultiplier = 1.35f;
+            config.damage = 24f;      // 100 HP player: three hits, so two mistakes survive
+            config.blastRadius = 3.5f;
+            config.minBlastMultiplier = 0.33f;
+        }
+
+        private static void ConfigureRusher(DroneConfig config)
+        {
+            config.stableId = "drone_rusher";
+            config.displayName = "Rusher";
+            // 100 HP = four AR body shots = the same ~257 ms TTK the gun was tuned
+            // around. The drone is the first thing that number is spent on.
+            config.maxHealth = 100f;
+            // Between walk (5.2) and sprint (8.0): backpedalling loses the race,
+            // sprinting wins it. That one relationship is the whole chase.
+            config.moveSpeed = 6f;
+            config.acceleration = 24f;
+            config.turnSpeed = 720f;
+            config.hoverHeight = 0.9f;
+            config.preferredRange = 0f;   // closes to contact
+            config.stopDistance = 0.6f;
+            config.repathInterval = 0.15f;
+            config.scoreValue = 10;
+            config.moneyReward = 12;
+            config.deathVfxLifetime = 0.9f;
         }
 
         // ---------- prefabs ----------
@@ -257,11 +360,176 @@ namespace CoD.EditorTools
             return SavePrefab(root, Prefabs + "/Target_Dummy.prefab");
         }
 
+        /// <summary>
+        /// The Rusher. A dark hull with one glowing core, because at 30 m through
+        /// fog a silhouette plus a bright spot is all the player can actually
+        /// read — and the core doubles as the weakpoint and the fuse telegraph.
+        ///
+        /// The NavMeshAgent ships DISABLED. A pooled agent enabled while its
+        /// object sits off the navmesh throws on the first SetDestination, so the
+        /// controller owns exactly when it comes alive.
+        /// </summary>
+        private static GameObject BuildDronePrefab(Material hull, Material core)
+        {
+            GameObject root = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            root.name = "Drone_Rusher";
+            root.transform.localScale = new Vector3(0.7f, 0.55f, 0.7f);
+            MeshRenderer hullRenderer = root.GetComponent<MeshRenderer>();
+            hullRenderer.sharedMaterial = hull;
+
+            // Core: the weakpoint AND the telegraph. Sits forward so the reward for
+            // aiming is on the face the player sees while it charges them.
+            GameObject coreObject = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            coreObject.name = "Core";
+            coreObject.transform.SetParent(root.transform, false);
+            coreObject.transform.localPosition = new Vector3(0f, 0f, 0.42f);
+            // Child scale compensates for the stretched parent, or the core comes
+            // out as a slab rather than a cube.
+            coreObject.transform.localScale = new Vector3(0.3f / 0.7f, 0.3f / 0.55f, 0.3f / 0.7f);
+            MeshRenderer coreRenderer = coreObject.GetComponent<MeshRenderer>();
+            coreRenderer.sharedMaterial = core;
+
+            GameObject finLeft = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            finLeft.name = "Fin_L";
+            finLeft.transform.SetParent(root.transform, false);
+            finLeft.transform.localPosition = new Vector3(-0.6f, 0f, -0.1f);
+            finLeft.transform.localScale = new Vector3(0.35f, 0.25f, 0.6f);
+            finLeft.GetComponent<MeshRenderer>().sharedMaterial = hull;
+            Object.DestroyImmediate(finLeft.GetComponent<Collider>());
+
+            GameObject finRight = Object.Instantiate(finLeft, root.transform);
+            finRight.name = "Fin_R";
+            finRight.transform.localPosition = new Vector3(0.6f, 0f, -0.1f);
+
+            NavMeshAgent agent = root.AddComponent<NavMeshAgent>();
+            agent.radius = 0.4f;      // under the 0.5 the surface bakes for, so it fits everywhere the mesh exists
+            agent.height = 1.2f;
+            agent.baseOffset = 0.9f;
+            agent.autoBraking = false;
+            agent.enabled = false;
+
+            Health health = root.AddComponent<Health>();  // max comes from DroneConfig at spawn
+
+            Weakpoint weakpoint = coreObject.AddComponent<Weakpoint>();
+            SetRef(weakpoint, "_owner", health);
+
+            HitFlash hitFlash = root.AddComponent<HitFlash>();
+            SetRef(hitFlash, "_renderer", hullRenderer);
+
+            AudioSource audio = root.AddComponent<AudioSource>();
+            audio.playOnAwake = false;
+            audio.spatialBlend = 1f;      // the fuse has to come from a place in the room
+            audio.maxDistance = 30f;
+            audio.rolloffMode = AudioRolloffMode.Linear;
+
+            root.AddComponent<PooledObject>();
+
+            DroneController controller = root.AddComponent<DroneController>();
+            SetRef(controller, "_agent", agent);
+            SetRef(controller, "_health", health);
+            SetRef(controller, "_pooled", root.GetComponent<PooledObject>());
+            SetRef(controller, "_audio", audio);
+            SetRef(controller, "_coreRenderer", coreRenderer);
+
+            return SavePrefab(root, Prefabs + "/Drone_Rusher.prefab");
+        }
+
+        /// <summary>
+        /// The detonation. Carries its own AudioSource because the drone that set
+        /// it off deactivates in the same frame — a clip played on the drone would
+        /// be cut off mid-bang.
+        /// </summary>
+        private static GameObject BuildExplosionPrefab(Material material)
+        {
+            GameObject root = new("Fx_Explosion");
+            ParticleSystem particles = root.AddComponent<ParticleSystem>();
+
+            ParticleSystem.MainModule main = particles.main;
+            main.duration = 0.6f;
+            main.loop = false;
+            main.startLifetime = 0.45f;
+            main.startSpeed = 9f;
+            main.startSize = 0.35f;
+            main.maxParticles = 40;
+            main.playOnAwake = true;
+
+            ParticleSystem.EmissionModule emission = particles.emission;
+            emission.rateOverTime = 0f;
+            emission.SetBurst(0, new ParticleSystem.Burst(0f, 26));
+
+            ParticleSystem.ShapeModule shape = particles.shape;
+            shape.shapeType = ParticleSystemShapeType.Sphere;
+            shape.radius = 0.2f;
+
+            particles.GetComponent<ParticleSystemRenderer>().sharedMaterial = material;
+
+            // A real light for a few frames is what sells a blast, exactly as it
+            // does for the muzzle flash. One per explosion, not per particle.
+            GameObject lightObject = new("Flash");
+            lightObject.transform.SetParent(root.transform, false);
+            Light light = lightObject.AddComponent<Light>();
+            light.type = LightType.Point;
+            light.color = new Color(1f, 0.7f, 0.35f);
+            light.range = 12f;
+            light.intensity = 18f;
+
+            AudioSource audio = root.AddComponent<AudioSource>();
+            audio.playOnAwake = true;
+            audio.spatialBlend = 1f;
+            audio.maxDistance = 45f;
+            audio.rolloffMode = AudioRolloffMode.Linear;
+            audio.clip = LoadClip("Explosion");
+
+            root.AddComponent<PooledObject>();
+            return SavePrefab(root, Prefabs + "/Fx_Explosion.prefab");
+        }
+
+        /// <summary>
+        /// Shot down, as opposed to detonated. Deliberately smaller and quieter
+        /// than the explosion so "I killed it" and "it got me" never look or sound
+        /// the same.
+        /// </summary>
+        private static GameObject BuildDroneDeathPrefab(Material material)
+        {
+            GameObject root = new("Fx_DroneDeath");
+            ParticleSystem particles = root.AddComponent<ParticleSystem>();
+
+            ParticleSystem.MainModule main = particles.main;
+            main.duration = 0.4f;
+            main.loop = false;
+            main.startLifetime = 0.3f;
+            main.startSpeed = 5f;
+            main.startSize = 0.12f;
+            main.maxParticles = 20;
+            main.playOnAwake = true;
+
+            ParticleSystem.EmissionModule emission = particles.emission;
+            emission.rateOverTime = 0f;
+            emission.SetBurst(0, new ParticleSystem.Burst(0f, 14));
+
+            ParticleSystem.ShapeModule shape = particles.shape;
+            shape.shapeType = ParticleSystemShapeType.Sphere;
+            shape.radius = 0.15f;
+
+            particles.GetComponent<ParticleSystemRenderer>().sharedMaterial = material;
+
+            AudioSource audio = root.AddComponent<AudioSource>();
+            audio.playOnAwake = true;
+            audio.spatialBlend = 1f;
+            audio.maxDistance = 35f;
+            audio.rolloffMode = AudioRolloffMode.Linear;
+            audio.clip = LoadClip("Drone_Death");
+
+            root.AddComponent<PooledObject>();
+            return SavePrefab(root, Prefabs + "/Fx_DroneDeath.prefab");
+        }
+
         // ---------- scenes ----------
 
         private static void BuildGreyBoxScene(GameConfig game, PlayerLoadoutConfig loadout, ImpactConfig impact,
             Material floorMat, Material wallMat, Material targetMat, Material gunmetal, Material gunAccent,
-            GameObject dummyPrefab, GameObject decal, GameObject sparks, GameObject flash, GameObject casing)
+            GameObject dummyPrefab, GameObject decal, GameObject sparks, GameObject flash, GameObject casing,
+            DroneAssets drones)
         {
             Scene scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
 
@@ -293,22 +561,30 @@ namespace CoD.EditorTools
             RenderSettings.fogStartDistance = 14f;
             RenderSettings.fogEndDistance = 55f;
 
-            BuildRoom(floorMat, wallMat);
+            GameObject room = BuildRoom(floorMat, wallMat);
+            BakeNavMesh(room);
 
             ObjectPool pool = new GameObject("ObjectPool").AddComponent<ObjectPool>();
-            SetPrewarm(pool, decal, sparks, flash, casing, dummyPrefab);
+            // Counts are sized for a full wave, not for the demo: the pool exists
+            // so the first shot of round twelve costs the same as the first shot
+            // of round one.
+            SetPrewarm(pool,
+                (decal, 48), (sparks, 24), (flash, 4), (casing, 24), (dummyPrefab, 8),
+                (drones.Prefab, 24), (drones.Explosion, 8), (drones.DeathVfx, 8));
 
-            (WeaponController weapon, PlayerLook look, Health playerHealth, Transform muzzle) =
+            (WeaponController weapon, PlayerLook look, Health playerHealth, Transform muzzle,
+                Transform playerTransform, Transform cameraTransform) =
                 BuildPlayerRig(game, loadout, impact, pool, gunmetal, gunAccent);
 
             BuildTargets(dummyPrefab, targetMat);
-            BuildHud(weapon, playerHealth, game, pool, dummyPrefab, muzzle);
+            (DroneSpawner spawner, DroneRegistry registry) = BuildDroneRig(drones, pool, playerTransform);
+            BuildHud(weapon, playerHealth, game, pool, dummyPrefab, muzzle, spawner, registry, cameraTransform);
 
             EditorSceneManager.MarkSceneDirty(scene);
             EditorSceneManager.SaveScene(scene, GreyBoxScenePath);
         }
 
-        private static void BuildRoom(Material floorMat, Material wallMat)
+        private static GameObject BuildRoom(Material floorMat, Material wallMat)
         {
             GameObject room = new("Room");
 
@@ -328,6 +604,80 @@ namespace CoD.EditorTools
             AddBox(room, "Cover_A", new Vector3(-6f, 1f, 6f), new Vector3(3f, 2f, 1f), wallMat);
             AddBox(room, "Cover_B", new Vector3(7f, 1.5f, 10f), new Vector3(1f, 3f, 4f), wallMat);
             AddBox(room, "Cover_C", new Vector3(0f, 0.75f, 14f), new Vector3(6f, 1.5f, 1f), wallMat);
+            return room;
+        }
+
+        /// <summary>
+        /// Bakes the drone navmesh over the room and PERSISTS it as an asset.
+        ///
+        /// The persistence is the fiddly half: NavMeshSurface.BuildNavMesh leaves
+        /// the result in memory, and a scene reference to an unsaved object is
+        /// dropped on save — the same class of silent failure that produced a
+        /// scene full of null configs on the first build. Writing it to disk and
+        /// re-assigning it makes the link something GreyBoxVerify can prove.
+        ///
+        /// Collect from CHILDREN, not the whole scene: baked after the room but
+        /// before the player and the targets exist, an "all objects" bake would
+        /// carve the dummy targets into the mesh as permanent obstacles.
+        /// </summary>
+        private static void BakeNavMesh(GameObject room)
+        {
+            NavMeshSurface surface = room.AddComponent<NavMeshSurface>();
+            surface.collectObjects = CollectObjects.Children;
+            surface.useGeometry = NavMeshCollectGeometry.PhysicsColliders;
+            surface.BuildNavMesh();
+
+            if (surface.navMeshData == null)
+            {
+                Debug.LogError("NavMesh bake produced no data — drones will spawn and never move.");
+                return;
+            }
+
+            AssetDatabase.DeleteAsset(NavMeshPath);
+            AssetDatabase.CreateAsset(surface.navMeshData, NavMeshPath);
+            AssetDatabase.SaveAssets();
+
+            NavMeshData? saved = AssetDatabase.LoadAssetAtPath<NavMeshData>(NavMeshPath);
+            if (saved != null) surface.navMeshData = saved;
+            EditorUtility.SetDirty(surface);
+        }
+
+        /// <summary>
+        /// The spawn ring, the registry and the spawner. Spawn points sit on a
+        /// ring inside the walls; the spawner rejects any that are closer to the
+        /// player than DifficultyConfig allows, so where the player stands decides
+        /// which points are legal without any of them being special.
+        /// </summary>
+        private static (DroneSpawner, DroneRegistry) BuildDroneRig(DroneAssets drones, ObjectPool pool,
+            Transform player)
+        {
+            GameObject root = new("Drones");
+            DroneRegistry registry = root.AddComponent<DroneRegistry>();
+            DroneSpawner spawner = root.AddComponent<DroneSpawner>();
+
+            GameObject pointsRoot = new("SpawnPoints");
+            pointsRoot.transform.SetParent(root.transform, false);
+
+            const int count = 8;
+            const float radius = 16f;
+            var points = new Object[count];
+            for (int i = 0; i < count; i++)
+            {
+                float angle = i / (float)count * Mathf.PI * 2f;
+                GameObject point = new("Spawn_" + i);
+                point.transform.SetParent(pointsRoot.transform, false);
+                point.transform.position = new Vector3(Mathf.Sin(angle) * radius, 0f, Mathf.Cos(angle) * radius);
+                points[i] = point.transform;
+            }
+
+            SetRef(spawner, "_pool", pool);
+            SetRef(spawner, "_registry", registry);
+            SetRef(spawner, "_target", player);
+            SetRef(spawner, "_difficulty", drones.Difficulty);
+            SetRef(spawner, "_defaultDrone", drones.Rusher);
+            SetArrayRef(spawner, "_spawnPoints", points);
+
+            return (spawner, registry);
         }
 
         private static void AddBox(GameObject parent, string name, Vector3 position, Vector3 scale, Material material)
@@ -364,7 +714,7 @@ namespace CoD.EditorTools
             renderer.receiveShadows = false;
         }
 
-        private static (WeaponController, PlayerLook, Health, Transform) BuildPlayerRig(
+        private static (WeaponController, PlayerLook, Health, Transform, Transform, Transform) BuildPlayerRig(
             GameConfig game, PlayerLoadoutConfig loadout, ImpactConfig impact, ObjectPool pool,
             Material gunmetal, Material gunAccent)
         {
@@ -478,7 +828,7 @@ namespace CoD.EditorTools
             SetRef(weapon, "_audioClose", closeAudio);
             SetRef(weapon, "_audioTail", tailAudio);
 
-            return (weapon, look, health, muzzle.transform);
+            return (weapon, look, health, muzzle.transform, player.transform, cameraObject.transform);
         }
 
         private static void BuildTargets(GameObject dummyPrefab, Material material)
@@ -498,7 +848,8 @@ namespace CoD.EditorTools
         }
 
         private static void BuildHud(WeaponController weapon, Health playerHealth, GameConfig game,
-            ObjectPool pool, GameObject dummyPrefab, Transform spawnOrigin)
+            ObjectPool pool, GameObject dummyPrefab, Transform spawnOrigin,
+            DroneSpawner spawner, DroneRegistry registry, Transform cameraTransform)
         {
             GameObject canvasObject = new("HUD");
             Canvas canvas = canvasObject.AddComponent<Canvas>();
@@ -624,6 +975,8 @@ namespace CoD.EditorTools
             SetRef(hud, "_healthLabel", healthLabel);
             SetRef(hud, "_lowAmmoTint", lowAmmoImage);
 
+            BuildDamageFeedback(canvasObject, game, playerHealth, cameraTransform, hudAudio);
+
             CheatConsole console = canvasObject.AddComponent<CheatConsole>();
             SetRef(console, "_config", game);
             SetRef(console, "_weapon", weapon);
@@ -631,6 +984,74 @@ namespace CoD.EditorTools
             SetRef(console, "_pool", pool);
             SetRef(console, "_dummyTargetPrefab", dummyPrefab);
             SetRef(console, "_spawnOrigin", spawnOrigin);
+            SetRef(console, "_droneSpawner", spawner);
+            SetRef(console, "_droneRegistry", registry);
+        }
+
+        /// <summary>
+        /// Being hurt, made visible. Until the Rusher existed nothing could damage
+        /// the player at all, so this is the first time the HUD has to answer
+        /// "what hit me, and from where" — a number dropping in the corner does
+        /// not answer either question.
+        ///
+        /// Plain Images throughout: a full-screen flash, four screen-edge wedges
+        /// for direction, and a low-health tint. No sprite assets, so no binaries
+        /// in git and nothing to keep in sync.
+        /// </summary>
+        private static void BuildDamageFeedback(GameObject canvasObject, GameConfig game, Health playerHealth,
+            Transform cameraTransform, AudioSource audio)
+        {
+            Image flash = BuildFullScreenImage(canvasObject, "DamageFlash", new Color(0.75f, 0.08f, 0.06f, 0f));
+            Image lowHealth = BuildFullScreenImage(canvasObject, "LowHealthTint", new Color(0.55f, 0.02f, 0.02f, 0f));
+
+            // Order matches PlayerDamageFeedback and the crosshair arms: up (the
+            // hit came from in front), down (behind), left, right.
+            var bars = new Object[4];
+            Vector2[] anchors = { new(0.5f, 1f), new(0.5f, 0f), new(0f, 0.5f), new(1f, 0.5f) };
+            Vector2[] sizes = { new(420f, 26f), new(420f, 26f), new(26f, 420f), new(26f, 420f) };
+            Vector2[] offsets = { new(0f, -70f), new(0f, 70f), new(70f, 0f), new(-70f, 0f) };
+            for (int i = 0; i < 4; i++)
+            {
+                GameObject bar = new("DamageDir" + i, typeof(RectTransform));
+                bar.transform.SetParent(canvasObject.transform, false);
+                Image image = bar.AddComponent<Image>();
+                image.color = new Color(0.9f, 0.18f, 0.13f, 0f);
+                image.raycastTarget = false;
+                image.enabled = false;
+                RectTransform rect = bar.GetComponent<RectTransform>();
+                rect.anchorMin = anchors[i];
+                rect.anchorMax = anchors[i];
+                rect.pivot = anchors[i];
+                rect.sizeDelta = sizes[i];
+                rect.anchoredPosition = offsets[i];
+                bars[i] = image;
+            }
+
+            PlayerDamageFeedback feedback = canvasObject.AddComponent<PlayerDamageFeedback>();
+            SetRef(feedback, "_config", game);
+            SetRef(feedback, "_health", playerHealth);
+            SetRef(feedback, "_flash", flash);
+            SetRef(feedback, "_lowHealthTint", lowHealth);
+            SetArrayRef(feedback, "_directionBars", bars);
+            SetRef(feedback, "_cameraTransform", cameraTransform);
+            SetRef(feedback, "_audio", audio);
+            SetRef(feedback, "_hurtClip", LoadClip("Player_Hurt"));
+        }
+
+        private static Image BuildFullScreenImage(GameObject parent, string name, Color color)
+        {
+            GameObject overlay = new(name, typeof(RectTransform));
+            overlay.transform.SetParent(parent.transform, false);
+            Image image = overlay.AddComponent<Image>();
+            image.color = color;
+            image.raycastTarget = false;
+            image.enabled = false;
+            RectTransform rect = overlay.GetComponent<RectTransform>();
+            rect.anchorMin = Vector2.zero;
+            rect.anchorMax = Vector2.one;
+            rect.offsetMin = Vector2.zero;
+            rect.offsetMax = Vector2.zero;
+            return image;
         }
 
         private static Text BuildLabel(GameObject parent, string name, Vector2 position,
@@ -679,7 +1100,7 @@ namespace CoD.EditorTools
             string[] folders =
             {
                 "Assets/_Project/Art", Materials, "Assets/_Project/Audio",
-                "Assets/_Project/Data", DataGame, DataWeapons, Audio,
+                "Assets/_Project/Data", DataGame, DataWeapons, DataDrones, DataAttacks, Audio,
                 Prefabs, Scenes,
             };
             foreach (string folder in folders)
@@ -742,6 +1163,27 @@ namespace CoD.EditorTools
             return material;
         }
 
+        /// <summary>
+        /// A material that actually glows. URP only reads _EmissionColor when the
+        /// _EMISSION keyword is on, so a plain colour assignment produces a
+        /// flat-looking drone core and the telegraph — which drives emission
+        /// through a MaterialPropertyBlock — would do nothing visible.
+        /// </summary>
+        private static Material LoadOrCreateEmissiveMaterial(string path, Color color, float intensity)
+        {
+            Material? material = AssetDatabase.LoadAssetAtPath<Material>(path);
+            if (material != null) return material;
+
+            Shader shader = Shader.Find("Universal Render Pipeline/Lit");
+            material = new Material(shader);
+            material.SetColor("_BaseColor", color);
+            material.EnableKeyword("_EMISSION");
+            material.globalIlluminationFlags = MaterialGlobalIlluminationFlags.RealtimeEmissive;
+            material.SetColor("_EmissionColor", color * intensity);
+            AssetDatabase.CreateAsset(material, path);
+            return material;
+        }
+
         private static GameObject SavePrefab(GameObject instance, string path)
         {
             GameObject prefab = PrefabUtility.SaveAsPrefabAsset(instance, path);
@@ -749,17 +1191,22 @@ namespace CoD.EditorTools
             return prefab;
         }
 
-        private static void SetPrewarm(ObjectPool pool, params GameObject[] prefabs)
+        /// <summary>
+        /// Registers every pooled prefab with its prewarm count. Explicit pairs
+        /// rather than a prefab array plus a parallel counts array: the old shape
+        /// silently mismatched the moment a prefab was inserted in the middle, and
+        /// a mis-sized pool only ever shows up as a hitch mid-wave.
+        /// </summary>
+        private static void SetPrewarm(ObjectPool pool, params (GameObject prefab, int count)[] entries)
         {
             SerializedObject serialized = new(pool);
             SerializedProperty array = serialized.FindProperty("_prewarm");
-            array.arraySize = prefabs.Length;
-            int[] counts = { 48, 24, 4, 24, 8 };
-            for (int i = 0; i < prefabs.Length; i++)
+            array.arraySize = entries.Length;
+            for (int i = 0; i < entries.Length; i++)
             {
                 SerializedProperty element = array.GetArrayElementAtIndex(i);
-                element.FindPropertyRelative("prefab").objectReferenceValue = prefabs[i];
-                element.FindPropertyRelative("count").intValue = i < counts.Length ? counts[i] : 8;
+                element.FindPropertyRelative("prefab").objectReferenceValue = entries[i].prefab;
+                element.FindPropertyRelative("count").intValue = entries[i].count;
             }
             serialized.ApplyModifiedProperties();
             EditorUtility.SetDirty(pool);

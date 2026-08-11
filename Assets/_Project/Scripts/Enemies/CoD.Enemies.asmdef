@@ -1,18 +1,11 @@
 {
-    "name": "CoD.Editor",
-    "rootNamespace": "CoD.EditorTools",
+    "name": "CoD.Enemies",
+    "rootNamespace": "CoD.Enemies",
     "references": [
         "CoD.Core",
-        "CoD.Enemies",
-        "CoD.Player",
-        "CoD.Weapons",
-        "CoD.UI",
-        "Unity.InputSystem",
         "Unity.AI.Navigation"
     ],
-    "includePlatforms": [
-        "Editor"
-    ],
+    "includePlatforms": [],
     "excludePlatforms": [],
     "allowUnsafeCode": false,
     "overrideReferences": false,

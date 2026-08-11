@@ -19,10 +19,15 @@ raises events; the UI decides what to draw.
   eased back. The kill variant is a different colour, longer, and a lower sound.
 - **[Hud.cs](../../Assets/_Project/Scripts/UI/Hud.cs)** — ammo and health, plus
   the low-ammo bar at 25% magazine.
+- **[PlayerDamageFeedback.cs](../../Assets/_Project/Scripts/UI/PlayerDamageFeedback.cs)** —
+  what being hurt looks and sounds like: a red flash, one of four screen-edge
+  wedges pointing at whatever hit you, a pulsing tint under 35% health, and a hurt
+  sound. Listens to the player's `Health.Damaged`.
 - **[CheatConsole.cs](../../Assets/_Project/Scripts/UI/CheatConsole.cs)** —
-  backquote toggles; 1-5 for godmode, infinite ammo, slow-mo, spawn dummy, damage
-  multiplier. Entirely inside `#if UNITY_EDITOR || DEVELOPMENT_BUILD`, so a
-  shipping build cannot be cheated by someone who found the key.
+  backquote toggles; 1-7 for godmode, infinite ammo, slow-mo, spawn dummy, damage
+  multiplier, spawn a drone burst, and clear all drones. Entirely inside
+  `#if UNITY_EDITOR || DEVELOPMENT_BUILD`, so a shipping build cannot be cheated
+  by someone who found the key.
 
 ## Key Behaviors & Non-Obvious Patterns
 
@@ -48,10 +53,20 @@ raises events; the UI decides what to draw.
   it never assumes Unity's 0.02 default.
 - The hitmarker's kill sound matters more than it looks: per the gunfeel
   reference it does more for feel than any amount of weapon polish.
+- **The damage direction indicator is the incoming-fire equivalent of the
+  hitmarker.** `DamageInfo.Direction` is the direction the damage was *travelling*,
+  so the source is the other way; that vector is projected onto the camera's own
+  axes and the dominant one lights. It turns "I died from nowhere" into "I got
+  caught out" — the same principle as the Shooter's deliberate opening miss.
+- **Transparent overlays are disabled, not just faded to zero.** Four idle
+  full-screen quads still cost fill rate on a laptop GPU, so `PlayerDamageFeedback`
+  toggles `Image.enabled` as alpha crosses zero.
 
 ## Related Systems
 
 - [weapons.md](weapons.md) — the event source for the hitmarker and crosshair.
+- [drones.md](drones.md) — what the damage feedback is reacting to, and what the
+  console's drone cheats drive.
 
 ## Gotchas
 

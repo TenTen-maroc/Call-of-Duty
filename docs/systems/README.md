@@ -15,12 +15,12 @@ obvious, emphasise the non-obvious.
 | [player.md](player.md) | Input, movement, look, camera shake, the rig layout | ✅ Phase 3 |
 | [pooling.md](pooling.md) | The object pool every spawn goes through | ✅ Phase 3 |
 | [ui.md](ui.md) | Crosshair, hitmarker, HUD, cheat console | ✅ Phase 3 |
-| `drones.md` | `DroneConfig`, `AttackModule`, NavMesh pathing, attack tokens | Rusher milestone |
+| [drones.md](drones.md) | `DroneConfig`, `AttackModule`, NavMesh pathing, attack tokens | ✅ Rusher |
 | `waves.md` | `WaveConfig`, `WaveRunner`, `DifficultyConfig` caps and the endless ramp | Waves milestone |
 | `shop.md` | `ShopConfig`, `ShopItemConfig`, `PassiveConfig`, `StatSheet` rebuild | Shop milestone |
 | `save.md` | Versioned JSON, `schemaVersion` migration, atomic write, `.bak` | Waves milestone |
 
-The four that exist describe code that now **runs**. Each states at the top what
+The five that exist describe code that now **runs**. Each states at the top what
 has actually been verified in play and what has only been compiled — those are
 different claims and the docs keep them apart.
 

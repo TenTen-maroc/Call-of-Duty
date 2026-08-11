@@ -118,4 +118,46 @@ writeWav('Reload_AR.wav', build(1.6, (t) => {
   return (clack(0.05) + clack(0.75) + clack(1.25)) * 0.5
 }))
 
+// ---------- drones (Rusher milestone) ----------
+
+// Explosion: the Rusher's contact detonation. Low body, noise burst, long tail —
+// it has to land harder than a gunshot or the threat reads as harmless.
+const rndBoom = makeRandom(31337)
+writeWav('Explosion.wav', build(0.9, (t) => {
+  const punch = Math.sin(2 * Math.PI * 55 * Math.exp(-t * 2) * t) * Math.exp(-t * 6)
+  const debris = rndBoom() * Math.exp(-t * 9) * 0.6
+  const crack = rndBoom() * Math.exp(-t * 120) * 0.5
+  return (punch + debris + crack) * 0.8
+}))
+
+// Drone alert: the fuse. A rising three-tone the player can learn to run from —
+// a contact detonation is only fair if it announces itself first.
+writeWav('Drone_Alert.wav', build(0.5, (t) => {
+  const beep = (at, freq) => {
+    const dt = t - at
+    return dt < 0 || dt > 0.12 ? 0 : Math.sin(2 * Math.PI * freq * dt) * Math.exp(-dt * 18)
+  }
+  return (beep(0, 900) + beep(0.18, 1250) + beep(0.34, 1700)) * 0.4
+}))
+
+// Drone death (shot down, not detonated): a short electrical collapse, clearly
+// NOT the explosion, so "I killed it" and "it got me" never sound alike.
+const rndDeath = makeRandom(5150)
+writeWav('Drone_Death.wav', build(0.35, (t) => {
+  const whine = Math.sin(2 * Math.PI * (700 - 500 * t) * t) * Math.exp(-t * 10)
+  const fizz = rndDeath() * Math.exp(-t * 25) * 0.4
+  return (whine + fizz) * 0.5
+}))
+
+// Player hurt: a dull thud plus a short ring. Damage that makes no sound reads
+// as a bug, and the ring is the "you are hurt" cue that lands before the eye
+// finds the health number.
+const rndHurt = makeRandom(6161)
+writeWav('Player_Hurt.wav', build(0.6, (t) => {
+  const thud = Math.sin(2 * Math.PI * 95 * t) * Math.exp(-t * 20)
+  const ring = Math.sin(2 * Math.PI * 3100 * t) * Math.exp(-t * 4) * 0.12
+  const grit = rndHurt() * Math.exp(-t * 40) * 0.25
+  return (thud + ring + grit) * 0.6
+}))
+
 console.log('\nPlaceholders only — replace with real recordings when the feel work starts.')

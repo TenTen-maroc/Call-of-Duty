@@ -44,6 +44,17 @@ namespace CoD.Core
         public float landingDipDegrees = 2f;
         [Range(0.02f, 0.5f)] public float landingDipTime = 0.12f;
 
+        [Header("Damage feedback")]
+        [Tooltip("How long the red hit flash stays up, in seconds.")]
+        [Range(0.05f, 1f)] public float damageFlashDuration = 0.18f;
+        [Range(0f, 1f)] public float damageFlashAlpha = 0.32f;
+        [Tooltip("Seconds the directional indicator points at whatever hit you. This is what turns 'died from nowhere' into 'got caught out'.")]
+        [Range(0.2f, 3f)] public float damageDirectionDuration = 1.1f;
+        [Tooltip("Health fraction below which the screen edges tint and pulse.")]
+        [Range(0f, 1f)] public float lowHealthThreshold = 0.35f;
+        [Range(0.5f, 6f)] public float lowHealthPulseSpeed = 2.2f;
+        [Range(0f, 1f)] public float lowHealthMaxAlpha = 0.4f;
+
         [Header("Sandbox")]
         [Range(0.05f, 1f)] public float slowMoTimeScale = 0.35f;
 

@@ -49,12 +49,22 @@ under pressure.
 **A prefab is added to the prewarm list in the same commit that creates it.**
 Wiring lives in [GreyBoxBuilder.cs](../../Assets/_Project/Scripts/Editor/GreyBoxBuilder.cs)
 (`SetPrewarm`), currently: impact decal 48, sparks 24, muzzle flash 4, casing 24,
-dummy target 8.
+dummy target 8, drone 24, explosion 8, drone death VFX 8. Counts are sized for a
+full wave, not for the demo — the pool exists so the first shot of round twelve
+costs the same as the first shot of round one.
+
+`SetPrewarm` takes explicit `(prefab, count)` pairs. It used to take a prefab
+array plus a parallel counts array, which silently mismatched the moment a prefab
+was inserted in the middle, and a mis-sized pool only shows up as a hitch
+mid-wave.
 
 ## Related Systems
 
 - [weapons.md](weapons.md) — the main consumer today.
-- Drones will be pooled the same way; that is what the 40-alive cap assumes.
+- [drones.md](drones.md) — drones, their explosions and their death VFX all come
+  from here; the 40-alive cap assumes it. A pooled drone carries a `NavMeshAgent`,
+  which needs an explicit enable/`Warp`/`ResetPath` dance on reuse — see that
+  file's gotchas.
 
 ## Gotchas
 

@@ -2,12 +2,15 @@
 using System.Collections.Generic;
 using System.Text;
 using CoD.Core;
+using CoD.Enemies;
 using CoD.Player;
 using CoD.UI;
 using CoD.Weapons;
+using Unity.AI.Navigation;
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
+using UnityEngine.AI;
 using UnityEngine.SceneManagement;
 
 namespace CoD.EditorTools
@@ -40,6 +43,10 @@ namespace CoD.EditorTools
             PlayerLoadoutConfig? loadout = Load<PlayerLoadoutConfig>("Assets/_Project/Data/Weapons/Loadout_Default.asset");
             ImpactConfig? impact = Load<ImpactConfig>("Assets/_Project/Data/Game/Impact_Default.asset");
             HealthConfig? health = Load<HealthConfig>("Assets/_Project/Data/Game/Health_Target.asset");
+            DifficultyConfig? difficulty = Load<DifficultyConfig>("Assets/_Project/Data/Game/Difficulty.asset");
+            DroneConfig? rusher = Load<DroneConfig>("Assets/_Project/Data/Drones/Drone_Rusher.asset");
+            NavMeshData? navMesh = AssetDatabase.LoadAssetAtPath<NavMeshData>(
+                "Assets/_Project/Scenes/NavMesh_GreyBox.asset");
 
             foreach (GameObject root in scene.GetRootGameObjects())
             {
@@ -62,6 +69,18 @@ namespace CoD.EditorTools
                 }
                 foreach (CheatConsole console in root.GetComponentsInChildren<CheatConsole>(true))
                     repaired += Ensure(console, "_config", game, report, ref missing);
+                foreach (PlayerDamageFeedback feedback in root.GetComponentsInChildren<PlayerDamageFeedback>(true))
+                    repaired += Ensure(feedback, "_config", game, report, ref missing);
+                foreach (DroneSpawner spawner in root.GetComponentsInChildren<DroneSpawner>(true))
+                {
+                    // Asset references in a scene are exactly the ones that go
+                    // missing silently — a null DroneConfig means the spawner runs,
+                    // logs nothing, and produces no drones.
+                    repaired += Ensure(spawner, "_difficulty", difficulty, report, ref missing);
+                    repaired += Ensure(spawner, "_defaultDrone", rusher, report, ref missing);
+                }
+                foreach (NavMeshSurface surface in root.GetComponentsInChildren<NavMeshSurface>(true))
+                    repaired += Ensure(surface, "m_NavMeshData", navMesh, report, ref missing);
             }
 
             if (repaired > 0)
@@ -105,7 +124,40 @@ namespace CoD.EditorTools
                     Check(crosshair, "_weapon", stillNull);
                     Check(crosshair, "_group", stillNull);
                 }
+                foreach (DroneSpawner spawner in root.GetComponentsInChildren<DroneSpawner>(true))
+                {
+                    Check(spawner, "_pool", stillNull);
+                    Check(spawner, "_registry", stillNull);
+                    Check(spawner, "_target", stillNull);
+                    Check(spawner, "_difficulty", stillNull);
+                    Check(spawner, "_defaultDrone", stillNull);
+                    CheckArray(spawner, "_spawnPoints", stillNull);
+                }
+                foreach (PlayerDamageFeedback feedback in root.GetComponentsInChildren<PlayerDamageFeedback>(true))
+                {
+                    Check(feedback, "_config", stillNull);
+                    Check(feedback, "_health", stillNull);
+                    Check(feedback, "_flash", stillNull);
+                    Check(feedback, "_lowHealthTint", stillNull);
+                    Check(feedback, "_cameraTransform", stillNull);
+                    Check(feedback, "_hurtClip", stillNull);
+                    CheckArray(feedback, "_directionBars", stillNull);
+                }
+                foreach (CheatConsole console in root.GetComponentsInChildren<CheatConsole>(true))
+                {
+                    Check(console, "_droneSpawner", stillNull);
+                    Check(console, "_droneRegistry", stillNull);
+                }
+                foreach (NavMeshSurface surface in root.GetComponentsInChildren<NavMeshSurface>(true))
+                    Check(surface, "m_NavMeshData", stillNull);
             }
+
+            // The drone assets themselves. A DroneConfig with no prefab is the
+            // same silent failure one level up: the spawner is wired, the wave
+            // runs, and nothing ever appears.
+            CheckAssetRef(rusher, "prefab", stillNull);
+            CheckAssetRef(rusher, "attack", stillNull);
+            CheckAssetRef(rusher, "deathVfx", stillNull);
 
             Debug.Log($"GreyBoxVerify: repaired {repaired}, unresolved {stillNull.Count}\n{report}");
             if (stillNull.Count > 0)
@@ -158,6 +210,40 @@ namespace CoD.EditorTools
             EditorUtility.SetDirty(target);
             report.AppendLine($"  {target.GetType().Name}.{field}: repaired -> {value.name}");
             return 1;
+        }
+
+        /// <summary>An empty array is as dead as a null reference, and reads the same in the Inspector.</summary>
+        private static void CheckArray(Object target, string field, List<string> stillNull)
+        {
+            var serialized = new SerializedObject(target);
+            SerializedProperty property = serialized.FindProperty(field);
+            if (property == null || !property.isArray)
+            {
+                stillNull.Add($"{target.GetType().Name}.{field} (no such array)");
+                return;
+            }
+            if (property.arraySize == 0)
+            {
+                stillNull.Add($"{target.GetType().Name}.{field} (empty)");
+                return;
+            }
+            for (int i = 0; i < property.arraySize; i++)
+            {
+                if (property.GetArrayElementAtIndex(i).objectReferenceValue == null)
+                {
+                    stillNull.Add($"{target.GetType().Name}.{field}[{i}]");
+                }
+            }
+        }
+
+        private static void CheckAssetRef(Object? asset, string field, List<string> stillNull)
+        {
+            if (asset == null)
+            {
+                stillNull.Add($"(missing asset).{field}");
+                return;
+            }
+            Check(asset, field, stillNull);
         }
 
         private static void Check(Object target, string field, List<string> stillNull)

@@ -224,6 +224,18 @@ const packageRefs = {
   'Unity.AI.Navigation': navigation,
 }
 
+/**
+ * Any other package assembly a first-party asmdef names. Unity already compiled
+ * it into Library/ScriptAssemblies, so no source build is needed — and resolving
+ * lazily means adding a package reference to an asmdef never again requires
+ * editing this file to keep the gate honest.
+ */
+function packageRef(name) {
+  if (name in packageRefs) return packageRefs[name]
+  packageRefs[name] = prebuiltAssembly(name)
+  return packageRefs[name]
+}
+
 // ---------- first-party assemblies, in dependency order ----------
 
 const scriptsRoot = join(repoRoot, 'Assets', '_Project', 'Scripts')
@@ -258,9 +270,9 @@ let failed = 0
 let skipped = 0
 
 for (const assembly of ordered) {
-  // Falsy, not `=== null`: an unlisted package name is `undefined`, and letting
-  // that through compiles the assembly without a reference it declared.
-  const missing = assembly.references.filter((r) => !byName.has(r) && !packageRefs[r])
+  // Falsy, not `=== null`: an unresolved package name must SKIP the assembly,
+  // never compile it without a reference it declared.
+  const missing = assembly.references.filter((r) => !byName.has(r) && !packageRef(r))
   if (missing.length > 0) {
     console.log(`•  ${assembly.name.padEnd(14)} skipped — ${missing.join(', ')} not resolved yet (open Unity once)`)
     skipped++

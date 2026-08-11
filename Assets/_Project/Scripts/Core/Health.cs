@@ -16,6 +16,8 @@ namespace CoD.Core
         [SerializeField] private GameConfig? _playerConfig = null;
 
         private float _current;
+        /// <summary>Set from DroneConfig at spawn. Negative means "no override".</summary>
+        private float _maxOverride = -1f;
 
         /// <summary>Instance event, not static — a static one would keep last Play session's subscribers.</summary>
         public event Action<Health, DamageInfo>? Damaged;
@@ -23,7 +25,8 @@ namespace CoD.Core
 
         public bool IsAlive => _current > 0f;
         public float Current => _current;
-        public float Max => _playerConfig != null ? _playerConfig.playerMaxHealth
+        public float Max => _maxOverride > 0f ? _maxOverride
+            : _playerConfig != null ? _playerConfig.playerMaxHealth
             : _config != null ? _config.maxHealth : 100f;
         public float Normalized => Max <= 0f ? 0f : Mathf.Clamp01(_current / Max);
 
@@ -35,6 +38,18 @@ namespace CoD.Core
         private void OnEnable() => ResetHealth();
 
         public void ResetHealth() => _current = Max;
+
+        /// <summary>
+        /// Drones carry their max HP on their own DroneConfig, not on a shared
+        /// HealthConfig asset — one archetype, one source of truth. The spawner
+        /// calls this right after the pool hands the instance over, which also
+        /// re-fills the bar for the reused instance.
+        /// </summary>
+        public void ConfigureMax(float max)
+        {
+            _maxOverride = Mathf.Max(1f, max);
+            ResetHealth();
+        }
 
         public float ApplyDamage(in DamageInfo info)
         {
