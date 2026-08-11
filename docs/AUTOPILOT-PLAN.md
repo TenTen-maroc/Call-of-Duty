@@ -160,11 +160,18 @@ See [systems/performance.md](systems/performance.md).
 Frame time on the 3050 is still NOT verified and cannot be from a headless run.
 That stays item 9 on the tuning card.
 
-### M4 — Human tuning pass (blocked on a person)
+### M4 — Human tuning pass (BLOCKED ON A PERSON — this is the only thing left)
 
-The card at the top of [NEXT-SESSION-PROMPT.md](NEXT-SESSION-PROMPT.md). Seven
-things to feel, each naming the asset field to move. Autopilot's job here is to
-have already made every one of those numbers a single Inspector field.
+The card at the top of [NEXT-SESSION-PROMPT.md](NEXT-SESSION-PROMPT.md): six
+shell checks and nine feel judgements, each naming the asset field to move.
+Autopilot's job was to make every one of those numbers a single Inspector field
+and to remove every reason the session could fail for a non-fun reason. That job
+is done — S1 to S4 closed the settings, the menus, the build and the caps.
+
+Run it as a LOOP with the human: hand them a short numbered checklist, take back
+plain-language answers, translate those into asset values, hand back the next
+checklist. **Never mark a feel item verified because a test passed.** Say
+"awaiting play feedback" and mean it.
 
 ### M5 — Then, only if M4 says the core is fun
 
@@ -191,3 +198,7 @@ Update this file's milestone status in the same commit.
 A session that finishes a milestone updates section 3 and stops. A session that
 finishes them all reports that M4 is the blocker and says so plainly, rather than
 inventing work to look busy.
+
+**As of 2026-08-11 they are all finished.** M4 is the blocker. There is no
+machine-checkable work left that would not be guessing at what a person has to
+judge — and the M5 content list must not start until they have judged it.
