@@ -11,6 +11,8 @@ using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
 using UnityEngine.AI;
+using UnityEngine.Rendering;
+using UnityEngine.Rendering.Universal;
 using UnityEngine.SceneManagement;
 using UnityEngine.UI;
 
@@ -61,6 +63,7 @@ namespace CoD.EditorTools
                 h.maxHealth = 100f;
             });
             ImpactConfig impact = LoadOrCreate<ImpactConfig>(DataGame + "/Impact_Default.asset", _ => { });
+            VolumeProfile postFx = LoadOrCreateVolumeProfile(DataGame + "/PostFx_Arena.asset");
             WeaponConfig rifle = LoadOrCreate<WeaponConfig>(DataWeapons + "/AR_Standard.asset", ConfigureRifle);
             WeaponConfig smg = LoadOrCreate<WeaponConfig>(DataWeapons + "/SMG_Rapid.asset", ConfigureSmg);
             PlayerLoadoutConfig loadout = LoadOrCreate<PlayerLoadoutConfig>(DataWeapons + "/Loadout_Default.asset", l =>
@@ -183,8 +186,8 @@ namespace CoD.EditorTools
             EditorUtility.SetDirty(rifle);
 
             BuildGreyBoxScene(game, settings, loadout, impact, grey, wall, targetMat, gunmetal, gunAccent,
-                dummy, decal, sparks, flash, casing, drones, runAssets);
-            BuildMainMenuScene(game, settings);
+                dummy, decal, sparks, flash, casing, drones, runAssets, postFx);
+            BuildMainMenuScene(game, settings, postFx);
             BuildBootScene();
             RegisterScenes();
 
@@ -1218,7 +1221,7 @@ namespace CoD.EditorTools
             PlayerLoadoutConfig loadout, ImpactConfig impact,
             Material floorMat, Material wallMat, Material targetMat, Material gunmetal, Material gunAccent,
             GameObject dummyPrefab, GameObject decal, GameObject sparks, GameObject flash, GameObject casing,
-            DroneAssets drones, RunAssets runAssets)
+            DroneAssets drones, RunAssets runAssets, VolumeProfile postFx)
         {
             Scene scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
 
@@ -1249,6 +1252,8 @@ namespace CoD.EditorTools
             RenderSettings.fogColor = new Color(0.12f, 0.13f, 0.16f);
             RenderSettings.fogStartDistance = 14f;
             RenderSettings.fogEndDistance = 55f;
+
+            BuildPostFx(postFx);
 
             GameObject room = BuildRoom(floorMat, wallMat);
             BakeNavMesh(room);
@@ -1312,6 +1317,45 @@ namespace CoD.EditorTools
 
             EditorSceneManager.MarkSceneDirty(scene);
             EditorSceneManager.SaveScene(scene, GreyBoxScenePath);
+        }
+
+        /// <summary>
+        /// The scene half of post-processing: one global Volume pointing at the
+        /// shared profile.
+        ///
+        /// sharedProfile, never profile — reading `.profile` CLONES the asset, and
+        /// the scene would end up owning a private copy that silently stops
+        /// tracking the one everything else tunes.
+        /// </summary>
+        private static void BuildPostFx(VolumeProfile profile)
+        {
+            GameObject root = new("PostFx");
+            Volume volume = root.AddComponent<Volume>();
+            volume.isGlobal = true;
+            volume.priority = 0f;
+            volume.sharedProfile = profile;
+        }
+
+        /// <summary>
+        /// Turns the image pipeline on for a camera. Without a
+        /// UniversalAdditionalCameraData component URP leaves renderPostProcessing
+        /// false, which is why every scene in this project rendered with no
+        /// tonemapping, no bloom and no anti-aliasing whatsoever.
+        ///
+        /// Anti-aliasing is the CAMERA's post AA rather than MSAA on purpose. MSAA
+        /// lives on the UniversalRenderPipelineAsset, so changing it at runtime is
+        /// a write to a ScriptableObject — banned here, because Domain Reload is
+        /// off and the write would survive into the next Play session and rewrite
+        /// the shipped default. Camera state is scene state and dies with the scene.
+        /// The value below is only the shipped default; CameraGraphics overrides it
+        /// from the player's saved choice.
+        /// </summary>
+        private static void EnablePostProcessing(Camera camera)
+        {
+            UniversalAdditionalCameraData data = camera.GetUniversalAdditionalCameraData();
+            data.renderPostProcessing = true;
+            data.antialiasing = AntialiasingMode.SubpixelMorphologicalAntiAliasing;
+            data.antialiasingQuality = AntialiasingQuality.High;
         }
 
         private static GameObject BuildRoom(Material floorMat, Material wallMat)
@@ -1525,6 +1569,7 @@ namespace CoD.EditorTools
             Camera camera = cameraObject.AddComponent<Camera>();
             camera.fieldOfView = game.baseFovVertical;
             camera.nearClipPlane = 0.05f;
+            EnablePostProcessing(camera);
             cameraObject.AddComponent<AudioListener>();
             CameraShake shake = cameraObject.AddComponent<CameraShake>();
 
@@ -2059,7 +2104,7 @@ namespace CoD.EditorTools
         /// listeners" every frame, which is noise in the one console this project
         /// keeps at zero warnings.
         /// </summary>
-        private static void BuildMainMenuScene(GameConfig game, SettingsConfig settingsConfig)
+        private static void BuildMainMenuScene(GameConfig game, SettingsConfig settingsConfig, VolumeProfile postFx)
         {
             Scene scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
 
@@ -2068,7 +2113,13 @@ namespace CoD.EditorTools
             Camera camera = cameraObject.AddComponent<Camera>();
             camera.clearFlags = CameraClearFlags.SolidColor;
             camera.backgroundColor = new Color(0.05f, 0.055f, 0.065f);
+            EnablePostProcessing(camera);
             cameraObject.AddComponent<AudioListener>();
+
+            // The menu shares the arena's profile so the first thing the player
+            // sees is graded like the game it launches. The Canvas is Screen Space
+            // Overlay, which draws AFTER post, so the text stays crisp.
+            BuildPostFx(postFx);
 
             SettingsHub settingsHub = new GameObject("Settings").AddComponent<SettingsHub>();
             SetRef(settingsHub, "_bounds", settingsConfig);
@@ -2229,6 +2280,89 @@ namespace CoD.EditorTools
             material.SetColor("_EmissionColor", color * intensity);
             AssetDatabase.CreateAsset(material, path);
             return material;
+        }
+
+        /// <summary>
+        /// The post-processing stack, as one shared asset. Until this existed the
+        /// project rendered with the image pipeline switched off entirely: the
+        /// camera had no UniversalAdditionalCameraData, so renderPostProcessing was
+        /// false, and the emissive drone cores — plus the emission ramp
+        /// DroneController.SetTelegraph already drives through every attack windup —
+        /// clipped flat instead of glowing. All of that was already paid for and
+        /// none of it was visible.
+        ///
+        /// ONE profile for the arena AND the menu, deliberately: one place to tune,
+        /// and a menu that looks like the game it launches.
+        /// </summary>
+        private static VolumeProfile LoadOrCreateVolumeProfile(string path)
+        {
+            VolumeProfile? existing = AssetDatabase.LoadAssetAtPath<VolumeProfile>(path);
+            if (existing != null) return existing;
+
+            VolumeProfile profile = ScriptableObject.CreateInstance<VolumeProfile>();
+            AssetDatabase.CreateAsset(profile, path);
+
+            // Neutral, NOT ACES. ACES desaturates and hue-shifts reds, and every
+            // threat in this game is read by the colour of its core through fog —
+            // Rusher red, Shooter amber, Tank crimson. Filmic rolloff is worth
+            // having; losing the palette that carries the readability is not.
+            Tonemapping tonemapping = AddOverride<Tonemapping>(profile);
+            Override(tonemapping.mode, TonemappingMode.Neutral);
+
+            // The one change that makes the existing emissive cores resolve.
+            // High-quality filtering stays OFF: this targets a 4 GB 3050.
+            Bloom bloom = AddOverride<Bloom>(profile);
+            Override(bloom.threshold, 1.05f);
+            Override(bloom.intensity, 0.35f);
+            Override(bloom.scatter, 0.62f);
+            Override(bloom.highQualityFiltering, false);
+
+            Vignette vignette = AddOverride<Vignette>(profile);
+            Override(vignette.intensity, 0.28f);
+            Override(vignette.smoothness, 0.35f);
+
+            // The grey/red tactical palette, pushed slightly.
+            ColorAdjustments color = AddOverride<ColorAdjustments>(profile);
+            Override(color.contrast, 8f);
+            Override(color.saturation, -6f);
+
+            // Nearly free, and it breaks up surfaces that carry no texture.
+            FilmGrain grain = AddOverride<FilmGrain>(profile);
+            Override(grain.type, FilmGrainLookup.Thin1);
+            Override(grain.intensity, 0.15f);
+
+            EditorUtility.SetDirty(profile);
+            AssetDatabase.SaveAssets();
+            return profile;
+        }
+
+        /// <summary>
+        /// Adds a volume override AND persists it as a sub-asset of the profile.
+        ///
+        /// VolumeProfile.Add only puts the component in the in-memory list — the
+        /// URP inspector is what normally calls AddObjectToAsset. Skip it from a
+        /// script and the profile saves with a list of references to objects that
+        /// were never written, which reads in the Inspector as an empty profile and
+        /// at runtime as no post-processing at all. Same silent-null class as the
+        /// scene asset references that VerifyAndRepair exists for.
+        /// </summary>
+        private static T AddOverride<T>(VolumeProfile profile) where T : VolumeComponent
+        {
+            T component = profile.Add<T>();
+            component.hideFlags = HideFlags.HideInHierarchy;
+            AssetDatabase.AddObjectToAsset(component, profile);
+            return component;
+        }
+
+        /// <summary>
+        /// Sets a volume parameter AND flips its override flag. A VolumeParameter
+        /// whose overrideState is false is ignored by the stack no matter what
+        /// value it holds, so assigning without this does nothing and looks correct.
+        /// </summary>
+        private static void Override<T>(VolumeParameter<T> parameter, T value)
+        {
+            parameter.overrideState = true;
+            parameter.value = value;
         }
 
         private static GameObject SavePrefab(GameObject instance, string path)

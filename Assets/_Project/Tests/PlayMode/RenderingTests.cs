@@ -1,0 +1,101 @@
+#nullable enable
+using System.Collections;
+using NUnit.Framework;
+using UnityEngine;
+using UnityEngine.Rendering;
+using UnityEngine.Rendering.Universal;
+using UnityEngine.SceneManagement;
+using UnityEngine.TestTools;
+
+namespace CoD.Tests
+{
+    /// <summary>
+    /// Proves the image pipeline is actually ON, in both scenes.
+    ///
+    /// This suite exists because the project ran for its whole life with it OFF
+    /// and nothing failed. The camera had no UniversalAdditionalCameraData, so URP
+    /// left renderPostProcessing false — and the emissive drone cores, plus the
+    /// emission ramp DroneController.SetTelegraph drives through every attack
+    /// windup, clipped flat instead of glowing. Everything compiled, every guard
+    /// passed, all 84 tests were green, and the game rendered with no tonemapping,
+    /// no bloom and no anti-aliasing at all.
+    ///
+    /// A missing component is invisible to every other gate in this repo. That is
+    /// what these assertions are for.
+    /// </summary>
+    public sealed class RenderingTests
+    {
+        private static IEnumerator Load(string scene)
+        {
+            AsyncOperation? load = SceneManager.LoadSceneAsync(scene, LoadSceneMode.Single);
+            Assert.IsNotNull(load, $"'{scene}' must be in the build settings — RegisterScenes puts it there");
+            while (load != null && !load.isDone) yield return null;
+            yield return null;
+        }
+
+        private static void AssertPostProcessingIsLive(string scene)
+        {
+            Camera? camera = Camera.main;
+            Assert.IsNotNull(camera, $"{scene}: no camera tagged MainCamera");
+
+            var data = camera!.GetComponent<UniversalAdditionalCameraData>();
+            Assert.IsNotNull(data,
+                $"{scene}: the camera has no UniversalAdditionalCameraData, so URP renders it with post-processing off");
+            Assert.IsTrue(data!.renderPostProcessing,
+                $"{scene}: post-processing is off — nothing resolves the emissive cores or the attack telegraph");
+
+            Volume? volume = Object.FindFirstObjectByType<Volume>();
+            Assert.IsNotNull(volume, $"{scene}: no Volume, so there is no profile to render");
+            Assert.IsTrue(volume!.isGlobal,
+                $"{scene}: the Volume is not global, so it would only apply inside a collider");
+            Assert.IsNotNull(volume.sharedProfile, $"{scene}: the Volume has no profile assigned");
+        }
+
+        [UnityTest]
+        public IEnumerator Arena_RendersWithPostProcessing()
+        {
+            yield return Load("10_GreyBox");
+            AssertPostProcessingIsLive("10_GreyBox");
+        }
+
+        [UnityTest]
+        public IEnumerator Menu_RendersWithPostProcessing()
+        {
+            yield return Load("20_MainMenu");
+            AssertPostProcessingIsLive("20_MainMenu");
+        }
+
+        /// <summary>
+        /// The profile's overrides survived being written to disk.
+        ///
+        /// VolumeProfile.Add only puts a component in an in-memory list; persisting
+        /// it needs AddObjectToAsset. Miss that and the profile saves referencing
+        /// objects that were never written — which looks like an empty profile in
+        /// the Inspector and renders as no post-processing at all. TryGet failing
+        /// here is exactly that bug.
+        /// </summary>
+        [UnityTest]
+        public IEnumerator ArenaProfile_KeptItsOverrides_ThroughTheSave()
+        {
+            yield return Load("10_GreyBox");
+
+            Volume? volume = Object.FindFirstObjectByType<Volume>();
+            Assert.IsNotNull(volume);
+            VolumeProfile? profile = volume!.sharedProfile;
+            Assert.IsNotNull(profile);
+
+            Assert.IsTrue(profile!.TryGet(out Bloom bloom),
+                "no Bloom in the profile — the emissive cores would not glow");
+            Assert.IsTrue(bloom.intensity.overrideState,
+                "Bloom intensity is not overridden, so the stack ignores the value entirely");
+            Assert.Greater(bloom.intensity.value, 0f, "Bloom is present but contributes nothing");
+
+            Assert.IsTrue(profile.TryGet(out Tonemapping tonemapping),
+                "no Tonemapping — every HDR value above 1.0 would clip flat");
+            Assert.IsTrue(tonemapping.mode.overrideState, "the tonemapper is not overridden");
+
+            Assert.IsTrue(profile.TryGet(out Vignette _), "no Vignette");
+            Assert.IsTrue(profile.TryGet(out ColorAdjustments _), "no ColorAdjustments");
+        }
+    }
+}
