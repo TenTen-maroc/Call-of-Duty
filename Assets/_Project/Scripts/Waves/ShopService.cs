@@ -20,17 +20,20 @@ namespace CoD.Waves
         private readonly RunContext _run;
         /// <summary>Where effect modules are installed. Optional: without a weapon the shop simply never offers them.</summary>
         private readonly WeaponController? _weapon;
+        /// <summary>The player, for consumables that repair. Optional: without it, repairs simply refuse and refund.</summary>
+        private readonly Health? _playerHealth;
         private readonly List<ShopItemConfig> _offers = new(8);
         private readonly List<int> _prices = new(8);
         private readonly List<ShopConfig.PoolEntry> _eligible = new(32);
 
         private int _rerollsThisBreak;
 
-        public ShopService(ShopConfig config, RunContext run, WeaponController? weapon)
+        public ShopService(ShopConfig config, RunContext run, WeaponController? weapon, Health? playerHealth = null)
         {
             _config = config;
             _run = run;
             _weapon = weapon;
+            _playerHealth = playerHealth;
         }
 
         /// <summary>Current offers. Index-aligned with <see cref="Prices"/>.</summary>
@@ -97,6 +100,36 @@ namespace CoD.Waves
                         return false;
                     }
                     break;
+                case ShopItemKind.Consumable:
+                {
+                    ConsumableConfig? consumable = item.consumable;
+                    if (consumable == null)
+                    {
+                        GameLog.Warn($"'{item.displayName}' has no consumable payload; refunding.");
+                        _run.Refund(price);
+                        return false;
+                    }
+
+                    bool applied = false;
+                    if (consumable.healFraction > 0f && _playerHealth != null)
+                    {
+                        applied |= _playerHealth.Heal(_playerHealth.Max * consumable.healFraction) > 0f;
+                    }
+                    if (consumable.ammoReserveFraction > 0f && _weapon != null)
+                    {
+                        applied |= _weapon.RefillReserve(consumable.ammoReserveFraction);
+                    }
+
+                    // Full health and a full reserve: there was nothing to sell.
+                    // Refusing beats quietly charging for a no-op, which is the
+                    // one thing that would make these rows feel like a trap.
+                    if (!applied)
+                    {
+                        _run.Refund(price);
+                        return false;
+                    }
+                    break;
+                }
                 case ShopItemKind.Weapon:
                     // Installed modules travel with the player, not the gun.
                     if (_weapon == null || item.weapon == null || !_weapon.EquipWeapon(item.weapon))
@@ -109,9 +142,14 @@ namespace CoD.Waves
             }
 
             // Sold out of this break. Removing rather than greying out keeps the
-            // list short enough to read at a glance.
-            _offers.RemoveAt(index);
-            _prices.RemoveAt(index);
+            // list short enough to read at a glance — but a repeatable row stays:
+            // one repair is rarely the whole answer, and a shelf that empties
+            // after a single click is the bad-roll problem all over again.
+            if (!item.repeatable)
+            {
+                _offers.RemoveAt(index);
+                _prices.RemoveAt(index);
+            }
             return true;
         }
 
@@ -130,6 +168,26 @@ namespace CoD.Waves
                 _eligible.RemoveAt(picked);   // no duplicates within one break
                 if (item == null) continue;
 
+                _offers.Add(item);
+                _prices.Add(_config.PriceAtWave(item, wave));
+            }
+
+            AppendAlwaysOffered(wave);
+        }
+
+        /// <summary>
+        /// The rows present in every break: repairs and resupply. Appended AFTER
+        /// the draw and never entered into the weighted pool, so they cannot crowd
+        /// out the offers that make a break interesting. They are the floor under
+        /// a bad roll, not competition for it.
+        /// </summary>
+        private void AppendAlwaysOffered(int wave)
+        {
+            ShopItemConfig[] always = _config.alwaysOffered;
+            for (int i = 0; i < always.Length; i++)
+            {
+                ShopItemConfig item = always[i];
+                if (item == null || !item.IsValid) continue;
                 _offers.Add(item);
                 _prices.Add(_config.PriceAtWave(item, wave));
             }

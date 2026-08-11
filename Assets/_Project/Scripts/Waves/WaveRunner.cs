@@ -111,7 +111,7 @@ namespace CoD.Waves
                 // drone code knowing either exists.
                 if (_spawner != null) _spawner.SetTokenSource(_tokens);
             }
-            if (_shopConfig != null && _run != null) _shop = new ShopService(_shopConfig, _run, _weapon);
+            if (_shopConfig != null && _run != null) _shop = new ShopService(_shopConfig, _run, _weapon, _playerHealth);
         }
 
         private void OnEnable()

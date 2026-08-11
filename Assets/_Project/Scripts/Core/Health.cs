@@ -72,6 +72,22 @@ namespace CoD.Core
             _current = delta > 0f ? _current + delta : Mathf.Min(_current, next);
         }
 
+        /// <summary>
+        /// Restores health, never past the maximum and never to the dead.
+        ///
+        /// Returns what was ACTUALLY restored, which is the part that matters: a
+        /// caller can then refuse to charge for a heal that did nothing, and that
+        /// is the whole difference between a shop item and a scam. The HUD polls
+        /// Current every frame, so there is no event to raise here.
+        /// </summary>
+        public float Heal(float amount)
+        {
+            if (amount <= 0f || !IsAlive) return 0f;
+            float before = _current;
+            _current = Mathf.Min(Max, _current + amount);
+            return _current - before;
+        }
+
         public float ApplyDamage(in DamageInfo info)
         {
             if (!IsAlive || Invulnerable) return 0f;

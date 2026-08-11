@@ -10,15 +10,15 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: c3f5b576b355ce647916fb3c7692d324, type: 3}
-  m_Name: Shop_Pierce
+  m_Name: Shop_Repair
   m_EditorClassIdentifier: 
-  stableId: shop_effect_pierce
-  displayName: Piercing Rounds
-  description: punches through two more bodies
-  cost: 350
-  kind: 2
+  stableId: shop_repair
+  displayName: Field Repair
+  description: restores half your maximum health
+  cost: 120
+  kind: 3
   passive: {fileID: 0}
   weapon: {fileID: 0}
-  effect: {fileID: 11400000, guid: e59653f1f554dc248b2e370010d159a5, type: 2}
-  consumable: {fileID: 0}
-  repeatable: 0
+  effect: {fileID: 0}
+  consumable: {fileID: 11400000, guid: 8d7cc45cd6a031b418a8a6b5dca362fd, type: 2}
+  repeatable: 1

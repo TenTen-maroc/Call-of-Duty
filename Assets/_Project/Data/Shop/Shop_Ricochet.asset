@@ -20,3 +20,5 @@ MonoBehaviour:
   passive: {fileID: 0}
   weapon: {fileID: 0}
   effect: {fileID: 11400000, guid: b88b5f5b3ce5e984aa8c19c54ee71c7a, type: 2}
+  consumable: {fileID: 0}
+  repeatable: 0

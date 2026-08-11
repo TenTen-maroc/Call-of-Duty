@@ -183,6 +183,10 @@ namespace CoD.EditorTools
             ShopItemConfig[] shopItems = BuildShopItems(passives, effects, smg);
             ShopConfig shopConfig = LoadOrCreate<ShopConfig>(DataGame + "/Shop.asset", ConfigureShop);
             EnsureShopPool(shopConfig, shopItems);
+            // Always-offered rows are set on EVERY build rather than through an
+            // Ensure: they are not a weighted pool with tuning to preserve, they
+            // are a fixed pair of references that must simply be correct.
+            SetArrayRef(shopConfig, "alwaysOffered", BuildAlwaysOffered());
             WaveConfig[] waves = BuildWaves(rusher, shooter, tank);
             EnsureEndlessMix(difficulty, rusher, shooter, tank);
             var runAssets = new RunAssets(shopConfig, waves);
@@ -690,6 +694,61 @@ namespace CoD.EditorTools
             items[items.Length - 1] = weaponItem;
 
             return items;
+        }
+
+        /// <summary>
+        /// The two rows that are in every shop break: repairs and resupply.
+        ///
+        /// They exist because a break could roll four offers the player did not
+        /// want, and a wave's income was then simply wasted — which is the honest
+        /// answer to tuning-card item 3 and the least interesting possible outcome
+        /// of a shop. A repair is never the exciting choice, and that is the point:
+        /// it is what makes the exciting choices cost something.
+        ///
+        /// Both are repeatable. One repair is rarely the whole answer, and a shelf
+        /// that empties after a single click is the bad-roll problem again.
+        /// </summary>
+        private static ShopItemConfig[] BuildAlwaysOffered()
+        {
+            ConsumableConfig repair = LoadOrCreate<ConsumableConfig>(
+                DataShop + "/Consumable_Repair.asset", config =>
+                {
+                    config.healFraction = 0.5f;
+                    config.ammoReserveFraction = 0f;
+                });
+
+            ConsumableConfig resupply = LoadOrCreate<ConsumableConfig>(
+                DataShop + "/Consumable_Ammo.asset", config =>
+                {
+                    config.healFraction = 0f;
+                    config.ammoReserveFraction = 0.5f;
+                });
+
+            ShopItemConfig repairItem = LoadOrCreate<ShopItemConfig>(
+                DataShop + "/Shop_Repair.asset", item =>
+                {
+                    item.stableId = "shop_repair";
+                    item.displayName = "Field Repair";
+                    item.description = "restores half your maximum health";
+                    item.cost = 120;
+                    item.kind = ShopItemKind.Consumable;
+                    item.repeatable = true;
+                });
+            SetRef(repairItem, "consumable", repair);
+
+            ShopItemConfig resupplyItem = LoadOrCreate<ShopItemConfig>(
+                DataShop + "/Shop_Resupply.asset", item =>
+                {
+                    item.stableId = "shop_resupply";
+                    item.displayName = "Resupply";
+                    item.description = "half a full reserve, for whatever you are holding";
+                    item.cost = 90;
+                    item.kind = ShopItemKind.Consumable;
+                    item.repeatable = true;
+                });
+            SetRef(resupplyItem, "consumable", resupply);
+
+            return new[] { repairItem, resupplyItem };
         }
 
         /// <summary>

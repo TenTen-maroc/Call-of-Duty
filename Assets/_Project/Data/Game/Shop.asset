@@ -82,3 +82,6 @@ MonoBehaviour:
     weight: 0.6
     minWave: 3
     maxOwned: 1
+  alwaysOffered:
+  - {fileID: 11400000, guid: 4ff2324e49d0621469c9c2de81f7c2c9, type: 2}
+  - {fileID: 11400000, guid: c23a2bbb683dcc14c8823fa94ec3296e, type: 2}

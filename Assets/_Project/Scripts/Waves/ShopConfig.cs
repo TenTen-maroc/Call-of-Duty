@@ -40,6 +40,28 @@ namespace CoD.Waves
         [Header("Pool")]
         public PoolEntry[] pool = System.Array.Empty<PoolEntry>();
 
+        [Tooltip("Shown in EVERY break, on top of the drawn offers, and never entered into the weighted draw. " +
+                 "This is what stops a bad roll from wasting a whole wave's income.")]
+        public ShopItemConfig[] alwaysOffered = System.Array.Empty<ShopItemConfig>();
+
+#if UNITY_EDITOR
+        private void OnValidate()
+        {
+            // The shop is bought with the number row, so a break can only show as
+            // many rows as there are digits. Anything past the ninth is printed,
+            // priced, and impossible to buy — which reads as the shop being broken
+            // rather than as a configuration mistake.
+            const int buyableRows = 9;
+            int rows = offersPerBreak + alwaysOffered.Length;
+            if (rows > buyableRows)
+            {
+                Debug.LogError(
+                    $"[{name}] a break would show {rows} rows but only {buyableRows} can be bought from the " +
+                    "number row. Lower offersPerBreak or shorten alwaysOffered.", this);
+            }
+        }
+#endif
+
         public int PriceAtWave(ShopItemConfig item, int wave) =>
             Mathf.Max(1, Mathf.RoundToInt(item.cost * Mathf.Max(0.1f, priceScalingByWave.Evaluate(wave))));
     }

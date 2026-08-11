@@ -5,7 +5,7 @@ using UnityEngine;
 
 namespace CoD.Waves
 {
-    public enum ShopItemKind { Passive, Weapon, EffectModule }
+    public enum ShopItemKind { Passive, Weapon, EffectModule, Consumable }
 
     /// <summary>
     /// One thing the shop can offer. Exactly one payload reference is set, and
@@ -27,6 +27,10 @@ namespace CoD.Waves
         public PassiveConfig? passive;
         public WeaponConfig? weapon;
         public EffectModule? effect;
+        public ConsumableConfig? consumable;
+
+        [Tooltip("Stays on the shelf after it is bought. Repairs and ammo are worth buying twice; a passive is not.")]
+        public bool repeatable;
 
         /// <summary>Human-readable line for the shop list. Built once per offer, not per frame.</summary>
         public string Summary => string.IsNullOrEmpty(description) ? displayName : displayName + " — " + description;
@@ -36,6 +40,7 @@ namespace CoD.Waves
             ShopItemKind.Passive => passive != null,
             ShopItemKind.Weapon => weapon != null,
             ShopItemKind.EffectModule => effect != null,
+            ShopItemKind.Consumable => consumable != null,
             _ => false,
         };
 

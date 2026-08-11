@@ -166,6 +166,28 @@ namespace CoD.Weapons
             return true;
         }
 
+        /// <summary>
+        /// Tops the held weapon's reserve up by a fraction of its full reserve.
+        ///
+        /// Returns false when there is nothing to add, so the shop can refuse the
+        /// sale rather than take money for nothing. The fraction is of the CONFIG's
+        /// reserve, not of what is left, so one consumable asset stays correct
+        /// across both weapons and any future one.
+        /// </summary>
+        public bool RefillReserve(float fraction)
+        {
+            if (_runtime == null || fraction <= 0f) return false;
+
+            int full = _runtime.Config.reserveAmmo;
+            if (full <= 0 || _runtime.ReserveAmmo >= full) return false;
+
+            // At least one round: a fraction that rounds to zero would charge the
+            // player for a purchase that changed nothing.
+            int added = Mathf.Max(1, Mathf.RoundToInt(full * fraction));
+            _runtime.ReserveAmmo = Mathf.Min(full, _runtime.ReserveAmmo + added);
+            return true;
+        }
+
         public int EffectModuleCount => _runtime != null ? _runtime.Modules.Count : 0;
         public EffectModule? EffectModuleAt(int index) =>
             _runtime != null && index >= 0 && index < _runtime.Modules.Count ? _runtime.Modules[index] : null;

@@ -51,7 +51,13 @@ namespace CoD.UI
         {
             Key.Digit1, Key.Digit2, Key.Digit3, Key.Digit4,
             Key.Digit5, Key.Digit6, Key.Digit7, Key.Digit8,
+            // Nine, because the always-offered repair and resupply rows are
+            // appended after the drawn offers and have to be reachable too.
+            Key.Digit9,
         };
+
+        /// <summary>How many rows the keyboard can actually reach. ShopConfig warns past this.</summary>
+        public static int BuyableRows => BuyKeys.Length;
 
         private void OnEnable()
         {

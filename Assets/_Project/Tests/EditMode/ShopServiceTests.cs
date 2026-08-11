@@ -179,5 +179,121 @@ namespace CoD.Tests
             Assert.AreEqual(100, shop.PriceAtWave(item, 1));
             Assert.AreEqual(300, shop.PriceAtWave(item, 21));
         }
+
+        // ---------- consumables and the always-offered rows ----------
+
+        private static ConsumableConfig MakeConsumable(float heal, float ammo)
+        {
+            ConsumableConfig consumable = ScriptableObject.CreateInstance<ConsumableConfig>();
+            consumable.healFraction = heal;
+            consumable.ammoReserveFraction = ammo;
+            return consumable;
+        }
+
+        private static ShopItemConfig MakeConsumableItem(string id, int cost, ConsumableConfig payload)
+        {
+            ShopItemConfig item = ScriptableObject.CreateInstance<ShopItemConfig>();
+            item.stableId = id;
+            item.displayName = id;
+            item.cost = cost;
+            item.kind = ShopItemKind.Consumable;
+            item.consumable = payload;
+            item.repeatable = true;
+            return item;
+        }
+
+        [Test]
+        public void AlwaysOfferedRows_AppearInEveryBreak_AndSurviveARepeatedReroll()
+        {
+            PassiveConfig passive = MakePassive("p1");
+            ShopConfig shop = MakeShop((MakeItem("i1", 10, passive), 1, 0));
+            ShopItemConfig repair = MakeConsumableItem("repair", 50, MakeConsumable(0.5f, 0f));
+            shop.alwaysOffered = new[] { repair };
+
+            var service = new ShopService(shop, _run!, null, null);
+            service.OpenBreak(1);
+            Assert.Contains(repair, service.Offers, "the repair row is missing from a fresh break");
+
+            // A reroll redraws the weighted offers; the floor under a bad roll
+            // must not be something the player can accidentally reroll away.
+            service.TryReroll(1);
+            Assert.Contains(repair, service.Offers, "rerolling removed the always-offered row");
+        }
+
+        [Test]
+        public void AConsumableThatDoesNothing_IsRefusedAndRefunded()
+        {
+            // No Health and no weapon, so neither payload can apply.
+            ShopConfig shop = MakeShop();
+            ShopItemConfig repair = MakeConsumableItem("repair", 50, MakeConsumable(0.5f, 0f));
+            shop.alwaysOffered = new[] { repair };
+
+            var service = new ShopService(shop, _run!, null, null);
+            service.OpenBreak(1);
+            int before = _run!.State.Money;
+
+            Assert.IsFalse(service.TryBuy(0, 1), "a consumable that restores nothing must refuse the sale");
+            Assert.AreEqual(before, _run.State.Money, "the money must come back — this is the scam case");
+        }
+
+        [Test]
+        public void ARepeatableRow_StaysOnTheShelfAfterItSells()
+        {
+            var host = new GameObject("Player");
+            try
+            {
+                Health health = host.AddComponent<Health>();
+                health.ConfigureMax(100f);
+                health.ApplyDamage(new DamageInfo(60f, Vector3.zero, Vector3.up, Vector3.forward, false));
+                Assert.Less(health.Current, health.Max, "the test needs damage to repair");
+
+                ShopConfig shop = MakeShop();
+                ShopItemConfig repair = MakeConsumableItem("repair", 50, MakeConsumable(0.25f, 0f));
+                shop.alwaysOffered = new[] { repair };
+
+                var service = new ShopService(shop, _run!, null, health);
+                service.OpenBreak(1);
+
+                Assert.IsTrue(service.TryBuy(0, 1));
+                Assert.Contains(repair, service.Offers,
+                    "a repeatable row must stay buyable — one repair is rarely the whole answer");
+
+                float afterFirst = health.Current;
+                Assert.IsTrue(service.TryBuy(0, 1), "the second purchase must also go through");
+                Assert.Greater(health.Current, afterFirst);
+            }
+            finally
+            {
+                Object.DestroyImmediate(host);
+            }
+        }
+
+        [Test]
+        public void HealingNeverExceedsMaximum_AndAFullPlayerIsRefused()
+        {
+            var host = new GameObject("Player");
+            try
+            {
+                Health health = host.AddComponent<Health>();
+                health.ConfigureMax(100f);
+
+                ShopConfig shop = MakeShop();
+                ShopItemConfig repair = MakeConsumableItem("repair", 50, MakeConsumable(0.5f, 0f));
+                shop.alwaysOffered = new[] { repair };
+
+                var service = new ShopService(shop, _run!, null, health);
+                service.OpenBreak(1);
+                int before = _run!.State.Money;
+
+                Assert.IsFalse(service.TryBuy(0, 1), "a player at full health has nothing to buy");
+                Assert.AreEqual(before, _run.State.Money);
+                Assert.AreEqual(100f, health.Current, 1e-3f, "healing must never push past the maximum");
+            }
+            finally
+            {
+                Object.DestroyImmediate(host);
+            }
+        }
+
     }
 }
