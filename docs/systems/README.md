@@ -11,14 +11,14 @@ obvious, emphasise the non-obvious.
 
 | Doc | Covers | Status |
 | --- | --- | --- |
-| [weapons.md](weapons.md) | `WeaponConfig`, `WeaponRuntime`, firing, recoil, spread, damage + falloff | ✅ Phase 3 |
-| [player.md](player.md) | Input, movement, look, camera shake, the rig layout | ✅ Phase 3 |
-| [pooling.md](pooling.md) | The object pool every spawn goes through | ✅ Phase 3 |
-| [ui.md](ui.md) | Crosshair, hitmarker, HUD, cheat console | ✅ Phase 3 |
-| [drones.md](drones.md) | `DroneConfig`, `AttackModule`, NavMesh pathing, attack tokens | ✅ Rusher |
-| [waves.md](waves.md) | `WaveConfig`, `WaveRunner`, `DifficultyConfig` caps and the endless ramp | Waves |
-| [shop.md](shop.md) | `ShopConfig`, `ShopItemConfig`, `PassiveConfig`, `StatSheet` rebuild | Shop |
-| [save.md](save.md) | Versioned JSON, `schemaVersion` migration, atomic write, `.bak` | Save |
+| [weapons.md](weapons.md) | `WeaponConfig`, `WeaponRuntime`, firing, recoil, spread, damage + falloff, effect modules | ✅ |
+| [player.md](player.md) | Input, movement, look, camera shake, the rig layout | ✅ |
+| [pooling.md](pooling.md) | The object pool every spawn goes through | ✅ |
+| [ui.md](ui.md) | Crosshair, hitmarker, HUD, damage feedback, wave/shop/game-over panels, cheat console | ✅ |
+| [drones.md](drones.md) | `DroneConfig`, `AttackModule`, NavMesh pathing, attack tokens | ✅ all three archetypes |
+| [waves.md](waves.md) | `WaveConfig`, `WaveRunner`, `DifficultyConfig` caps and the endless ramp | ✅ |
+| [shop.md](shop.md) | `ShopConfig`, `ShopItemConfig`, `PassiveConfig`, `StatSheet` rebuild | ✅ passives + modules |
+| [save.md](save.md) | Versioned JSON, `schemaVersion` migration, atomic write, `.bak` | ✅ |
 
 Every doc here describes code that now **runs**. Each states at the top what
 has actually been verified in play and what has only been compiled — those are

@@ -8,13 +8,37 @@ Keep this file updated as milestones land — it is the handoff, not a snapshot.
 
 ---
 
+## Read this first: the tuning card
+
+Phases 4-7 are code-complete and **have never been played**. Everything compiles
+clean, builds headlessly, and every scene reference is proven — but the bar in
+this repo is FUN, and that needs your hands on the keyboard.
+
+Open `Assets/_Project/Scenes/10_GreyBox.unity` and press Play. Backquote opens
+the sandbox console (1-9). Work down this list; for each one, the asset field to
+move is named.
+
+| # | What to feel | If it is wrong |
+| --- | --- | --- |
+| 1 | **Three Rushers with the AR.** Console 6 spawns a burst. Does the chase read? Is 0.55 s of fuse enough warning? Does the blast make you respect them? | `Drone_Rusher.moveSpeed` (6.0, between walk 5.2 and sprint 8.0) · `ContactDetonate_Std.fuseSeconds` · `.damage` (24) |
+| 2 | **Wave 5, ~15 alive.** Does the 3-attacker cap read as fair, or do the extras look passive and stupid? The console shows `attacking / cap` live. | `Difficulty.maxSimultaneousAttackers` — raise to 4 before you touch anything else |
+| 3 | **The first shop break.** Is four offers plus a reroll a real decision on wave-3 money, or an obvious pick? | `Shop.offersPerBreak` · `Shop.rerollBaseCost` · the passives' costs |
+| 4 | **A Shooter's opening shot.** It misses on purpose. Does that teach you where it is, or just annoy? | `RangedBurst_Std.firstShotMissDegrees` · `.reactionDelay` (0.4) |
+| 5 | **A Tank at wave 7.** Is walking away the obvious answer, or does it feel like a wall you cannot fight? | `Drone_Tank.maxHealth` (600) · `HeavySlam_Std.windupSeconds` (0.9) |
+| 6 | **Explosive + Chain on the rifle.** Console 9 for money, buy both. Absurd in the good way, or a frame-rate event? | `Effect_Chain.jumpsPerHit` · `Effect_Explosive.radius` · both `maxDepth` (1) |
+| 7 | **40 alive on the 3050.** Watch the frame time. The cap exists for the 4 GB budget. | `Difficulty.maxAliveDrones` — the one number not to raise |
+
+Values edited in Play Mode **persist**, because they live on ScriptableObjects.
+That is the point: tune while playing, stop, and the numbers are still there.
+
+---
+
 ```text
 /goal Continue Call of Duty — a fixed-arena horde-survival FPS in Unity 6 (URP),
 offline single-player, Windows. Read @CLAUDE.md and @docs/systems/README.md
 before doing anything, then the specific docs/systems file for whatever you touch.
 
 WORK IN PLAN MODE FIRST. Read-only. Produce a plan and WAIT for approval.
-Do one milestone per session and STOP at the end of it.
 
 ABOUT ME
 - Solo dev, full-time. I know TypeScript well, C# barely. When you use a
@@ -24,107 +48,65 @@ ABOUT ME
   far more than poly count.
 
 WHERE THINGS STAND
-Phases 0-3 are done and the game RUNS. Unity 6000.0.81f1 + URP, Personal licence
-active. The grey box has: first-person movement (walk/sprint/crouch/jump), mouse
-look with deterministic recoil, a hitscan rifle with bloom/falloff/reload
-cancelling, an 8-block viewmodel with sway and bob, object pooling for every
-spawn, impact decals and sparks, a hitmarker with distinct kill feedback, a
-bloom-tracking crosshair, ammo/health HUD, placeholder audio, and a dev-gated
-cheat console (backquote, then 1-5).
+The whole loop is code-complete: rifle, three drone archetypes, timed waves,
+a between-wave shop selling passives and effect modules, permadeath with a
+versioned save, and four stacking effect modules with depth-limited recursion.
+Seven assemblies, all clean, six guards green, and GreyBoxVerify proves every
+scene reference survives a save/reload round trip.
 
-AR_Standard is 700 RPM at 25 damage: 4 shots to kill 100 HP, ~257 ms TTK.
-Movement speed, arena scale and spawn distance are all tuned around that number.
-Change it deliberately or not at all.
-
-Verified in play: movement, look, sprint, firing, ammo, HUD, audio, crosshair.
-NOT verified: damage falloff at range, crouch headroom blocking, sprint-to-fire
-delay, and whether the pool actually reuses rather than grows.
+Phase 3 (the grey box) is verified in play. Phases 4-7 are NOT — they compile
+and build, and nobody has felt them yet. The tuning card at the top of
+docs/NEXT-SESSION-PROMPT.md is the list of what to judge and which asset field
+to move.
 
 TOOLS — USE THESE, THEY ARE FASTER THAN THE EDITOR
 - node Tools/check.mjs      six guards; also runs on every commit
 - node Tools/typecheck.mjs  compiles EVERY assembly using Unity's own Roslyn,
                             without opening Unity and without a licence. Run it
-                            after every edit. It has caught real bugs the editor
-                            would only have shown minutes later.
-Both run in the pre-commit hook, and warnings count as failure.
+                            after every edit. Warnings count as failure.
 
 SCENES AND PREFABS ARE GENERATED, NOT HAND-AUTHORED
 Assets/_Project/Scripts/Editor/GreyBoxBuilder.cs builds every prefab, both
-scenes, the materials and the tuning assets. Menu: CoD → Build Grey Box.
-Headless (Unity must NOT be open — it locks the project):
+scenes, the materials, the navmesh and the tuning assets. Menu: CoD → Build Grey
+Box. Headless (Unity must NOT be open — it locks the project):
   "C:/Program Files/Unity/Hub/Editor/6000.0.81f1/Editor/Unity.exe" \
     -batchmode -quit -projectPath . \
     -executeMethod CoD.EditorTools.GreyBoxBuilder.BuildHeadless -logFile -
-Extend the builder rather than hand-editing a .unity file. A scene assembled by
-hand cannot be reviewed, re-created, or explained.
+Extend the builder rather than hand-editing a .unity file.
 
-CLOSE THESE LOOSE ENDS FIRST
-1. REBUILD THE GREY BOX before playing: run CoD -> Build Grey Box in the editor
-   (or headless with Unity closed). The 2026-08-11 audit session changed the
-   builder AFTER the committed scenes were generated: Target_Dummy gained a
-   head Weakpoint collider and a TargetRespawn, casings moved to the Ignore
-   Raycast layer, and the player's Health is wired to GameConfig. The committed
-   scenes/prefabs predate those changes; the builder is the source of truth.
-2. Play-test what the audit wired but nobody has run: burst fire (flip
-   AR_Standard's fireMode in the Inspector), headshots on the dummy's head
-   (1.5x, weapon-owned — HealthConfig.weakpointMultiplier was deleted, the
-   weapon's headshotMultiplier is the ONE owner), target respawn after 2.5 s,
-   casing ejection arcs, godmode under fire, and holding the trigger through
-   an empty-mag auto-reload.
-
-THE ROADMAP — ONE PER SESSION, IN THIS ORDER
-
-PHASE 4 — the Rusher drone
-  DroneConfig + AttackModule ScriptableObjects (shapes are in
-  @docs/DATA-MODEL-SKETCH.md — follow them). One DroneController reads both;
-  drone #4 must be data, never new code. NavMesh agent via the AI Navigation
-  package (already installed), baked once on the arena. ContactDetonate attack.
-  Pooled like everything else, registered in the pool in the SAME commit that
-  creates the prefab. A DroneSpawner that takes a count.
-  Create the CoD.Enemies asmdef only when it has scripts — an empty asmdef logs
-  a console warning and the console is the quality gate.
-  DONE = three Rushers chasing me is fun with the AR. Tune until it is.
-
-PHASE 5 — waves and the shop
-  WaveConfig assets (Wave_01..Wave_10 hand-authored, then a formula),
-  DifficultyConfig with the hard caps, a WaveRunner that runs a timed wave then
-  opens a shop break, permadeath, and a versioned JSON save holding best round.
-  The two caps are not negotiable: maxAliveDrones 40 protects the 4 GB GPU, and
-  maxSimultaneousAttackers 3 is why twenty enemies feels fair instead of
-  instantly lethal. Implement the attack-token system properly.
-  ShopConfig/ShopItemConfig/PassiveConfig, and the StatSheet rebuild pipeline:
-  effective = (base + sum of flatAdds) x product of mults, recomputed from owned
-  passives on every purchase. NEVER by writing to a config asset.
-
-PHASE 6 — Shooter and Tank
-  Same DroneConfig, different data plus RangedBurst and HeavySlam AttackModules.
-  Shooter: reaction delay 0.4 s, first shot a deliberate near-miss, ~0.7
-  accuracy. That near-miss converts "I died from nowhere" into "I got caught
-  out" — same event, completely different feeling.
-
-PHASE 7 — EffectModules
-  Explosive / Pierce / Ricochet / Chain as stateless ScriptableObject rules.
-  Read the depth and recursion rules in @docs/DATA-MODEL-SKETCH.md carefully:
-  follow-ups resolve at depth+1 and modules only run at depth 0 unless maxDepth
-  is set, or Explosive → Chain → Explosive is an infinite loop. Pierce changes
-  the ray budget, it is not a follow-up. Then the between-wave shop UI.
+WHAT IS ACTUALLY LEFT
+- Play-test and tune Phases 4-7 against the card. That is the real work.
+- The arena is still one grey room with three cover blocks. A real three-lane
+  layout with line-of-sight breaks is the next thing that changes how it plays.
+- A second weapon, to prove the "new weapons are data" claim end to end.
+  ShopItemKind.Weapon exists and deliberately refunds until it has a handler.
+- ContentRegistry (stableId lookup) is not built. Nothing needs it while runs
+  are never serialised; it lands with unlocks or loadout persistence.
+- Cinemachine is still not installed, on purpose — see CLAUDE.md.
 
 HARD-WON GOTCHAS — DO NOT REDISCOVER THESE
 - Assigning an ASSET reference to a component in a scene that has never been
   saved silently does not persist. Scene-object references survive, asset ones do
   not, and nothing errors. GreyBoxVerify re-opens the saved scene, repairs, then
   re-opens again to prove it stuck. Do not "simplify" that away.
-- Opening the project rewrites Packages/manifest.json. It once re-added
-  In App Purchasing (deprecated), Analytics, Timeline and more. Check the
-  manifest after any editor run and before committing.
-- Every new .cs needs a .meta sibling or the pre-commit hook blocks the commit.
-  Unity generates them on focus; the guard is protecting the next clone.
-- Viewmodel parts must have NO colliders. A collider on the player's own gun
-  sits in front of the camera and every shot raycasts into it.
-- The aim ray comes from CameraPivot, not the camera — the camera carries shake,
-  and shake must never move the point of impact.
+- A pooled NavMeshAgent enabled off-mesh throws on the first SetDestination, and
+  a reused one walks the new drone to the dead one's destination. Prefabs ship
+  with the agent DISABLED; Initialize does enable → Warp → ResetPath.
+- NavMeshSurface.BuildNavMesh leaves the data in memory. It must be written to an
+  asset and re-assigned, or the reference is dropped on scene save and drones
+  spawn and never move.
 - Configs are read-only at runtime. Domain Reload is disabled, so a runtime write
   to a ScriptableObject persists between Play sessions and rewrites your balance.
+  This is why WaveScaling, StatSheet and the runtime module list all exist.
+- Effect module recursion: follow-ups resolve at depth+1, and a module runs at
+  depth 0 unless maxDepth says otherwise. Explosive → Chain → Explosive is the
+  loop that rule prevents.
+- Opening the project rewrites Packages/manifest.json. Check it before committing.
+- Every new .cs needs a .meta sibling or the pre-commit hook blocks the commit.
+- Viewmodel parts must have NO colliders, and drone shape details carry none
+  either — hull and core are the only things a bullet can find.
+- The aim ray comes from CameraPivot, not the camera — shake must never move the
+  point of impact.
 - No mutable statics, and no Find/GetComponent/Camera.main/Instantiate/Destroy
   inside Update/FixedUpdate/LateUpdate. Both are enforced by guards.
 - Unity's FOV field is VERTICAL. 62 ≈ 95 horizontal.
