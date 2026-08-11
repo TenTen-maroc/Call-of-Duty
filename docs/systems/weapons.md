@@ -1,6 +1,6 @@
 # Weapons
 
-> Last verified: 2026-08-11 (code compiles clean; has not been run)
+> Last verified: 2026-08-11 (runs; firing, ammo, HUD and audio confirmed in play)
 
 ## Overview
 
@@ -45,6 +45,14 @@ around that number — change it deliberately.
   the MonoBehaviour. Exposes `Hit(bool killed)` and `Fired` events; the UI
   subscribes and the weapon never learns the UI exists.
 
+## Audio
+
+Six placeholder clips in `Assets/_Project/Audio/`, synthesised by
+`node Tools/make-placeholder-audio.mjs` and wired onto `AR_Standard` by the
+builder, which also forces mono / PCM / decompress-on-load. The gunshot is two
+layers on purpose — a close mechanical crack plus a distance tail. One-layer
+gunshots are the top reason a shooter sounds cheap. See the folder README.
+
 ## Key Behaviors & Non-Obvious Patterns
 
 - **Configs are read-only at runtime.** Domain Reload is disabled, so a runtime
@@ -66,6 +74,11 @@ around that number — change it deliberately.
 - `Physics.RaycastNonAlloc` into a pre-sized `RaycastHit[8]`, nearest selected in
   one pass — no allocation and no sort in the firing path.
 - Damage goes through `IDamageable`, so the weapon has no enemy-specific code.
+- `EffectiveSpreadDegrees` is public so the crosshair can visualise the exact
+  cone the raycast will use — movement, crouch and airborne multipliers included.
+  Bloom the player cannot see is bloom that only feels like bad luck.
+- The controller pushes its ADS progress into `WeaponSway` rather than the sway
+  polling it, so there is one owner of the blend.
 
 ## Related Systems
 
@@ -80,4 +93,6 @@ around that number — change it deliberately.
   but each pellet re-rolls the cone.
 - Feedback prefabs on `WeaponConfig` must be registered in the pool prewarm list
   or the first shot allocates.
-- Nothing here has ever executed. Compiling is necessary, not sufficient.
+- Verified in play: firing, ammo, HUD and audio. NOT yet verified: damage
+  falloff at range, shotgun pellet spread, and reload cancelling all still need
+  a deliberate test.

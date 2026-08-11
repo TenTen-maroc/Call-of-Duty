@@ -1,6 +1,6 @@
 # Player
 
-> Last verified: 2026-08-11 (code compiles clean; has not been run)
+> Last verified: 2026-08-11 (runs; movement, look and firing confirmed in play)
 
 ## Overview
 
@@ -33,6 +33,11 @@ Every tunable number comes from `GameConfig`.
   landing dip. Exposes `AimRay`.
 - **[CameraShake.cs](../../Assets/_Project/Scripts/Player/CameraShake.cs)** —
   trauma-based, decaying, applied as a local offset on the camera only.
+- **[WeaponSway.cs](../../Assets/_Project/Scripts/Player/WeaponSway.cs)** — moves
+  the viewmodel the camera does not: sway lagging the look input, bob driven by
+  real ground speed, and a tucked sprint pose. `SetAdsProgress` is pushed in by
+  `WeaponController` each frame so the gun rises into the sight on the same blend
+  as the FOV change.
 
 ## Rig Layout
 
@@ -42,8 +47,10 @@ Built by `CoD → Build Grey Box`:
 Player            CharacterController, PlayerInput, PlayerMotor, PlayerLook, Health, WeaponController
 └ CameraPivot     pitch, set by PlayerLook
   └ Main Camera   Camera, AudioListener, CameraShake, 2x AudioSource
-    ├ Muzzle      + MuzzleLight (point, starts disabled)
-    └ CasingEject
+    └ WeaponRig   WeaponSway  (pose, bob, sway)
+      └ Viewmodel 8 collider-less blocks forming the rifle
+        ├ Muzzle       flash + MuzzleLight, at the barrel tip
+        └ CasingEject  at the ejection port, rotated outward
 ```
 
 ## Key Behaviors & Non-Obvious Patterns
@@ -62,6 +69,11 @@ Player            CharacterController, PlayerInput, PlayerMotor, PlayerLook, Hea
 - **FOV is VERTICAL in Unity.** 62 ≈ 95 horizontal at 16:9. Typing 95 gives a
   ~120° fisheye; `GameConfig.OnValidate` warns above 80.
 - Shake lives on the camera, aim on the pivot — see [weapons.md](weapons.md).
+- **The viewmodel has no colliders and casts no shadows.** A collider on the
+  player's own gun sits in front of the camera, so every shot would raycast into
+  the weapon; a viewmodel casting scene shadows looks like the floating prop it is.
+- Sway is computed in `LateUpdate`, after `PlayerLook` has aimed, so it reacts to
+  the final rotation rather than last frame's.
 
 ## Related Systems
 
@@ -75,4 +87,5 @@ Player            CharacterController, PlayerInput, PlayerMotor, PlayerLook, Hea
   belongs behind a settings slider before anyone else plays this.
 - `Cursor.lockState` is set in `Awake` and never restored; a pause menu will need
   to own that.
-- Nothing here has ever executed.
+- Verified in play: movement, look, sprint and firing. NOT yet verified:
+  crouch headroom blocking, landing dip, and the sprint-to-fire delay.

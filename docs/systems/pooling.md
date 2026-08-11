@@ -17,7 +17,8 @@ under pressure.
   serialized `(prefab, count)` list in `Awake`.
 - **[PooledObject.cs](../../Assets/_Project/Scripts/Core/PooledObject.cs)** —
   added to every instance the pool creates. Holds the source prefab (so despawn
-  knows which stack to return to) and a cached `Transform`.
+  knows which stack to return to), a cached `Transform` and lazily-cached
+  `Rigidbody`, plus `IsSpawned` / `SpawnGeneration` which only the pool writes.
 
 ## Key Behaviors & Non-Obvious Patterns
 
@@ -31,6 +32,15 @@ under pressure.
   `_leakWarningThreshold` (default 512) logs once when a prefab's live count
   crosses it — that is a leak, something spawning and never despawning.
 - Despawn re-parents to the pool root and deactivates; it never destroys.
+- **Spawn generations.** Every instance carries a counter bumped on each spawn,
+  and a timed despawn records the generation it was issued for. Without it a
+  stale timer fires on an object that was manually despawned and re-spawned in
+  the meantime, killing an unrelated later use — the kind of bug that shows up as
+  a decal vanishing early once every few minutes and is near-impossible to trace.
+- **Double despawn is rejected** (`IsSpawned` guard). Pushing the same instance
+  onto the stack twice would let the pool hand one object to two callers at once.
+- `Spawn` pops past instances something external destroyed (scene change, stray
+  `Destroy`) instead of returning a dead reference.
 - `Despawn` on an object that never came from the pool logs an error rather than
   silently corrupting a stack.
 
@@ -51,4 +61,6 @@ dummy target 8.
 - A pooled prefab must reset its own state in `OnEnable`, not `Awake` — `Awake`
   runs once per instance, not once per spawn. `Health` already does this.
 - Particle prefabs need `playOnAwake` so they replay on reuse.
-- Nothing here has ever executed.
+- Verified in play indirectly (impacts and casings appear and stop appearing).
+  NOT yet verified: that the pool actually reuses rather than grows — watch the
+  leak warning at 512 instances.
