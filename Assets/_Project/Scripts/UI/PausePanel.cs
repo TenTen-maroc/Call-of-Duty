@@ -159,6 +159,11 @@ namespace CoD.UI
                     SceneManager.LoadScene(_menuSceneName);
                     break;
                 case RowQuitToDesktop:
+                    // Records too, for the same reason QUIT TO MENU does. Losing
+                    // the round you reached because you left by the other door is
+                    // an inconsistency the player experiences as the game eating
+                    // a run. Alt-F4 cannot be caught; our own button can.
+                    _run?.RecordRunEnded();
                     RestoreTime();
                     GameLog.Info("Quit from the pause menu.", this);
                     Application.Quit();

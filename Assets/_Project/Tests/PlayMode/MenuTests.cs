@@ -256,6 +256,33 @@ namespace CoD.Tests
         }
 
         [UnityTest]
+        public IEnumerator RecordingIsIdempotentEnough_ToSurviveBothQuitDoors()
+        {
+            var run = Object.FindFirstObjectByType<RunContext>();
+            Assert.IsNotNull(run);
+
+            // Both pause-menu exits call RecordRunEnded — leaving by one door
+            // rather than the other must not silently eat the round you reached.
+            // A real session left through QUIT TO DESKTOP and lost its third run.
+            run!.State.SetWave(5);
+            run.RecordRunEnded();
+            yield return null;
+
+            SaveData afterFirst = SaveSystem.Load();
+            Assert.AreEqual(5, afterFirst.bestRound, "the round reached must be written on the way out");
+
+            int runsAfterFirst = afterFirst.totalRuns;
+            run.RecordRunEnded();
+            yield return null;
+
+            // Not idempotent by design — a second call is a second run — but it
+            // must never LOSE the record, which is the failure that matters.
+            SaveData afterSecond = SaveSystem.Load();
+            Assert.GreaterOrEqual(afterSecond.totalRuns, runsAfterFirst);
+            Assert.AreEqual(5, afterSecond.bestRound, "a second write must not erase the best round");
+        }
+
+        [UnityTest]
         public IEnumerator EndingARun_DoesNotWipeTheSettings()
         {
             var hub = Object.FindFirstObjectByType<SettingsHub>();
