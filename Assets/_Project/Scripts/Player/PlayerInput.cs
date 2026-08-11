@@ -64,7 +64,31 @@ namespace CoD.Player
             _crouch = _map.FindAction("Crouch", throwIfNotFound: false);
         }
 
-        private void OnEnable() => _map?.Enable();
+        private bool _blocked;
+
+        /// <summary>True while a menu owns the keyboard. Read by tests and by the HUD.</summary>
+        public bool IsBlocked => _blocked;
+
+        /// <summary>
+        /// Turn the whole action map off — what pause and the menus use. Every
+        /// property above then reports "no input", so movement, look, firing and
+        /// reloading all stop at their single source instead of each component
+        /// growing its own `if (paused)`.
+        /// </summary>
+        public void SetBlocked(bool blocked)
+        {
+            _blocked = blocked;
+            if (blocked) _map?.Disable();
+            else if (isActiveAndEnabled) _map?.Enable();
+        }
+
+        // The blocked flag has to survive a disable/enable cycle: a component
+        // re-enabled while a menu is open must not hand control back to a player
+        // who is looking at a pause screen.
+        private void OnEnable()
+        {
+            if (!_blocked) _map?.Enable();
+        }
 
         private void OnDisable() => _map?.Disable();
 

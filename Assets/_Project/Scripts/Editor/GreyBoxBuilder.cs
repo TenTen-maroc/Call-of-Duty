@@ -46,6 +46,7 @@ namespace CoD.EditorTools
 
         private const string GreyBoxScenePath = Scenes + "/10_GreyBox.unity";
         private const string BootScenePath = Scenes + "/00_Boot.unity";
+        private const string MainMenuScenePath = Scenes + "/20_MainMenu.unity";
         private const string NavMeshPath = Scenes + "/NavMesh_GreyBox.asset";
 
         [MenuItem("CoD/Build Grey Box", false, 0)]
@@ -183,6 +184,7 @@ namespace CoD.EditorTools
 
             BuildGreyBoxScene(game, settings, loadout, impact, grey, wall, targetMat, gunmetal, gunAccent,
                 dummy, decal, sparks, flash, casing, drones, runAssets);
+            BuildMainMenuScene(game, settings);
             BuildBootScene();
             RegisterScenes();
 
@@ -1254,8 +1256,13 @@ namespace CoD.EditorTools
             SetArrayRef(runner, "_waves", runAssets.Waves);
             SetRef(weapon, "_ownerHealth", playerHealth);   // modules never damage the shooter
 
+            // The player's input component, so pause can switch the whole action
+            // map off. GetComponent is fine here — the guard bans it inside
+            // Update/FixedUpdate/LateUpdate, and this is editor build code.
+            PlayerInput playerInput = playerTransform.GetComponent<PlayerInput>();
+
             BuildHud(weapon, playerHealth, game, pool, dummyPrefab, muzzle, spawner, registry, cameraTransform,
-                run, runner);
+                run, runner, settingsHub, playerInput);
 
             EditorSceneManager.MarkSceneDirty(scene);
             EditorSceneManager.SaveScene(scene, GreyBoxScenePath);
@@ -1563,7 +1570,7 @@ namespace CoD.EditorTools
         private static void BuildHud(WeaponController weapon, Health playerHealth, GameConfig game,
             ObjectPool pool, GameObject dummyPrefab, Transform spawnOrigin,
             DroneSpawner spawner, DroneRegistry registry, Transform cameraTransform,
-            RunContext run, WaveRunner runner)
+            RunContext run, WaveRunner runner, SettingsHub settingsHub, PlayerInput input)
         {
             GameObject canvasObject = new("HUD");
             Canvas canvas = canvasObject.AddComponent<Canvas>();
@@ -1691,6 +1698,7 @@ namespace CoD.EditorTools
 
             BuildDamageFeedback(canvasObject, game, playerHealth, cameraTransform, hudAudio);
             BuildRunUi(canvasObject, run, runner, weapon, hudAudio);
+            BuildPauseUi(canvasObject, settingsHub, input, run, runner);
 
             CheatConsole console = canvasObject.AddComponent<CheatConsole>();
             SetRef(console, "_config", game);
@@ -1703,6 +1711,7 @@ namespace CoD.EditorTools
             SetRef(console, "_droneRegistry", registry);
             SetRef(console, "_waveRunner", runner);
             SetRef(console, "_run", run);
+            SetRef(console, "_pause", canvasObject.GetComponent<PausePanel>());
         }
 
         /// <summary>
@@ -1896,19 +1905,176 @@ namespace CoD.EditorTools
             return text;
         }
 
+        /// <summary>
+        /// One menu screen: a full-screen backdrop with a title, a body and a
+        /// footer. Both menus and the settings page are the same three labels, so
+        /// they are built once here rather than three times with slightly
+        /// different paddings.
+        /// </summary>
+        private readonly struct MenuScreen
+        {
+            public readonly GameObject Root;
+            public readonly Text Title;
+            public readonly Text Body;
+            public readonly Text Footer;
+
+            public MenuScreen(GameObject root, Text title, Text body, Text footer)
+            {
+                Root = root;
+                Title = title;
+                Body = body;
+                Footer = footer;
+            }
+        }
+
+        private static MenuScreen BuildMenuScreen(GameObject canvasObject, string name, Color backdrop,
+            int titleSize, int bodySize)
+        {
+            GameObject root = new(name, typeof(RectTransform));
+            root.transform.SetParent(canvasObject.transform, false);
+            StretchFull(root);
+            Image image = root.AddComponent<Image>();
+            image.color = backdrop;
+            image.raycastTarget = false;
+
+            Text title = BuildLabel(root, "Title", new Vector2(0f, -120f),
+                TextAnchor.UpperCenter, new Vector2(0.5f, 1f), titleSize);
+            title.rectTransform.sizeDelta = new Vector2(1400f, 110f);
+
+            Text body = BuildLabel(root, "Body", new Vector2(0f, -300f),
+                TextAnchor.UpperLeft, new Vector2(0.5f, 1f), bodySize);
+            body.rectTransform.sizeDelta = new Vector2(1100f, 420f);
+
+            Text footer = BuildLabel(root, "Footer", new Vector2(0f, 110f),
+                TextAnchor.LowerCenter, new Vector2(0.5f, 0f), 26);
+            footer.rectTransform.sizeDelta = new Vector2(1300f, 80f);
+
+            root.SetActive(false);
+            return new MenuScreen(root, title, body, footer);
+        }
+
+        /// <summary>
+        /// Pause and the settings page it opens.
+        ///
+        /// Built AFTER the shop and game-over panels on purpose: uGUI draws
+        /// siblings in hierarchy order, so a pause menu created earlier would be
+        /// painted underneath the shop it is supposed to cover. The settings page
+        /// is created last for the same reason.
+        /// </summary>
+        private static void BuildPauseUi(GameObject canvasObject, SettingsHub settingsHub,
+            PlayerInput input, RunContext run, WaveRunner runner)
+        {
+            MenuScreen pause = BuildMenuScreen(canvasObject, "PausePanel",
+                new Color(0.03f, 0.035f, 0.04f, 0.9f), 64, 34);
+            MenuScreen settings = BuildMenuScreen(canvasObject, "SettingsPanel",
+                new Color(0.03f, 0.035f, 0.04f, 0.94f), 48, 30);
+            settings.Title.text = "SETTINGS";
+
+            SettingsPanel settingsPanel = canvasObject.AddComponent<SettingsPanel>();
+            SetRef(settingsPanel, "_settings", settingsHub);
+            SetRef(settingsPanel, "_root", settings.Root);
+            SetRef(settingsPanel, "_bodyLabel", settings.Body);
+            SetRef(settingsPanel, "_footerLabel", settings.Footer);
+
+            PausePanel pausePanel = canvasObject.AddComponent<PausePanel>();
+            SetRef(pausePanel, "_root", pause.Root);
+            SetRef(pausePanel, "_titleLabel", pause.Title);
+            SetRef(pausePanel, "_bodyLabel", pause.Body);
+            SetRef(pausePanel, "_footerLabel", pause.Footer);
+            SetRef(pausePanel, "_settingsPanel", settingsPanel);
+            SetRef(pausePanel, "_input", input);
+            SetRef(pausePanel, "_runner", runner);
+            SetRef(pausePanel, "_run", run);
+
+            // Every other keyboard-driven panel has to know about pause, because
+            // they share keys: SPACE is "next wave" in the shop and "confirm"
+            // here, and R is "restart" on the death screen.
+            ShopPanel? shop = canvasObject.GetComponent<ShopPanel>();
+            if (shop != null) SetRef(shop, "_pause", pausePanel);
+            GameOverPanel? gameOver = canvasObject.GetComponent<GameOverPanel>();
+            if (gameOver != null) SetRef(gameOver, "_pause", pausePanel);
+        }
+
+        /// <summary>
+        /// 20_MainMenu. Title, the record, Run vs Sandbox, settings, quit.
+        ///
+        /// A camera with an AudioListener even though nothing is rendered or
+        /// heard: without them Unity logs "No cameras rendering" and "no audio
+        /// listeners" every frame, which is noise in the one console this project
+        /// keeps at zero warnings.
+        /// </summary>
+        private static void BuildMainMenuScene(GameConfig game, SettingsConfig settingsConfig)
+        {
+            Scene scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
+
+            GameObject cameraObject = new("Main Camera");
+            cameraObject.tag = "MainCamera";
+            Camera camera = cameraObject.AddComponent<Camera>();
+            camera.clearFlags = CameraClearFlags.SolidColor;
+            camera.backgroundColor = new Color(0.05f, 0.055f, 0.065f);
+            cameraObject.AddComponent<AudioListener>();
+
+            SettingsHub settingsHub = new GameObject("Settings").AddComponent<SettingsHub>();
+            SetRef(settingsHub, "_bounds", settingsConfig);
+            SetRef(settingsHub, "_defaults", game);
+
+            GameObject canvasObject = new("MenuCanvas");
+            Canvas canvas = canvasObject.AddComponent<Canvas>();
+            canvas.renderMode = RenderMode.ScreenSpaceOverlay;
+            CanvasScaler scaler = canvasObject.AddComponent<CanvasScaler>();
+            scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
+            scaler.referenceResolution = new Vector2(1920f, 1080f);
+            canvasObject.AddComponent<GraphicRaycaster>();
+
+            MenuScreen menu = BuildMenuScreen(canvasObject, "MainMenuPanel",
+                new Color(0.05f, 0.055f, 0.065f, 1f), 80, 34);
+            Text record = BuildLabel(menu.Root, "Record", new Vector2(0f, -230f),
+                TextAnchor.UpperCenter, new Vector2(0.5f, 1f), 28);
+            record.rectTransform.sizeDelta = new Vector2(1300f, 44f);
+
+            MenuScreen settings = BuildMenuScreen(canvasObject, "SettingsPanel",
+                new Color(0.05f, 0.055f, 0.065f, 1f), 48, 30);
+            settings.Title.text = "SETTINGS";
+
+            SettingsPanel settingsPanel = canvasObject.AddComponent<SettingsPanel>();
+            SetRef(settingsPanel, "_settings", settingsHub);
+            SetRef(settingsPanel, "_root", settings.Root);
+            SetRef(settingsPanel, "_bodyLabel", settings.Body);
+            SetRef(settingsPanel, "_footerLabel", settings.Footer);
+
+            MainMenuPanel menuPanel = canvasObject.AddComponent<MainMenuPanel>();
+            SetRef(menuPanel, "_settings", settingsHub);
+            SetRef(menuPanel, "_root", menu.Root);
+            SetRef(menuPanel, "_titleLabel", menu.Title);
+            SetRef(menuPanel, "_recordLabel", record);
+            SetRef(menuPanel, "_bodyLabel", menu.Body);
+            SetRef(menuPanel, "_footerLabel", menu.Footer);
+            SetRef(menuPanel, "_settingsPanel", settingsPanel);
+            SetString(menuPanel, "_gameSceneName", "10_GreyBox");
+
+            EditorSceneManager.MarkSceneDirty(scene);
+            EditorSceneManager.SaveScene(scene, MainMenuScenePath);
+        }
+
         private static void BuildBootScene()
         {
             Scene scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
             GameObject boot = new("Boot");
-            boot.AddComponent<BootLoader>();
+            BootLoader loader = boot.AddComponent<BootLoader>();
+            // Boot used to drop straight into the grey box. It now goes to the
+            // menu, which is the only screen that can pick a mode.
+            SetString(loader, "_firstScene", "20_MainMenu");
+            EditorSceneManager.MarkSceneDirty(scene);
             EditorSceneManager.SaveScene(scene, BootScenePath);
         }
 
         private static void RegisterScenes()
         {
+            // Order matters: index 0 is what a built player loads first.
             EditorBuildSettings.scenes = new[]
             {
                 new EditorBuildSettingsScene(BootScenePath, true),
+                new EditorBuildSettingsScene(MainMenuScenePath, true),
                 new EditorBuildSettingsScene(GreyBoxScenePath, true),
             };
         }
@@ -2057,6 +2223,25 @@ namespace CoD.EditorTools
             // of Build(), which re-opens the saved scene and re-assigns anything
             // that did not survive. Both are kept: this is the cheap correct path,
             // that is the proof.
+            serialized.ApplyModifiedProperties();
+            EditorUtility.SetDirty(target);
+        }
+
+        /// <summary>
+        /// SetRef for a string field. Scene names are the only strings the builder
+        /// has to write, and a private [SerializeField] is unreachable except
+        /// through SerializedProperty.
+        /// </summary>
+        private static void SetString(Object target, string field, string value)
+        {
+            var serialized = new SerializedObject(target);
+            SerializedProperty property = serialized.FindProperty(field);
+            if (property == null)
+            {
+                Debug.LogWarning($"SetString: {target.GetType().Name} has no field '{field}'");
+                return;
+            }
+            property.stringValue = value;
             serialized.ApplyModifiedProperties();
             EditorUtility.SetDirty(target);
         }

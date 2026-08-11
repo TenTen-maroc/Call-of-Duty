@@ -21,10 +21,11 @@ obvious, emphasise the non-obvious.
 | [save.md](save.md) | Versioned JSON, `schemaVersion` migration, atomic write, `.bak` | ✅ |
 | [arena.md](arena.md) | The three-lane arena, cover heights, navmesh bake | ✅ |
 | [settings.md](settings.md) | Sensitivity, FOV, invert, volume — bounds, the runtime layer, schema 2 | ✅ |
+| [menus.md](menus.md) | Main menu, pause, the shared settings page, Run vs Sandbox | ✅ |
 
 ## Automated verification
 
-Beyond `typecheck.mjs` and the guards, the project has 49 tests:
+Beyond `typecheck.mjs` and the guards, the project has 56 tests:
 
 ```
 Unity.exe -batchmode -runTests -projectPath . -testPlatform EditMode -testResults Logs/tests-editmode.xml
@@ -32,10 +33,11 @@ Unity.exe -batchmode -runTests -projectPath . -testPlatform PlayMode -testResult
 ```
 
 EditMode covers the maths that fails silently — stat folding, save round-trip and
-corruption recovery, follow-up bounds, damage falloff, wave scaling, shop rules,
-and both weapons' TTK. PlayMode loads the real grey box and asserts the loop
-runs: drones spawn, path, close distance, die, pay out, and hand the run to the
-shop, with the pool recycling instances. See
+corruption recovery, the v1→v2 migration, settings clamping, follow-up bounds,
+damage falloff, wave scaling, shop rules, and both weapons' TTK. PlayMode loads
+the real grey box AND the real menu scene: drones spawn, path, close distance,
+die, pay out, and hand the run to the shop with the pool recycling, and pause
+stops the clock, blocks input and gives the clock back exactly as it found it. See
 [AUTOPILOT-PLAN.md](../AUTOPILOT-PLAN.md) for what these can and cannot prove.
 
 Every doc here describes code that now **runs**. Each states at the top what

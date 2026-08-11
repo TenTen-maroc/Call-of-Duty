@@ -13,6 +13,7 @@ MonoBehaviour:
   m_Name: Shop
   m_EditorClassIdentifier: 
   startingMoney: 300
+  sandboxStartingMoney: 100000
   offersPerBreak: 4
   rerollBaseCost: 50
   rerollCostGrowth: 1.5

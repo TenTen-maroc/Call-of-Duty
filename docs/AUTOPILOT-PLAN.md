@@ -118,6 +118,16 @@ to a ScriptableObject, a `SettingsHub` per scene, schema 2 with a migration, and
 not an AudioMixer. **Acceptance:** a v1 save keeps its record and re-seeds its
 settings, asserted by test.
 
+### S2 — Menus: main menu, pause, modes (done, 2026-08-11)
+
+There was no way in and no way out. Now `20_MainMenu` (title, record, Run vs
+Sandbox, settings, quit), pause on Escape with correct timeScale capture/restore
+and full input blocking, and a settings page shared by both. Run and Sandbox are
+carried through `SaveData.lastMode`, never a static. See
+[systems/menus.md](systems/menus.md). **Acceptance:** a PlayMode test loads the
+menu scene, and pause is proven to stop the clock, block the action map, and
+restore whatever timeScale it found rather than a hard 1.
+
 ### M4 — Human tuning pass (blocked on a person)
 
 The card at the top of [NEXT-SESSION-PROMPT.md](NEXT-SESSION-PROMPT.md). Seven

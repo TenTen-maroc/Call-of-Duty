@@ -32,6 +32,8 @@ namespace CoD.UI
         [Tooltip("Shows the weapon's installed effect modules, in order. Stacking is the product; an unreadable stack is an unsold stack.")]
         [SerializeField] private Text? _loadoutLabel = null;
         [SerializeField] private WeaponController? _weapon = null;
+        [Tooltip("Optional. Shop keys are ignored while paused — SPACE means 'confirm' there and 'next wave' here.")]
+        [SerializeField] private PausePanel? _pause = null;
         [SerializeField] private AudioSource? _audio = null;
         [SerializeField] private AudioClip? _buyClip = null;
         [SerializeField] private AudioClip? _refusedClip = null;
@@ -67,6 +69,7 @@ namespace CoD.UI
         private void Update()
         {
             if (_runner == null || _runner.Phase != RunPhase.Shop) return;
+            if (_pause != null && _pause.IsPaused) return;
 
             Keyboard? keyboard = Keyboard.current;
             if (keyboard == null) return;

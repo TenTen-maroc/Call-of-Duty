@@ -31,6 +31,7 @@ namespace CoD.EditorTools
     public static class GreyBoxVerify
     {
         private const string GreyBoxScenePath = "Assets/_Project/Scenes/10_GreyBox.unity";
+        private const string MainMenuScenePath = "Assets/_Project/Scenes/20_MainMenu.unity";
 
         [MenuItem("CoD/Verify and Repair Grey Box", false, 1)]
         public static void VerifyAndRepair()
@@ -104,6 +105,10 @@ namespace CoD.EditorTools
                     repaired += Ensure(waveRunner, "_difficulty", difficulty, report, ref missing);
                     repaired += Ensure(waveRunner, "_shopConfig", shop, report, ref missing);
                 }
+                // SettingsPanel._settings points at a SCENE object, not an asset.
+                // Scene-object references are the ones that survive a save; the
+                // asset ones are what Ensure exists to repair. It is checked
+                // after the round trip below instead.
             }
 
             if (repaired > 0)
@@ -218,6 +223,29 @@ namespace CoD.EditorTools
                     Check(overPanel, "_runner", stillNull);
                     Check(overPanel, "_run", stillNull);
                     Check(overPanel, "_root", stillNull);
+                    // Without this, R restarts the run from behind the pause menu.
+                    Check(overPanel, "_pause", stillNull);
+                }
+                foreach (PausePanel pausePanel in root.GetComponentsInChildren<PausePanel>(true))
+                {
+                    Check(pausePanel, "_root", stillNull);
+                    Check(pausePanel, "_titleLabel", stillNull);
+                    Check(pausePanel, "_bodyLabel", stillNull);
+                    Check(pausePanel, "_footerLabel", stillNull);
+                    Check(pausePanel, "_settingsPanel", stillNull);
+                    // A null input reference is the nastiest one here: the menu
+                    // opens, the game freezes, and the mouse still turns the
+                    // camera underneath it.
+                    Check(pausePanel, "_input", stillNull);
+                    Check(pausePanel, "_runner", stillNull);
+                    Check(pausePanel, "_run", stillNull);
+                }
+                foreach (SettingsPanel settingsPanel in root.GetComponentsInChildren<SettingsPanel>(true))
+                {
+                    Check(settingsPanel, "_settings", stillNull);
+                    Check(settingsPanel, "_root", stillNull);
+                    Check(settingsPanel, "_bodyLabel", stillNull);
+                    Check(settingsPanel, "_footerLabel", stillNull);
                 }
                 foreach (PlayerMotor motor in root.GetComponentsInChildren<PlayerMotor>(true))
                     Check(motor, "_run", stillNull);
@@ -227,7 +255,11 @@ namespace CoD.EditorTools
                     Check(weapon, "_ownerHealth", stillNull);
                 }
                 foreach (ShopPanel shopPanel in root.GetComponentsInChildren<ShopPanel>(true))
+                {
                     Check(shopPanel, "_weapon", stillNull);
+                    // SPACE is "next wave" here and "confirm" in the pause menu.
+                    Check(shopPanel, "_pause", stillNull);
+                }
             }
 
             // The drone assets themselves. A DroneConfig with no prefab is the
@@ -246,6 +278,14 @@ namespace CoD.EditorTools
             CheckAssetRef(heavySlam, "slamVfx", stillNull);
             CheckAssetRef(explosive, "explosionVfx", stillNull);
 
+            // The menu scene gets the same save/reload treatment, and only NOW.
+            // It opens other scenes, and opening a near-empty one lets Unity
+            // unload every asset the grey box was the last thing holding — the
+            // DroneConfig handles above would come back null and every check
+            // after this point would report a missing asset that is really on
+            // disk. Order is load-scene-relative, not cosmetic.
+            VerifyMenuScene(stillNull);
+
             Debug.Log($"GreyBoxVerify: repaired {repaired}, unresolved {stillNull.Count}\n{report}");
             if (stillNull.Count > 0)
             {
@@ -254,6 +294,95 @@ namespace CoD.EditorTools
             else
             {
                 Debug.Log("GreyBoxVerify: every checked reference survived a save/reload round trip.");
+            }
+        }
+
+        /// <summary>
+        /// 20_MainMenu, read back from disk. Its failure mode is the worst one in
+        /// the project: a menu whose START RUN row is wired to nothing looks
+        /// completely normal and does nothing when you press Enter.
+        /// </summary>
+        private static void VerifyMenuScene(List<string> stillNull)
+        {
+            // Repair first, exactly as the grey box does. The menu's SettingsHub
+            // holds two ASSET references, and asset references assigned into a
+            // scene that has never been saved do not persist — the failure this
+            // whole file exists for. Caught by this pass on its first run.
+            Scene menu = EditorSceneManager.OpenScene(MainMenuScenePath, OpenSceneMode.Single);
+
+            // Load the assets AFTER the scene is open, never before. Closing a
+            // scene lets Unity unload every asset it was the last thing holding,
+            // and a C# handle to an unloaded UnityEngine.Object compares equal to
+            // null — so a handle taken before the switch silently repairs
+            // nothing. This cost one build round to find.
+            SettingsConfig? settings = Load<SettingsConfig>("Assets/_Project/Data/Game/Settings.asset");
+            GameConfig? game = Load<GameConfig>("Assets/_Project/Data/Game/GameConfig.asset");
+
+            var report = new StringBuilder();
+            int repaired = 0;
+            int missing = 0;
+            foreach (GameObject root in menu.GetRootGameObjects())
+            {
+                foreach (SettingsHub hub in root.GetComponentsInChildren<SettingsHub>(true))
+                {
+                    repaired += Ensure(hub, "_bounds", settings, report, ref missing);
+                    repaired += Ensure(hub, "_defaults", game, report, ref missing);
+                }
+            }
+            if (repaired > 0)
+            {
+                EditorSceneManager.MarkSceneDirty(menu);
+                EditorSceneManager.SaveScene(menu);
+                AssetDatabase.SaveAssets();
+                Debug.Log($"GreyBoxVerify: menu scene repaired {repaired}\n{report}");
+            }
+
+            menu = EditorSceneManager.OpenScene(MainMenuScenePath, OpenSceneMode.Single);
+            foreach (GameObject root in menu.GetRootGameObjects())
+            {
+                foreach (SettingsHub hub in root.GetComponentsInChildren<SettingsHub>(true))
+                {
+                    Check(hub, "_bounds", stillNull);
+                    Check(hub, "_defaults", stillNull);
+                }
+                foreach (MainMenuPanel panel in root.GetComponentsInChildren<MainMenuPanel>(true))
+                {
+                    Check(panel, "_settings", stillNull);
+                    Check(panel, "_root", stillNull);
+                    Check(panel, "_titleLabel", stillNull);
+                    Check(panel, "_recordLabel", stillNull);
+                    Check(panel, "_bodyLabel", stillNull);
+                    Check(panel, "_footerLabel", stillNull);
+                    Check(panel, "_settingsPanel", stillNull);
+                    CheckString(panel, "_gameSceneName", stillNull);
+                }
+                foreach (SettingsPanel panel in root.GetComponentsInChildren<SettingsPanel>(true))
+                {
+                    Check(panel, "_settings", stillNull);
+                    Check(panel, "_root", stillNull);
+                    Check(panel, "_bodyLabel", stillNull);
+                    Check(panel, "_footerLabel", stillNull);
+                }
+            }
+
+            // The boot scene is two components and one string, and that string is
+            // the difference between booting to the menu and booting to a run.
+            Scene boot = EditorSceneManager.OpenScene("Assets/_Project/Scenes/00_Boot.unity", OpenSceneMode.Single);
+            foreach (GameObject root in boot.GetRootGameObjects())
+            {
+                foreach (BootLoader loader in root.GetComponentsInChildren<BootLoader>(true))
+                    CheckString(loader, "_firstScene", stillNull);
+            }
+        }
+
+        /// <summary>An empty scene name is as dead as a null reference and reads the same.</summary>
+        private static void CheckString(Object target, string field, List<string> stillNull)
+        {
+            var serialized = new SerializedObject(target);
+            SerializedProperty property = serialized.FindProperty(field);
+            if (property == null || string.IsNullOrWhiteSpace(property.stringValue))
+            {
+                stillNull.Add($"{target.GetType().Name}.{field} (empty string)");
             }
         }
 

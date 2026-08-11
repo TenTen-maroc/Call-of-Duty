@@ -22,6 +22,8 @@ namespace CoD.UI
         [SerializeField] private GameObject? _root = null;
         [SerializeField] private Text? _titleLabel = null;
         [SerializeField] private Text? _detailLabel = null;
+        [Tooltip("Optional. Restart is ignored while paused.")]
+        [SerializeField] private PausePanel? _pause = null;
 
         private void OnEnable()
         {
@@ -66,6 +68,7 @@ namespace CoD.UI
         private void Update()
         {
             if (_runner == null || _runner.Phase != RunPhase.GameOver) return;
+            if (_pause != null && _pause.IsPaused) return;
 
             Keyboard? keyboard = Keyboard.current;
             if (keyboard == null) return;

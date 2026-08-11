@@ -119,7 +119,16 @@ namespace CoD.Waves
 
         private void Start()
         {
-            if (_run != null && _shopConfig != null) _run.BeginRun(_shopConfig.startingMoney);
+            if (_run != null && _shopConfig != null)
+            {
+                // Sandbox is "everything unlocked". In a game whose whole
+                // progression is a shop, that IS money — a parallel inventory
+                // system would be a second way to own a module and a second thing
+                // to keep in sync with the shop.
+                _run.BeginRun(_run.Mode == GameMode.Sandbox
+                    ? _shopConfig.sandboxStartingMoney
+                    : _shopConfig.startingMoney);
+            }
             EnterCountdown();
         }
 

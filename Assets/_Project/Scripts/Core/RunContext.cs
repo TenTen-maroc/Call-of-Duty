@@ -38,6 +38,13 @@ namespace CoD.Core
         /// <summary>The persistent record. Loaded once, saved when a run ends.</summary>
         public SaveData Save => _save ??= SaveSystem.Load();
 
+        /// <summary>
+        /// Which mode this run is. Chosen in the main menu and carried here
+        /// through the save file rather than a static — a static would survive
+        /// into the next Play session, and Domain Reload is off.
+        /// </summary>
+        public GameMode Mode => Save.lastMode;
+
         private void Awake()
         {
             _save = SaveSystem.Load();
@@ -89,6 +96,16 @@ namespace CoD.Core
         public void RecordRunEnded()
         {
             SaveData save = Save;
+
+            // Sandbox has infinite money and a cheat console. A record set there
+            // is not a record, and one accidental sandbox session would otherwise
+            // overwrite a real best round permanently.
+            if (save.lastMode == GameMode.Sandbox)
+            {
+                GameLog.Info("Sandbox run ended — nothing recorded.", this);
+                return;
+            }
+
             save.totalRuns++;
             save.totalKills += State.Kills;
             if (State.RoundReached > save.bestRound) save.bestRound = State.RoundReached;

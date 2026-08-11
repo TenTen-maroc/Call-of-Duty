@@ -6,6 +6,7 @@
         "CoD.Player",
         "CoD.Enemies",
         "CoD.Waves",
+        "CoD.UI",
         "CoD.Weapons",
         "UnityEngine.TestRunner",
         "UnityEditor.TestRunner"

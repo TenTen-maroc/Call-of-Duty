@@ -26,6 +26,9 @@ namespace CoD.Waves
 
         [Header("Economy")]
         [Min(0)] public int startingMoney = 300;
+
+        [Tooltip("What a Sandbox run starts with. 'Everything unlocked' in a shop-driven game IS money — one number instead of a parallel inventory system.")]
+        [Min(0)] public int sandboxStartingMoney = 100000;
         [Tooltip("Four is the sweet spot: enough that the draw feels varied, few enough that the player reads them all in a break.")]
         [Range(1, 8)] public int offersPerBreak = 4;
         [Min(0)] public int rerollBaseCost = 50;

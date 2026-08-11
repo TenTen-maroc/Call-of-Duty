@@ -37,6 +37,8 @@ namespace CoD.UI
         [SerializeField] private WaveRunner? _waveRunner = null;
         [SerializeField] private RunContext? _run = null;
         [SerializeField] private Key _toggleKey = Key.Backquote;
+        [Tooltip("Optional. The console ignores every key while the game is paused; slow-mo and pause both own Time.timeScale.")]
+        [SerializeField] private PausePanel? _pause = null;
 
         private bool _open;
         private bool _godMode;
@@ -47,10 +49,29 @@ namespace CoD.UI
         {
             // The project's real physics step, whatever it is — never assume 0.02.
             _baseFixedDeltaTime = Time.fixedDeltaTime;
+
+#if !UNITY_EDITOR
+            // DEVELOPMENT_BUILD only, since the #if above already removed this
+            // whole component from a shipping build. There the console is a
+            // SANDBOX feature and a Run must not have it.
+            //
+            // The editor is deliberately exempt: pressing Play straight into
+            // 10_GreyBox is how this project is tuned, and gating the console on
+            // whichever mode was last picked in the menu would break that
+            // workflow for no safety gain — an editor session can already edit
+            // every asset in the game.
+            if (_run != null && _run.Mode != GameMode.Sandbox)
+            {
+                enabled = false;
+                GameLog.Info("Cheat console disabled: this is a Run, not Sandbox.", this);
+            }
+#endif
         }
 
         private void Update()
         {
+            if (_pause != null && _pause.IsPaused) return;
+
             Keyboard? keyboard = Keyboard.current;
             if (keyboard == null) return;
 
