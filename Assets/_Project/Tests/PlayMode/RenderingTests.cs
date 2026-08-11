@@ -68,6 +68,51 @@ namespace CoD.Tests
         }
 
         /// <summary>
+        /// The arena is lit by more than the sun, and none of the decorative trim
+        /// carries a collider.
+        ///
+        /// The collider half is the one that bites: BakeNavMesh collects from
+        /// PhysicsColliders, so a trim strip built with the collider
+        /// CreatePrimitive hands out would carve a floating obstacle into the
+        /// drone navmesh. That shows up as drones pathing around thin air, which
+        /// reads as broken AI rather than as a build mistake.
+        /// </summary>
+        [UnityTest]
+        public IEnumerator Arena_IsLit_AndItsTrimIsNonSolid()
+        {
+            yield return Load("10_GreyBox");
+
+            Light[] lights = Object.FindObjectsByType<Light>(FindObjectsSortMode.None);
+            int pointLights = 0;
+            foreach (Light light in lights)
+            {
+                if (!light.enabled || light.type != LightType.Point) continue;
+                // The muzzle light ships disabled and lives under the viewmodel.
+                if (light.GetComponentInParent<Camera>() != null) continue;
+                pointLights++;
+            }
+            Assert.GreaterOrEqual(pointLights, 4,
+                "the arena lane lights are missing — every lane would look identical");
+
+            foreach (Light light in lights)
+            {
+                if (light.type == LightType.Directional) continue;
+                Assert.AreEqual(LightShadows.None, light.shadows,
+                    $"'{light.name}' casts shadows; the sun is meant to be the only caster");
+            }
+
+            int trims = 0;
+            foreach (Transform t in Object.FindObjectsByType<Transform>(FindObjectsSortMode.None))
+            {
+                if (!t.name.StartsWith("Trim_")) continue;
+                trims++;
+                Assert.IsNull(t.GetComponent<Collider>(),
+                    $"'{t.name}' has a collider and would be baked into the navmesh as an obstacle");
+            }
+            Assert.Greater(trims, 0, "no edge trim was built");
+        }
+
+        /// <summary>
         /// The settings actually REACH the camera.
         ///
         /// CameraGraphics holds a serialized SettingsHub reference, and a null one

@@ -82,11 +82,33 @@ namespace CoD.EditorTools
             Material gunmetal = LoadOrCreateMaterial(Materials + "/Weapon_Body.mat", new Color(0.10f, 0.105f, 0.115f));
             Material gunAccent = LoadOrCreateMaterial(Materials + "/Weapon_Accent.mat", new Color(0.055f, 0.06f, 0.065f));
 
+            // Edge trim is COOL on purpose. Every threat in this game is read by
+            // the colour of its core — Rusher red, Shooter amber, Tank crimson —
+            // so nothing in the architecture is allowed to be warm and bright, or
+            // the player learns to check a wall for danger. Cold light marks
+            // places; warm light means something is trying to kill you.
+            Material trim = LoadOrCreateEmissiveMaterial(Materials + "/Trim_Emissive.mat",
+                new Color(0.30f, 0.62f, 0.92f), 1.2f);
+
+            // Surfaces, re-asserted on every build. LoadOrCreateMaterial returns
+            // an existing material untouched, which is right for values a human
+            // tuned — but these are shipped defaults being introduced, so they are
+            // applied the same way SetRef re-links a reference.
+            ApplySurface(grey, smoothness: 0.28f, metallic: 0.0f);
+            ApplySurface(wall, smoothness: 0.18f, metallic: 0.0f);
+            ApplySurface(targetMat, smoothness: 0.35f, metallic: 0.1f);
+            ApplySurface(gunmetal, smoothness: 0.62f, metallic: 0.85f);
+            ApplySurface(gunAccent, smoothness: 0.45f, metallic: 0.70f);
+
             // Drone palette: a dark hull so the glowing core is the only thing the
             // eye tracks, and the core is what the telegraph tints.
             Material droneHull = LoadOrCreateMaterial(Materials + "/Drone_Hull.mat", new Color(0.13f, 0.14f, 0.17f));
             Material droneCore = LoadOrCreateEmissiveMaterial(Materials + "/Drone_Core.mat",
                 new Color(0.75f, 0.12f, 0.10f), 1.6f);
+            // Metallic and fairly smooth: a hull that catches a highlight reads as
+            // a machine, and it is what makes the dark body legible at all against
+            // a dark floor once the glowing core stops being the only lit pixel.
+            ApplySurface(droneHull, smoothness: 0.55f, metallic: 0.75f);
 
             GameObject decal = BuildDecalPrefab(hot);
             GameObject sparks = BuildSparksPrefab();
@@ -186,7 +208,7 @@ namespace CoD.EditorTools
             EditorUtility.SetDirty(rifle);
 
             BuildGreyBoxScene(game, settings, loadout, impact, grey, wall, targetMat, gunmetal, gunAccent,
-                dummy, decal, sparks, flash, casing, drones, runAssets, postFx);
+                dummy, decal, sparks, flash, casing, drones, runAssets, postFx, trim);
             BuildMainMenuScene(game, settings, postFx);
             BuildBootScene();
             RegisterScenes();
@@ -1221,7 +1243,7 @@ namespace CoD.EditorTools
             PlayerLoadoutConfig loadout, ImpactConfig impact,
             Material floorMat, Material wallMat, Material targetMat, Material gunmetal, Material gunAccent,
             GameObject dummyPrefab, GameObject decal, GameObject sparks, GameObject flash, GameObject casing,
-            DroneAssets drones, RunAssets runAssets, VolumeProfile postFx)
+            DroneAssets drones, RunAssets runAssets, VolumeProfile postFx, Material trimMat)
         {
             Scene scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
 
@@ -1255,8 +1277,9 @@ namespace CoD.EditorTools
 
             BuildPostFx(postFx);
 
-            GameObject room = BuildRoom(floorMat, wallMat);
+            GameObject room = BuildRoom(floorMat, wallMat, trimMat);
             BakeNavMesh(room);
+            BuildArenaLights();
 
             ObjectPool pool = new GameObject("ObjectPool").AddComponent<ObjectPool>();
             // Counts are sized for a full wave, not for the demo: the pool exists
@@ -1358,7 +1381,7 @@ namespace CoD.EditorTools
             data.antialiasingQuality = AntialiasingQuality.High;
         }
 
-        private static GameObject BuildRoom(Material floorMat, Material wallMat)
+        private static GameObject BuildRoom(Material floorMat, Material wallMat, Material trimMat)
         {
             GameObject room = new("Room");
 
@@ -1409,6 +1432,26 @@ namespace CoD.EditorTools
             AddBox(room, "Pillar_NE", new Vector3(16f, 2f, 16f), new Vector3(2f, 4f, 2f), wallMat);
             AddBox(room, "Pillar_SW", new Vector3(-16f, 2f, -16f), new Vector3(2f, 4f, 2f), wallMat);
             AddBox(room, "Pillar_SE", new Vector3(16f, 2f, -16f), new Vector3(2f, 4f, 2f), wallMat);
+
+            // Edge trim. Untextured grey blocks under fog lose their silhouette at
+            // exactly the distance where knowing whether you can back behind one
+            // matters, and cover you cannot see the edge of is cover you do not
+            // use. A lit line along the top of every full-height mass is the
+            // cheapest fix there is — and with bloom now resolving, it costs
+            // nothing beyond the boxes themselves.
+            AddTrim(room, "Trim_Bunker", new Vector3(0f, 3.02f, 2f), new Vector3(8.1f, 0.06f, 6.1f), trimMat);
+            AddTrim(room, "Trim_Div_WS", new Vector3(-9f, 3.02f, -6f), new Vector3(1.1f, 0.06f, 10.1f), trimMat);
+            AddTrim(room, "Trim_Div_ES", new Vector3(9f, 3.02f, -6f), new Vector3(1.1f, 0.06f, 10.1f), trimMat);
+            AddTrim(room, "Trim_Div_WN", new Vector3(-9f, 3.02f, 11f), new Vector3(1.1f, 0.06f, 8.1f), trimMat);
+            AddTrim(room, "Trim_Div_EN", new Vector3(9f, 3.02f, 11f), new Vector3(1.1f, 0.06f, 8.1f), trimMat);
+            AddTrim(room, "Trim_Pillar_NW", new Vector3(-16f, 4.02f, 16f), new Vector3(2.1f, 0.06f, 2.1f), trimMat);
+            AddTrim(room, "Trim_Pillar_NE", new Vector3(16f, 4.02f, 16f), new Vector3(2.1f, 0.06f, 2.1f), trimMat);
+            AddTrim(room, "Trim_Pillar_SW", new Vector3(-16f, 4.02f, -16f), new Vector3(2.1f, 0.06f, 2.1f), trimMat);
+            AddTrim(room, "Trim_Pillar_SE", new Vector3(16f, 4.02f, -16f), new Vector3(2.1f, 0.06f, 2.1f), trimMat);
+
+            // Half-height cover gets it too: this is the row the player has to
+            // judge "can I shoot over that" against, from across the arena.
+            AddTrim(room, "Trim_Cover_S", new Vector3(0f, 1.22f, -10f), new Vector3(6.1f, 0.05f, 1.1f), trimMat);
             return room;
         }
 
@@ -1512,6 +1555,72 @@ namespace CoD.EditorTools
         /// too — a viewmodel casting shadows into the scene looks like a floating
         /// prop, because that is exactly what it is.
         /// </summary>
+        /// <summary>
+        /// A cosmetic strip of light along an edge. NO COLLIDER, and that is the
+        /// whole reason this is not just AddBox: BakeNavMesh collects from
+        /// PhysicsColliders, so a trim box with the collider CreatePrimitive gives
+        /// it would carve itself into the drone navmesh as a floating obstacle.
+        /// Same rule the viewmodel parts and the drone shape details follow.
+        /// </summary>
+        private static void AddTrim(GameObject parent, string name, Vector3 position, Vector3 scale,
+            Material material)
+        {
+            GameObject strip = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            strip.name = name;
+            strip.transform.SetParent(parent.transform, false);
+            strip.transform.position = position;
+            strip.transform.localScale = scale;
+            Object.DestroyImmediate(strip.GetComponent<Collider>());
+
+            MeshRenderer renderer = strip.GetComponent<MeshRenderer>();
+            renderer.sharedMaterial = material;
+            // A 6 cm strip contributes nothing to a shadow but still costs a draw
+            // in the shadow pass, once per light, for every one of them.
+            renderer.shadowCastingMode = ShadowCastingMode.Off;
+            renderer.receiveShadows = false;
+        }
+
+        /// <summary>
+        /// The arena's light rig. One directional sun plus ambient left every lane
+        /// looking identical, and in a grey box the lighting IS the level art —
+        /// it is the only thing that says "they come from over there" without
+        /// putting a marker on the HUD.
+        ///
+        /// Every one of these has shadows OFF. The sun stays the only shadow
+        /// caster: four more shadow maps is real frame time on a 3050 laptop, and
+        /// item 9 of the tuning card is specifically about frame time.
+        ///
+        /// They are also warm and DIM. Bright saturated colour is reserved for
+        /// drone cores, so that red always means something is trying to kill you.
+        /// </summary>
+        private static void BuildArenaLights()
+        {
+            GameObject root = new("Lights");
+
+            AddLight(root, "Lane_W", new Vector3(-14.5f, 4.2f, 4f), new Color(1f, 0.72f, 0.45f), 1.6f, 15f);
+            AddLight(root, "Lane_E", new Vector3(14.5f, 4.2f, 4f), new Color(1f, 0.72f, 0.45f), 1.6f, 15f);
+            AddLight(root, "Lane_N", new Vector3(0f, 4.2f, 14f), new Color(1f, 0.72f, 0.45f), 1.6f, 15f);
+
+            // The centre mass reads as the thing to orbit, so it gets the one cool
+            // key. It also lights the face of the bunker the player backs against.
+            AddLight(root, "Key_Core", new Vector3(0f, 4.6f, 2f), new Color(0.70f, 0.82f, 1f), 2.2f, 14f);
+        }
+
+        private static void AddLight(GameObject parent, string name, Vector3 position, Color color,
+            float intensity, float range)
+        {
+            GameObject holder = new(name);
+            holder.transform.SetParent(parent.transform, false);
+            holder.transform.position = position;
+
+            Light light = holder.AddComponent<Light>();
+            light.type = LightType.Point;
+            light.color = color;
+            light.intensity = intensity;
+            light.range = range;
+            light.shadows = LightShadows.None;
+        }
+
         private static void AddViewmodelPart(GameObject parent, string name, Vector3 position,
             Vector3 scale, Material material)
         {
@@ -2269,6 +2378,28 @@ namespace CoD.EditorTools
             material.SetColor("_BaseColor", color);
             AssetDatabase.CreateAsset(material, path);
             return material;
+        }
+
+        /// <summary>
+        /// Surface response, re-applied on every build.
+        ///
+        /// Deliberately NOT folded into LoadOrCreateMaterial, which returns an
+        /// existing material untouched so a value tuned in the Inspector survives
+        /// a rebuild. These are shipped defaults being introduced rather than
+        /// player-tuned numbers, so they are re-asserted the same way SetRef
+        /// re-links a reference — otherwise the materials already on disk would
+        /// keep the flat albedo-only look forever and the change would appear to
+        /// do nothing.
+        ///
+        /// Everything here was pure _BaseColor before: no smoothness, no metallic,
+        /// so every surface bounced light identically and the arena read as
+        /// untextured primitives, because that is exactly what it was.
+        /// </summary>
+        private static void ApplySurface(Material material, float smoothness, float metallic)
+        {
+            material.SetFloat("_Smoothness", smoothness);
+            material.SetFloat("_Metallic", metallic);
+            EditorUtility.SetDirty(material);
         }
 
         /// <summary>
