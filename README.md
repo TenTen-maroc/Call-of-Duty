@@ -38,6 +38,12 @@ spend real time in the grey room tuning recoil, ADS and the hitmarker — workin
 and feeling good are different milestones, and only the second one matters.
 After that: the Rusher drone, then waves, then the shop.
 
+## Continuing the work
+
+Paste [docs/NEXT-SESSION-PROMPT.md](docs/NEXT-SESSION-PROMPT.md) into a fresh
+Claude Code session. It carries the current state, the tools, the roadmap, and the
+gotchas that already cost time once — a new session starts with none of that.
+
 ## Working in this repo
 
 Read **[CLAUDE.md](CLAUDE.md)** first — it is the engineering contract, not a
