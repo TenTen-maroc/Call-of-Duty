@@ -1,6 +1,5 @@
 #nullable enable
 using System.Collections;
-using System.IO;
 using CoD.Core;
 using CoD.Player;
 using CoD.UI;
@@ -19,12 +18,22 @@ namespace CoD.Tests
     /// </summary>
     public sealed class MainMenuTests
     {
+        private readonly SaveFileGuard _save = new();
+
         [UnitySetUp]
         public IEnumerator LoadMenu()
         {
+            _save.CaptureAndReset();
             AsyncOperation? load = SceneManager.LoadSceneAsync("20_MainMenu", LoadSceneMode.Single);
             Assert.IsNotNull(load, "'20_MainMenu' must be in the build settings — RegisterScenes puts it there");
             while (load != null && !load.isDone) yield return null;
+            yield return null;
+        }
+
+        [UnityTearDown]
+        public IEnumerator RestoreTheSave()
+        {
+            _save.Restore();
             yield return null;
         }
 
@@ -82,9 +91,15 @@ namespace CoD.Tests
     /// </summary>
     public sealed class PauseTests
     {
+        // Pause_IsRefused_OnceTheRunIsOver KILLS THE PLAYER, which ends the run,
+        // which writes to the record. Without this the suite quietly inflates a
+        // human's run count every time it is run.
+        private readonly SaveFileGuard _save = new();
+
         [UnitySetUp]
         public IEnumerator LoadGreyBox()
         {
+            _save.CaptureAndReset();
             AsyncOperation? load = SceneManager.LoadSceneAsync("10_GreyBox", LoadSceneMode.Single);
             Assert.IsNotNull(load);
             while (load != null && !load.isDone) yield return null;
@@ -98,6 +113,7 @@ namespace CoD.Tests
             var pause = Object.FindFirstObjectByType<PausePanel>();
             if (pause != null) pause.Resume();
             Time.timeScale = 1f;
+            _save.Restore();
             yield return null;
         }
 
@@ -211,19 +227,18 @@ namespace CoD.Tests
     /// </summary>
     public sealed class SaveOwnershipTests
     {
-        private string _savePath = string.Empty;
-        private string _backupPath = string.Empty;
-        private string? _originalSave;
-        private string? _originalBackup;
+        private readonly SaveFileGuard _save = new();
 
         [UnitySetUp]
         public IEnumerator LoadGreyBoxAndBackUpTheSave()
         {
-            _savePath = Path.Combine(Application.persistentDataPath, "cod_save.json");
-            _backupPath = Path.Combine(Application.persistentDataPath, "cod_save.bak.json");
-            // Never destroy a real player record to run a test.
-            _originalSave = File.Exists(_savePath) ? File.ReadAllText(_savePath) : null;
-            _originalBackup = File.Exists(_backupPath) ? File.ReadAllText(_backupPath) : null;
+            // Reset, not merely capture. The assertions below name an exact
+            // bestRound, and an exact number can only be asserted against a save
+            // this fixture put there: bestRound is raise-only, and RecordRunEnded
+            // writes nothing at all when the file says lastMode is Sandbox — so
+            // against a real player's save this test passed or failed according to
+            // what the tester last happened to play.
+            _save.CaptureAndReset();
 
             AsyncOperation? load = SceneManager.LoadSceneAsync("10_GreyBox", LoadSceneMode.Single);
             Assert.IsNotNull(load);
@@ -234,11 +249,7 @@ namespace CoD.Tests
         [UnityTearDown]
         public IEnumerator RestoreTheRealSave()
         {
-            if (_originalSave != null) File.WriteAllText(_savePath, _originalSave);
-            else if (File.Exists(_savePath)) File.Delete(_savePath);
-
-            if (_originalBackup != null) File.WriteAllText(_backupPath, _originalBackup);
-            else if (File.Exists(_backupPath)) File.Delete(_backupPath);
+            _save.Restore();
             yield return null;
         }
 

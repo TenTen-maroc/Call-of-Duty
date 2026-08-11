@@ -30,6 +30,15 @@ namespace CoD.Enemies
         // Instance field, not static: the wave runner swaps in the real token pool
         // at run start, and the sandbox can swap it back out.
         private IAttackTokenSource _tokens = new UnlimitedAttackTokens();
+        private int _aliveCapOverride;
+        private bool _warnedMissingDifficulty;
+
+        /// <summary>
+        /// Used only when no DifficultyConfig is assigned. Not a tuning value — a
+        /// last-resort brake so a wiring mistake cannot uncap spawning on a 4 GB
+        /// GPU. The real number lives in DifficultyConfig.maxAliveDrones.
+        /// </summary>
+        private const int FALLBACK_ALIVE_CAP = 40;
 
         public DroneConfig? DefaultDrone => _defaultDrone;
         public DroneRegistry? Registry => _registry;
@@ -37,11 +46,37 @@ namespace CoD.Enemies
 
         public void SetTokenSource(IAttackTokenSource source) => _tokens = source;
 
+        /// <summary>Per-wave alive cap from WaveConfig.maxAliveOverride. 0 means "use the DifficultyConfig cap".</summary>
+        public void SetAliveCapOverride(int cap) => _aliveCapOverride = Mathf.Max(0, cap);
+
+        /// <summary>
+        /// The cap actually in force. Fails CLOSED when there is no DifficultyConfig:
+        /// this number exists to protect a 4 GB GPU, and an unassigned reference
+        /// used to remove it silently — CanSpawn simply returned true and the queue
+        /// drained with no brake at all.
+        /// </summary>
+        public int AliveCap
+        {
+            get
+            {
+                if (_aliveCapOverride > 0) return _aliveCapOverride;
+                if (_difficulty != null) return _difficulty.maxAliveDrones;
+                return FALLBACK_ALIVE_CAP;
+            }
+        }
+
         /// <summary>True when the alive cap still has room.</summary>
         public bool CanSpawn()
         {
-            if (_registry == null || _difficulty == null) return _registry != null;
-            return _registry.AliveCount < _difficulty.maxAliveDrones;
+            if (_registry == null) return false;
+            if (_difficulty == null && !_warnedMissingDifficulty)
+            {
+                _warnedMissingDifficulty = true;
+                GameLog.Error(
+                    $"DroneSpawner has no DifficultyConfig — falling back to a hard cap of {FALLBACK_ALIVE_CAP} " +
+                    "alive drones. The VRAM cap and the three-attacker rule are both unconfigured.", this);
+            }
+            return _registry.AliveCount < AliveCap;
         }
 
         public int SpawnBurst(DroneConfig config, int count) => SpawnBurst(config, count, WaveScaling.None);

@@ -30,4 +30,10 @@ MonoBehaviour:
   sprintFovEaseTime: 0.2
   landingDipDegrees: 2
   landingDipTime: 0.12
+  damageFlashDuration: 0.18
+  damageFlashAlpha: 0.32
+  damageDirectionDuration: 1.1
+  lowHealthThreshold: 0.35
+  lowHealthPulseSpeed: 2.2
+  lowHealthMaxAlpha: 0.4
   slowMoTimeScale: 0.35

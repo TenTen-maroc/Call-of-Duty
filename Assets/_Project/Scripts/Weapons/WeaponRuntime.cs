@@ -109,7 +109,21 @@ namespace CoD.Weapons
             CurrentAmmo = Mathf.Max(0, CurrentAmmo - 1);
             ShotsInBurst++;
             LastShotAt = now;
-            NextShotAllowedAt = now + Config.SecondsPerShot;
+
+            // Scheduled from the shot that was DUE, not from the frame that
+            // noticed it. `now + SecondsPerShot` threw away the overshoot every
+            // time, so each shot rounded up to a whole frame: a 700 RPM rifle
+            // fired at 600 on a 60 Hz display and at nearly 700 on 144 Hz. Fire
+            // rate is one half of the TTK this entire game is tuned around, and
+            // it must not be a function of the player's monitor.
+            //
+            // Only carried forward while the gun is actually firing on cadence —
+            // after a pause, a hitch or a reload, the next shot starts from now
+            // rather than firing a burst to "catch up".
+            float period = Config.SecondsPerShot;
+            bool onCadence = NextShotAllowedAt > 0f && now - NextShotAllowedAt < period;
+            NextShotAllowedAt = (onCadence ? NextShotAllowedAt : now) + period;
+
             CurrentSpread = Mathf.Min(Config.maxSpread, CurrentSpread + Config.spreadPerShot);
         }
 

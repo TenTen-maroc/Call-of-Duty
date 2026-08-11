@@ -154,6 +154,50 @@ a dead target and pops it back up after `HealthConfig.targetRespawnSeconds` —
 so a tuning session never runs out of things to shoot. Drones will NOT respawn;
 they despawn through the pool.
 
+## Audit fixes (2026-08-11)
+
+Six defects in the fire path, all silent — the gun kept firing through every one
+of them.
+
+- **A ricochet could kill the player who fired it.** `ApplyFollowUpRay` damaged
+  whatever Health the bounced ray found first, with no owner check, while
+  Explosive and Chain had both refused `OwnerHealth` from the start. Bounce off
+  the wall you are standing against and the round came home.
+- **One bullet hit one drone twice.** Every drone puts two colliders on the line —
+  the hull, which carries the Health, and the `Core` child, whose Weakpoint relays
+  to it — and the pierce loop resolved both, applying a headshot AND a body shot
+  and spending two of the pierce budget on one body. `ResolveHit` now returns
+  `HitOutcome.AlreadyPierced` for the second, which costs neither damage nor budget.
+- **A held trigger destroyed every reload.** `Update` starts the reload and reaches
+  `TryFire` in the same frame, so the cancel branch ran at elapsed 0 — far below
+  the commit point — and killed it. Tapping R with the trigger down did nothing at
+  all; the gun could only be reloaded by running it dry. Cancelling now takes a
+  fresh press.
+- **Fire rate was a function of frame rate.** `NextShotAllowedAt` was scheduled
+  from the frame that noticed the shot rather than the shot that was due, rounding
+  every round up to a whole frame: 700 RPM fired at 600 on a 60 Hz display. It now
+  carries the remainder forward while firing on cadence, and restarts from now
+  after a pause — no catch-up burst.
+- **Decals were stamped on drones.** 20 s lifetime, ~12 rounds a second, against a
+  pool prewarmed for 48; and a decal on a drone is spawned into the world, not
+  parented to it, so the drone died and its bullet holes hung in mid-air. Bodies
+  get the spark, walls get the hole.
+- **Buffers sized for the typical case, not the authored one.** `RaycastNonAlloc`
+  and `OverlapSphereNonAlloc` return an arbitrary subset when full and report no
+  overflow, so a short buffer does not clip the far end of a line — it silently
+  drops the wall. Ray buffer 16 to 32 (a full Pierce budget is 9 bodies x 2
+  colliders plus the wall), effect overlap 24 to 64. Chain and Explosive now log
+  when they fill it, as `Blast.Apply` already did.
+- **Explosive never claimed its victims.** Chain marks a target the moment it
+  queues one; Explosive did not, and the shipped asset has `maxDepth: 1` — so each
+  blast victim detonated again and re-found the same neighbours, putting several
+  full blasts on one drone from a single round.
+
+`dryFireCooldown` and `muzzleFlashLifetime` moved from literals in
+`WeaponController` onto `WeaponConfig`, where every other number on that path
+already lived.
+
+
 ## Related Systems
 
 - [pooling.md](pooling.md) — every muzzle flash, casing, decal and spark.

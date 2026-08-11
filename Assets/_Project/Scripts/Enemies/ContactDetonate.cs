@@ -29,8 +29,8 @@ namespace CoD.Enemies
         [Range(0.5f, 12f)] public float blastRadius = 3.5f;
         [Tooltip("Damage multiplier at the very edge of the blast.")]
         [Range(0f, 1f)] public float minBlastMultiplier = 0.33f;
-        [Tooltip("What the blast can damage. Leave everything on for the grey box.")]
-        public LayerMask damageMask = ~0;
+        [Tooltip("Physics.DefaultRaycastLayers, not Everything: it excludes Ignore Raycast, which is where spent shell casings live. Everything let the player's own brass absorb incoming fire and eat blast slots.")]
+        public LayerMask damageMask = Physics.DefaultRaycastLayers;
 
         [Header("Feedback")]
         [Tooltip("Pooled. Carries its own AudioSource — the drone deactivates on despawn, so a clip played on the drone would be cut off.")]

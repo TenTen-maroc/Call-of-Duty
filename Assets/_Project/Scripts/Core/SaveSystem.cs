@@ -51,6 +51,25 @@ namespace CoD.Core
 
         public static void Save(SaveData data)
         {
+            // Migrate refuses to force-fit a save from the FUTURE into this
+            // build's struct, and writing would undo that: JsonUtility serialises
+            // only the fields THIS build knows about, so a v3 file overwritten by
+            // a v2 build loses every v3 field AND gets relabelled v2 — the loss is
+            // then invisible to the newer build that comes back to read it. A
+            // downgraded build declining to write is the whole point of the
+            // version check; see Migrate.
+            if (data.schemaVersion > CurrentSchemaVersion)
+            {
+                // Error, not Warn. GameLog.Warn is [Conditional] on the editor and
+                // development builds, so in the shipped exe the call site is
+                // DELETED — and this branch makes every save a no-op. A player on
+                // a downgraded build would lose every record with no signal at all.
+                GameLog.Error(
+                    $"Refusing to write over a v{data.schemaVersion} save with this build's v{CurrentSchemaVersion} " +
+                    "shape — the newer fields would be silently dropped. Nothing was saved.");
+                return;
+            }
+
             data.schemaVersion = CurrentSchemaVersion;
             try
             {

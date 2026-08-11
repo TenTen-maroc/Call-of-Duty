@@ -21,7 +21,7 @@ MonoBehaviour:
   minMultiplier: 0.4
   damageMask:
     serializedVersion: 2
-    m_Bits: 4294967295
+    m_Bits: 4294967291
   slamVfx: {fileID: 8992349114468276200, guid: 83811ce89fa3282419cc431b12e41e9c, type: 3}
   slamVfxLifetime: 1
   windupClip: {fileID: 8300000, guid: 360a9223651acae41a9d0c776fae1008, type: 3}

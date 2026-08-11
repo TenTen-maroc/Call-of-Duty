@@ -81,7 +81,12 @@ namespace CoD.UI
             float remaining = _visibleUntil - Time.time;
             if (remaining <= 0f)
             {
-                if (_markerParts[0].color.a > 0f) SetAlpha(0f);
+                // Guarded like SetAlpha and SetColor are. An unassigned element 0
+                // — a hand-built canvas, a part deleted from the prefab — threw a
+                // NullReferenceException here EVERY frame, while the two writers
+                // beside it degraded quietly.
+                Graphic first = _markerParts[0];
+                if (first != null && first.color.a > 0f) SetAlpha(0f);
                 return;
             }
 

@@ -81,6 +81,31 @@ writes a modified number back into a config asset.
 - Raising max health tops the player up. Deliberate: the shop only opens between
   waves, and an upgrade that leaves you at 12/125 reads as broken.
 
+## Audit fixes (2026-08-11)
+
+- **Refunds paid out more than they took back.** The two refund paths went through
+  `RunContext.AddMoney`, which applies the `MoneyGainMult` passives — so refunding
+  a 500 purchase while carrying a x1.5 Greed stack returned 750, and any refusable
+  item became a money press. `RunState.Refund` returns face value.
+- **The player could be charged for a module that was never installed.**
+  `AddEffectModule` returned void and silently no-opped when the weapon runtime
+  was null, while `TryBuy` had already spent the money and returned true: the
+  offer vanished, the buy chime played, and nothing was installed. Both installers
+  now report success and the shop refunds on failure.
+- **Offers 5-8 could be printed but not bought.** `offersPerBreak` allows up to 8
+  and `Redraw` numbers every one, but only Digit1-4 were bound.
+- **The break left the player driving.** `ShopPanel` never blocked input, so the
+  player walked, jumped and fired behind a full-screen shop — with R and SPACE
+  live in the shop and the Player action map at the same time. It now asks
+  `PausePanel.SetPlayerControlsBlocked`, which is the one component that owns the
+  answer to "who is holding the keyboard".
+- **Buying a passive was a full heal.** `RunContext.ApplyStats` runs on every
+  purchase and went through `Health.ConfigureMax`, which refills. A player at
+  8 HP could buy the cheapest thing in the shop and walk into the next wave at
+  maximum. `Health.AdjustMax` grants a max-health upgrade its own increase and
+  nothing else heals. See [player.md](player.md).
+
+
 ## Related Systems
 
 - [waves.md](waves.md) — owns the ShopService and decides when a break happens.

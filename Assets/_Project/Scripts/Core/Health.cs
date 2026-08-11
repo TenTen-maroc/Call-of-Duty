@@ -51,6 +51,27 @@ namespace CoD.Core
             ResetHealth();
         }
 
+        /// <summary>
+        /// Changes the maximum WITHOUT refilling — what a mid-run upgrade needs.
+        /// Current health moves by the same amount the maximum did, so a +25 max
+        /// upgrade reads as 125/125 rather than the broken-looking 100/125, and a
+        /// reduction clamps instead of leaving current above max.
+        ///
+        /// Split out from ConfigureMax because the player and a pooled drone want
+        /// opposite things from one call. RunContext.ApplyStats runs on EVERY
+        /// purchase, not just health ones, so routing it through ConfigureMax made
+        /// the cheapest passive in the shop a full heal: buy a reload upgrade at
+        /// 8 HP and walk into the next wave topped up. Drones still want the
+        /// reset — a pooled instance must not inherit the last one's damage.
+        /// </summary>
+        public void AdjustMax(float max)
+        {
+            float next = Mathf.Max(1f, max);
+            float delta = next - Max;
+            _maxOverride = next;
+            _current = delta > 0f ? _current + delta : Mathf.Min(_current, next);
+        }
+
         public float ApplyDamage(in DamageInfo info)
         {
             if (!IsAlive || Invulnerable) return 0f;
@@ -59,7 +80,12 @@ namespace CoD.Core
             // the headshot multiplier (WeaponConfig.headshotMultiplier), so the
             // same number is never applied twice. IsWeakpoint stays on the info
             // purely for feedback — distinct hit sounds and markers later.
-            float applied = Mathf.Min(info.Amount, _current);
+            // Clamped at BOTH ends. The upper clamp stops overkill reporting more
+            // damage than the target had; the lower one stops a negative amount —
+            // a falloff curve authored backwards, a passive multiplier gone below
+            // zero — from silently HEALING the target past its own maximum and
+            // making a drone unkillable while every hitmarker still fires.
+            float applied = Mathf.Clamp(info.Amount, 0f, _current);
             _current -= applied;
 
             Damaged?.Invoke(this, info);

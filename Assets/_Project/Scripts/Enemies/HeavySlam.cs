@@ -30,7 +30,8 @@ namespace CoD.Enemies
         [Tooltip("Wider than the trigger, so backing up one step is not enough — you have to actually leave.")]
         [Range(1f, 14f)] public float slamRadius = 4.5f;
         [Range(0f, 1f)] public float minMultiplier = 0.4f;
-        public LayerMask damageMask = ~0;
+        [Tooltip("Physics.DefaultRaycastLayers, not Everything: it excludes Ignore Raycast, which is where spent shell casings live. Everything let the player's own brass absorb incoming fire and eat blast slots.")]
+        public LayerMask damageMask = Physics.DefaultRaycastLayers;
 
         [Header("Feedback")]
         [Tooltip("Pooled, spawned at the drone's feet when the slam lands. Carries its own AudioSource.")]

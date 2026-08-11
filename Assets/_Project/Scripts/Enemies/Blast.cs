@@ -27,6 +27,17 @@ namespace CoD.Enemies
             int count = Physics.OverlapSphereNonAlloc(origin, radius, buffer, mask,
                 QueryTriggerInteraction.Ignore);
 
+            // A FULL buffer means the query was truncated, and OverlapSphere gives
+            // no promise about which colliders survived — so the one that matters,
+            // the player, may simply not be in the list. The blast then goes off
+            // and does nothing, which is indistinguishable from a bug. Say so.
+            if (count >= buffer.Length)
+            {
+                GameLog.Warn(
+                    $"Blast at {origin} filled its {buffer.Length}-collider buffer — the result is truncated " +
+                    "and this hit may have missed the player. Raise DroneController's overlap buffer.", drone);
+            }
+
             for (int i = 0; i < count; i++)
             {
                 Collider hit = buffer[i];

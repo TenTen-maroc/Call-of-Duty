@@ -53,16 +53,28 @@ namespace CoD.Weapons
         private float _statReloadSpeed = 1f;
 
         // Pre-sized buffer: RaycastNonAlloc never allocates, which matters once
-        // hundreds of shots per minute are flying. Sized for a piercing round
-        // finding several bodies plus the wall behind them.
-        private readonly RaycastHit[] _hitBuffer = new RaycastHit[16];
+        // hundreds of shots per minute are flying.
+        //
+        // Sized against the WORST authored case, not the typical one. A fully
+        // authored Pierce allows 9 targets, every drone puts two colliders on the
+        // line (hull plus its weakpoint Core), and the wall behind them needs a
+        // slot too — 19 minimum. RaycastNonAlloc does not return the nearest hits
+        // when it overflows, it returns an arbitrary subset and no overflow
+        // signal, so a short buffer does not clip the far end of the line: it
+        // silently drops the wall and lets the round pass through the arena.
+        private readonly RaycastHit[] _hitBuffer = new RaycastHit[32];
 
         // Effect-module scratch, all owned here rather than by the modules:
         // modules are shared assets, so a buffer on one would be written by every
         // weapon carrying it.
         private readonly FollowUpBuffer _followUps = new(64);
         private readonly List<Health> _alreadyHit = new(24);
-        private readonly Collider[] _effectOverlap = new Collider[24];
+        // 24 covered about twelve drones: every drone puts TWO colliders in an
+        // overlap (hull and weakpoint Core) and only the hull carries Health.
+        // OverlapSphere fills a full buffer with an arbitrary subset and reports
+        // no overflow, so a blast or a chain in a real crowd silently stopped
+        // finding targets it was standing next to.
+        private readonly Collider[] _effectOverlap = new Collider[64];
 
         /// <summary>
         /// Hard stop on follow-up work per shot. Not a tuning value — a hang guard.
@@ -112,11 +124,17 @@ namespace CoD.Weapons
         /// Bought in the shop. The module list lives on the RUNTIME, never on the
         /// WeaponConfig asset — appending to the asset would edit authored data
         /// that persists between Play sessions.
+        ///
+        /// Returns false when the module could not be installed, so the shop can
+        /// refund instead of charging for nothing. It used to return void and
+        /// silently no-op on a null runtime — the player paid, heard the buy
+        /// chime, watched the offer disappear, and received no module.
         /// </summary>
-        public void AddEffectModule(EffectModule module)
+        public bool AddEffectModule(EffectModule module)
         {
-            if (_runtime == null || module == null) return;
+            if (_runtime == null || module == null) return false;
             _runtime.Modules.Add(module);
+            return true;
         }
 
         /// <summary>
@@ -128,9 +146,9 @@ namespace CoD.Weapons
         /// This is the whole "new weapons are DATA" claim in one method — a second
         /// weapon is a WeaponConfig asset and nothing else.
         /// </summary>
-        public void EquipWeapon(WeaponConfig config)
+        public bool EquipWeapon(WeaponConfig config)
         {
-            if (config == null) return;
+            if (config == null) return false;
 
             var next = new WeaponRuntime(config);
             if (_runtime != null)
@@ -145,6 +163,7 @@ namespace CoD.Weapons
             _runtime = next;
             _adsProgress = 0f;
             GameLog.Info($"equipped {config.displayName}", this);
+            return true;
         }
 
         public int EffectModuleCount => _runtime != null ? _runtime.Modules.Count : 0;
@@ -231,6 +250,12 @@ namespace CoD.Weapons
             if (_runtime == null || _look == null) return;
             WeaponConfig config = _runtime.Config;
 
+            // A corpse does not shoot. The menu blocks the action map on death,
+            // so this is the second lock rather than the first — but the cheat
+            // console and any future non-input firing path go through here too,
+            // and the death screen is not a place to keep playing from.
+            if (_ownerHealth != null && !_ownerHealth.IsAlive) return;
+
             // Sprint-to-fire: the gap between releasing sprint and being able to
             // shoot. Too short and the game becomes a sprint-around-corners
             // festival; 150-250 ms is the arcade sweet spot.
@@ -243,7 +268,16 @@ namespace CoD.Weapons
                 // "cancel" costs the reload and gains nothing, and holding the
                 // trigger would otherwise re-cancel the auto-reload every frame —
                 // an empty gun that never reloads while the player holds fire.
-                if (_runtime.IsMagazineEmpty || !_runtime.TryCancelReload(now)) return;
+                if (_runtime.IsMagazineEmpty) return;
+
+                // Cancelling takes a FRESH pull, not a held trigger. Update starts
+                // the reload and then reaches here in the same frame, so with
+                // full-auto held the cancel fired at elapsed = 0 — far below the
+                // commit point — and destroyed the reload on the frame it began.
+                // Tapping R with the trigger down did nothing at all, every time,
+                // and the gun could only ever be reloaded by running it dry.
+                if (_input == null || !_input.FirePressedThisFrame) return;
+                if (!_runtime.TryCancelReload(now)) return;
             }
 
             if (now < _runtime.NextShotAllowedAt) return;
@@ -352,12 +386,22 @@ namespace CoD.Weapons
             int resolved = 0;
             for (int i = 0; i < count && resolved < budget; i++)
             {
-                bool damagedSomething = ResolveHit(config, _hitBuffer[i], direction, multiplier, depth: 0);
+                HitOutcome outcome = ResolveHit(config, _hitBuffer[i], direction, multiplier, depth: 0);
+
+                // A SECOND collider on a body this ray has already gone through.
+                // Every drone puts two on the line — the hull, which carries the
+                // Health, and the small `Core` child, which carries the Weakpoint
+                // that relays to it. Resolving both applied a headshot AND a body
+                // shot from one bullet and spent two of the pierce budget on one
+                // drone, so a Pierce round stopped a body early and hit for
+                // roughly double on the way. Pass through without paying either.
+                if (outcome == HitOutcome.AlreadyPierced) continue;
+
                 resolved++;
                 // A bullet passes through bodies, never through the wall behind
                 // them: a pierce budget spent on geometry would shoot through the
                 // arena.
-                if (!damagedSomething) break;
+                if (outcome != HitOutcome.Damaged) break;
                 multiplier *= pierceFalloff;
             }
 
@@ -396,8 +440,19 @@ namespace CoD.Weapons
             return (forward + offset).normalized;
         }
 
-        /// <summary>Resolves one impact. Returns true when something damageable took the hit — that is what a pierce budget is spent on.</summary>
-        private bool ResolveHit(WeaponConfig config, in RaycastHit hit, Vector3 direction,
+        /// <summary>What one collider along a ray did to the bullet.</summary>
+        private enum HitOutcome
+        {
+            /// <summary>Geometry, or a corpse. The bullet stops here.</summary>
+            Blocked,
+            /// <summary>A live body took damage. This is what a pierce budget is spent on.</summary>
+            Damaged,
+            /// <summary>Another collider belonging to a body this same ray already resolved. Pass through it for free.</summary>
+            AlreadyPierced,
+        }
+
+        /// <summary>Resolves one impact along a ray. See <see cref="HitOutcome"/> for what the caller does with each answer.</summary>
+        private HitOutcome ResolveHit(WeaponConfig config, in RaycastHit hit, Vector3 direction,
             float pierceMultiplier, int depth)
         {
             // Four multipliers, four owners: falloff is the weapon, the stat sheet
@@ -425,6 +480,14 @@ namespace CoD.Weapons
             }
 
             bool killed = false;
+            // Two colliders, one body: the hull and its weakpoint Core both sit on
+            // the line. The first of them to resolve claims the body — and it is
+            // the nearer one, so a Core hit still scores the headshot it earned.
+            // Everything below (damage, impact spark, effect modules, hitmarker)
+            // is skipped for the second, which is what stops one bullet paying
+            // twice on one drone.
+            if (target is Health owner && HasHit(owner)) return HitOutcome.AlreadyPierced;
+
             bool damaged = false;
             if (target != null && target.IsAlive)
             {
@@ -435,12 +498,12 @@ namespace CoD.Weapons
                 if (target is Health health) MarkHit(health);
             }
 
-            SpawnImpact(hit);
+            SpawnImpact(hit, onBody: target != null);
             if (damaged) Hit?.Invoke(killed);
 
             RunEffectModules(new HitContext(this, config, hit.point, hit.normal, direction,
                 target as Health, damage, depth));
-            return damaged;
+            return damaged ? HitOutcome.Damaged : HitOutcome.Blocked;
         }
 
         /// <summary>
@@ -488,6 +551,10 @@ namespace CoD.Weapons
         {
             Health? target = followUp.Target;
             if (target == null || !target.IsAlive) return;
+            // Explosive and Chain both refuse the shooter when they queue, but the
+            // guard belongs on the APPLY side too: it is the one place every
+            // follow-up passes through, and a future module gets it for free.
+            if (target == _ownerHealth) return;
 
             var info = new DamageInfo(followUp.Damage, followUp.Origin, -followUp.Direction,
                 followUp.Direction, false);
@@ -518,8 +585,21 @@ namespace CoD.Weapons
                 target = direct;
             }
 
-            SpawnImpact(hit);
+            SpawnImpact(hit, onBody: target != null);
             if (target == null || !target.IsAlive) return;
+
+            // The shooter is never a valid follow-up target. Explosive and Chain
+            // both refuse OwnerHealth; this path did not, and a Ricochet is the
+            // one module whose follow-up AIMS BACK — bounce off the wall you are
+            // standing against and the round came home and killed you. With
+            // maxDepth raised it could bounce home repeatedly inside one shot.
+            if (target == _ownerHealth) return;
+
+            // Same double-dip protection the Damage follow-ups get. Without it a
+            // bounce that lands on a drone this shot already hit pays full
+            // follow-up damage a second time, which is exactly the leak the
+            // already-hit set exists to close.
+            if (HasHit(target)) return;
 
             var info = new DamageInfo(followUp.Damage, hit.point, hit.normal, followUp.Direction, false);
             target.ApplyDamage(in info);
@@ -530,14 +610,25 @@ namespace CoD.Weapons
                 target, followUp.Damage, followUp.Depth));
         }
 
-        private void SpawnImpact(in RaycastHit hit)
+        /// <summary>
+        /// Sparks always; a bullet HOLE only on geometry.
+        ///
+        /// A decal lives 20 seconds and a rifle fires about twelve rounds a
+        /// second, so an unconditional decal per hit meant ~230 live instances
+        /// against a pool prewarmed for 48 — five times the intended footprint on
+        /// a 4 GB budget. Worse, a decal stamped on a drone is spawned into the
+        /// world, not parented to it: the drone dies, returns to the pool, and its
+        /// bullet holes hang in mid-air for the rest of the wave. Bodies get the
+        /// spark, walls get the hole.
+        /// </summary>
+        private void SpawnImpact(in RaycastHit hit, bool onBody)
         {
             if (_pool == null || _impact == null) return;
 
             Quaternion rotation = Quaternion.LookRotation(hit.normal);
             Vector3 point = hit.point + hit.normal * _impact.surfaceOffset;
 
-            if (_impact.decalPrefab != null)
+            if (!onBody && _impact.decalPrefab != null)
             {
                 _pool.SpawnForSeconds(_impact.decalPrefab, point, rotation, _impact.decalLifetime);
             }
@@ -653,7 +744,7 @@ namespace CoD.Weapons
                 // Random roll so back-to-back flashes read as fire, not as the
                 // same sprite blinking.
                 Quaternion roll = _muzzle.rotation * Quaternion.Euler(0f, 0f, UnityEngine.Random.value * 360f);
-                _pool.SpawnForSeconds(config.muzzleFlashPrefab, _muzzle.position, roll, 0.08f);
+                _pool.SpawnForSeconds(config.muzzleFlashPrefab, _muzzle.position, roll, config.muzzleFlashLifetime);
             }
 
             if (_pool != null && _casingEject != null && config.shellCasingPrefab != null)
@@ -693,7 +784,7 @@ namespace CoD.Weapons
         {
             if (_runtime == null) return;
 
-            _runtime.NextShotAllowedAt = now + 0.25f;
+            _runtime.NextShotAllowedAt = now + _runtime.Config.dryFireCooldown;
             if (_audioClose != null && _runtime.Config.dryFireClip != null)
             {
                 _audioClose.PlayOneShot(_runtime.Config.dryFireClip);

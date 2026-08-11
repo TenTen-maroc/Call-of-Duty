@@ -132,7 +132,16 @@ namespace CoD.Player
             // Recoil decays toward zero but the aim point keeps what the player
             // did not pull back down — see WeaponRecoil for the 85% rule.
             _selfTransform.rotation = Quaternion.Euler(0f, _yaw + _recoilYaw, 0f);
-            _cameraPivot.localRotation = Quaternion.Euler(_pitch + _recoilPitch, 0f, 0f);
+
+            // Clamp the COMPOSED pitch, not just the player's half. Recoil is
+            // unbounded and, at any real fire rate, never recovers mid-magazine:
+            // recovery is gated on recoveryDelay (0.09s) since the last shot,
+            // while 700 RPM puts shots 0.086s apart. A held trigger therefore
+            // piles up a magazine's worth of kick — tens of degrees — and
+            // clamping only _pitch let the sum drive the camera straight past
+            // vertical and flip the view upside down.
+            float pitch = Mathf.Clamp(_pitch + _recoilPitch, -_config.pitchClamp, _config.pitchClamp);
+            _cameraPivot.localRotation = Quaternion.Euler(pitch, 0f, 0f);
 
             UpdateFov();
             UpdateLandingDip();

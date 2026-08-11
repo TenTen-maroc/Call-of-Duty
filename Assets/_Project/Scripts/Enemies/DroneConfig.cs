@@ -49,6 +49,15 @@ namespace CoD.Enemies
         public GameObject? prefab;
         public AttackModule? attack;
 
+        [Header("Telegraph")]
+        [Tooltip("Core colour at rest. Per-archetype, because the drone tints its own core and would otherwise overwrite whatever material the prefab shipped with.")]
+        public Color idleCoreColor = new(0.75f, 0.12f, 0.10f);
+        [Tooltip("Core colour at the instant the attack lands. The bright end of the windup ramp.")]
+        public Color telegraphCoreColor = new(1f, 0.95f, 0.75f);
+        [Tooltip("Emission strength at rest, and at full telegraph. What makes a windup readable across the arena.")]
+        [Range(0f, 4f)] public float idleEmission = 0.4f;
+        [Range(0f, 12f)] public float telegraphEmission = 3.9f;
+
         [Header("Death")]
         [Tooltip("Pooled VFX spawned when the drone is SHOT DOWN. It carries its own AudioSource — the drone itself deactivates on despawn, so a clip played on the drone would be cut off mid-sound.")]
         public GameObject? deathVfx;

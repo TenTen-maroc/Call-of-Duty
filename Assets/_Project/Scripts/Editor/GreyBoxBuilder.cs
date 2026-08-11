@@ -353,6 +353,15 @@ namespace CoD.EditorTools
             config.minSpawnDistanceFromPlayer = 12f;
             config.spawnSampleRadius = 4f;
             config.attackTokenTimeout = 6f;
+
+            // The late-game economy. Wave 10 pays 220, so the endless curve has to
+            // start ABOVE that: the old in-code `100 + wave * 10` paid 210 at wave
+            // 11, a pay CUT on the wave where enemy count, health and shop prices
+            // all step up together.
+            config.endlessClearBonusBase = 120;
+            config.endlessClearBonusPerWave = 12;
+            config.endlessFallbackWaveSize = 8;
+            config.endlessSpawnOverSeconds = 20f;
         }
 
         private static void ConfigureContactDetonate(ContactDetonate config)
@@ -385,6 +394,14 @@ namespace CoD.EditorTools
             config.repathInterval = 0.15f;
             config.scoreValue = 10;
             config.moneyReward = 12;
+            // Matches Drone_Core.mat. The drone tints its OWN core every spawn,
+            // so the idle end of the ramp has to agree with the material the
+            // prefab ships with — otherwise every archetype repaints itself
+            // Rusher-red on the first frame and the three become one silhouette.
+            config.idleCoreColor = new Color(0.75f, 0.12f, 0.10f);
+            config.telegraphCoreColor = new Color(1f, 0.95f, 0.75f);
+            config.idleEmission = 0.4f;
+            config.telegraphEmission = 3.9f;
             config.deathVfxLifetime = 0.9f;
         }
 
@@ -406,6 +423,12 @@ namespace CoD.EditorTools
             config.repathInterval = 0.25f;
             config.scoreValue = 20;
             config.moneyReward = 20;
+            // Drone_Core_Shooter.mat: amber, so "the one at range" is readable
+            // across the arena without reading its shape.
+            config.idleCoreColor = new Color(0.95f, 0.55f, 0.10f);
+            config.telegraphCoreColor = new Color(1f, 0.98f, 0.85f);
+            config.idleEmission = 0.45f;
+            config.telegraphEmission = 4.2f;
             config.deathVfxLifetime = 0.9f;
         }
 
@@ -425,6 +448,12 @@ namespace CoD.EditorTools
             config.repathInterval = 0.3f;
             config.scoreValue = 60;
             config.moneyReward = 65;
+            // Drone_Core_Tank.mat: crimson, and the slowest windup of the three,
+            // so it glows longest before it lands.
+            config.idleCoreColor = new Color(0.85f, 0.06f, 0.22f);
+            config.telegraphCoreColor = new Color(1f, 0.9f, 0.7f);
+            config.idleEmission = 0.35f;
+            config.telegraphEmission = 4.5f;
             config.deathVfxLifetime = 1.2f;
         }
 
@@ -649,8 +678,18 @@ namespace CoD.EditorTools
             for (int i = 0; i < items.Length; i++)
             {
                 SerializedProperty element = pool.GetArrayElementAtIndex(i);
-                element.FindPropertyRelative("item").objectReferenceValue = items[i];
-                if (!rebuild) continue;
+                SerializedProperty itemRef = element.FindPropertyRelative("item");
+
+                // Re-seed whenever THIS SLOT changes hands, not only when the array
+                // length does. Keyed on length alone, adding and removing one item
+                // in the same pass left every slot's weight/minWave/maxOwned
+                // belonging to whoever used to sit there — so a module could
+                // inherit a passive's "offer from wave 1, stack five times" and
+                // become buyable five times on the first break.
+                bool reseed = rebuild || itemRef.objectReferenceValue != items[i];
+                itemRef.objectReferenceValue = items[i];
+                if (!reseed) continue;
+
                 bool isEffect = items[i].kind != ShopItemKind.Passive;
                 // Modules are rarer, gated to wave 3+, and one per run: a second
                 // copy of Pierce does nothing the first one did not.
@@ -686,8 +725,12 @@ namespace CoD.EditorTools
             for (int i = 0; i < mixPlan.Length; i++)
             {
                 SerializedProperty element = mix.GetArrayElementAtIndex(i);
-                element.FindPropertyRelative("drone").objectReferenceValue = mixPlan[i].drone;
-                if (!rebuild) continue;
+                SerializedProperty droneRef = element.FindPropertyRelative("drone");
+                // Same rule as the shop pool: a slot that changed archetype must
+                // not keep the previous one's weight curve.
+                bool reseed = rebuild || droneRef.objectReferenceValue != mixPlan[i].drone;
+                droneRef.objectReferenceValue = mixPlan[i].drone;
+                if (!reseed) continue;
                 element.FindPropertyRelative("weightByWave").animationCurveValue = mixPlan[i].weight;
             }
             serialized.ApplyModifiedProperties();
@@ -1347,7 +1390,17 @@ namespace CoD.EditorTools
 
             if (surface.navMeshData == null)
             {
+                // Delete the stale asset on the way out. Returning early used to
+                // leave the PREVIOUS arena's bake sitting at NavMeshPath, and
+                // GreyBoxVerify.Ensure would dutifully find it and assign it to
+                // this freshly built surface — so a failed bake produced a scene
+                // that verified clean while the drones pathed around a room that
+                // no longer existed. With the file gone there is nothing to
+                // relink, the reference stays null, and the verifier fails the
+                // build the way it should.
                 Debug.LogError("NavMesh bake produced no data — drones will spawn and never move.");
+                AssetDatabase.DeleteAsset(NavMeshPath);
+                AssetDatabase.SaveAssets();
                 return;
             }
 

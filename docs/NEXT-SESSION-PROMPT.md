@@ -10,7 +10,7 @@ Keep this file updated as milestones land — it is the handoff, not a snapshot.
 
 ## THE PLAY SESSION — the tuning card
 
-Everything a machine can check is checked: 62 tests, six guards, seven clean
+Everything a machine can check is checked: 84 tests, six guards, nine clean
 assemblies, and a Windows `.exe` that has been built and run outside the editor.
 What is left is the one input automation does not have — **is it fun** — and it
 needs you in front of the game.
@@ -95,7 +95,7 @@ Code-complete and shippable-shaped: main menu, Run and Sandbox modes, pause,
 working settings, a Windows .exe proven to run outside the editor, and the whole
 loop — two weapons, three drone archetypes, timed waves, a between-wave shop
 selling passives and four stacking effect modules, permadeath with a versioned
-save, and a three-lane arena. 62 tests, six guards, seven clean assemblies.
+save, and a three-lane arena. 84 tests, six guards, nine clean assemblies.
 
 THE ONLY OPEN QUESTION IS WHETHER IT IS FUN. Phases 4-7 have never been played.
 The card at the top of docs/NEXT-SESSION-PROMPT.md is the list, each item naming

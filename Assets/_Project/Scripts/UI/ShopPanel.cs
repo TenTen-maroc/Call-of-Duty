@@ -43,6 +43,16 @@ namespace CoD.UI
         // to hand the collector work in a horde game.
         private readonly StringBuilder _builder = new(512);
 
+        /// <summary>
+        /// Index-aligned with the offer list. Covers ShopConfig.offersPerBreak's
+        /// full Range(1, 8) so the keys and the printed numbers can never disagree.
+        /// </summary>
+        private static readonly Key[] BuyKeys =
+        {
+            Key.Digit1, Key.Digit2, Key.Digit3, Key.Digit4,
+            Key.Digit5, Key.Digit6, Key.Digit7, Key.Digit8,
+        };
+
         private void OnEnable()
         {
             if (_runner != null) _runner.PhaseChanged += OnPhaseChanged;
@@ -58,6 +68,10 @@ namespace CoD.UI
         {
             bool open = phase == RunPhase.Shop;
             Show(open);
+            // The break takes the controls. Without this the player walked,
+            // jumped and fired behind a full-screen shop, and R and SPACE were
+            // bound to the shop AND to the Player action map at the same time.
+            _pause?.SetPlayerControlsBlocked(open);
             if (open) Redraw();
         }
 
@@ -69,15 +83,27 @@ namespace CoD.UI
         private void Update()
         {
             if (_runner == null || _runner.Phase != RunPhase.Shop) return;
-            if (_pause != null && _pause.IsPaused) return;
+            // OwnsInputThisFrame, not IsPaused: SPACE resumes the pause menu and
+            // starts the next wave, and reading the cleared flag in the same frame
+            // did both at once. See PausePanel.OwnsInputThisFrame.
+            if (_pause != null && _pause.OwnsInputThisFrame) return;
 
             Keyboard? keyboard = Keyboard.current;
             if (keyboard == null) return;
 
-            if (keyboard[Key.Digit1].wasPressedThisFrame) Buy(0);
-            if (keyboard[Key.Digit2].wasPressedThisFrame) Buy(1);
-            if (keyboard[Key.Digit3].wasPressedThisFrame) Buy(2);
-            if (keyboard[Key.Digit4].wasPressedThisFrame) Buy(3);
+            // Every digit the list can print, not the four it happened to start
+            // with. ShopConfig.offersPerBreak allows up to 8, Redraw numbers all of
+            // them, and pressing 5 on a drawn offer used to do nothing at all.
+            for (int i = 0; i < BuyKeys.Length; i++)
+            {
+                if (!keyboard[BuyKeys[i]].wasPressedThisFrame) continue;
+                // One purchase per frame. A successful Buy REMOVES the offer, so a
+                // second digit in the same frame indexed a list that had already
+                // shifted underneath it — pressing 1 and 2 together bought the item
+                // printed as 3.
+                Buy(i);
+                break;
+            }
             if (keyboard[Key.R].wasPressedThisFrame) Reroll();
             if (keyboard[Key.Space].wasPressedThisFrame) _runner.ContinueFromShop();
         }

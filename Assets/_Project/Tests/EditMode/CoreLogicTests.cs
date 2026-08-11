@@ -2,6 +2,7 @@
 using System.IO;
 using CoD.Core;
 using CoD.Enemies;
+using CoD.Waves;
 using CoD.Weapons;
 using NUnit.Framework;
 using UnityEngine;
@@ -373,13 +374,41 @@ namespace CoD.Tests
         [Test]
         public void TheHardCaps_AreWhatTheDocsSay()
         {
-            DifficultyConfig difficulty = ScriptableObject.CreateInstance<DifficultyConfig>();
+            // The SHIPPED asset, not a fresh instance. CreateInstance returns the
+            // C# field initialisers, so this test used to assert DifficultyConfig.cs
+            // against itself: editing Difficulty.asset — the one the game actually
+            // loads — down to 5 alive drones would have left it green.
+            DifficultyConfig? difficulty = UnityEditor.AssetDatabase
+                .LoadAssetAtPath<DifficultyConfig>("Assets/_Project/Data/Game/Difficulty.asset");
+            Assert.IsNotNull(difficulty, "Difficulty.asset is missing — the game has no caps at all");
 
             // Not tuning knobs: 40 protects a 4 GB GPU, 3 is why a crowd is fair.
-            // If a default here changes, it was not an accident and this test is
+            // If a value here changes, it was not an accident and this test is
             // the place to argue about it.
-            Assert.AreEqual(40, difficulty.maxAliveDrones);
+            Assert.AreEqual(40, difficulty!.maxAliveDrones);
             Assert.AreEqual(3, difficulty.maxSimultaneousAttackers);
+        }
+
+        [Test]
+        public void TheEndlessClearBonus_DoesNotCutPayAtWaveEleven()
+        {
+            DifficultyConfig? difficulty = UnityEditor.AssetDatabase
+                .LoadAssetAtPath<DifficultyConfig>("Assets/_Project/Data/Game/Difficulty.asset");
+            WaveConfig? lastAuthored = UnityEditor.AssetDatabase
+                .LoadAssetAtPath<WaveConfig>("Assets/_Project/Data/Waves/Wave_10.asset");
+            Assert.IsNotNull(difficulty);
+            Assert.IsNotNull(lastAuthored);
+
+            int firstEndless = lastAuthored!.waveNumber + 1;
+            int endlessBonus = difficulty!.endlessClearBonusBase
+                               + difficulty.endlessClearBonusPerWave * firstEndless;
+
+            // The seam between the authored waves and the curve. The old in-code
+            // `100 + wave * 10` paid 210 here against Wave_10's 220 — a pay CUT on
+            // the wave where count, health and shop prices all step up together.
+            Assert.GreaterOrEqual(endlessBonus, lastAuthored.moneyBonusOnClear,
+                $"wave {firstEndless} pays {endlessBonus} where wave {lastAuthored.waveNumber} " +
+                $"paid {lastAuthored.moneyBonusOnClear} — the endless ramp must not start with a pay cut");
         }
     }
 }

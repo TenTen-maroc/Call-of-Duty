@@ -28,5 +28,5 @@ MonoBehaviour:
   projectilePrefab: {fileID: 7387908720264780402, guid: c793c62f915e69a4483a94c5e4b7590b, type: 3}
   hitMask:
     serializedVersion: 2
-    m_Bits: 4294967295
+    m_Bits: 4294967291
   fireClip: {fileID: 8300000, guid: fac9ced74a016f542808d2449ed35913, type: 3}

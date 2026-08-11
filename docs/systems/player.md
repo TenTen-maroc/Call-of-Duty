@@ -79,6 +79,35 @@ Player            CharacterController, PlayerInput, PlayerMotor, PlayerLook, Hea
 - Sway is computed in `LateUpdate`, after `PlayerLook` has aimed, so it reacts to
   the final rotation rather than last frame's.
 
+## Audit fixes (2026-08-11)
+
+- **Sustained fire could flip the camera past vertical.** `_pitch` was clamped to
+  `GameConfig.pitchClamp`, but the value written to the camera pivot was the
+  unclamped sum `_pitch + _recoilPitch` — and recoil has no bound and, at any real
+  fire rate, never recovers mid-magazine: recovery is gated on `recoveryDelay`
+  (0.09 s) since the last shot while 700 RPM puts shots 0.086 s apart. A held
+  trigger piled up a magazine's worth of kick, tens of degrees, and drove the view
+  upside down. The COMPOSED pitch is clamped now.
+- **A max-health upgrade no longer refills the bar.** `Health.AdjustMax` moves
+  current health by the same amount the maximum moved, so +25 max reads as
+  125/125 rather than the broken-looking 100/125 — but buying anything else no
+  longer heals. `ConfigureMax` keeps the refill, because a pooled drone needs it.
+- **Negative damage healed.** `Mathf.Min(amount, current)` passed a negative
+  straight through; it is clamped at both ends now.
+
+### Known, deliberately not changed
+
+Two real findings that would alter gun feel, held for the tuning session rather
+than decided here:
+
+- **Weapon sway saturates on any mouse movement.** `WeaponSway` clamps the raw
+  `<Mouse>/delta` — accumulated pixels, so at least 1 for essentially any motion —
+  to plus or minus 1 before scaling, so the sway is binary rather than
+  proportional. Fixing it means choosing a reference delta, which is a feel call.
+- **Bob is scaled by a literal 6 m/s**, which sits between the shipped `walkSpeed`
+  5.2 and `sprintSpeed` 8.0, so walking already reads at 0.87 of full bob.
+
+
 ## Related Systems
 
 - [weapons.md](weapons.md) — consumes input, aim ray and motion state; pushes recoil.

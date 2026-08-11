@@ -34,7 +34,15 @@ namespace CoD.EditorTools
         private const string MainMenuScenePath = "Assets/_Project/Scenes/20_MainMenu.unity";
 
         [MenuItem("CoD/Verify and Repair Grey Box", false, 1)]
-        public static void VerifyAndRepair()
+        public static void VerifyAndRepair() => VerifyAndReport();
+
+        /// <summary>
+        /// The same pass, but it TELLS you: the number of references still
+        /// unresolved after the save/reload round trip. VerifyAndRepair has to
+        /// return void to be a [MenuItem], and that void was how a proven-broken
+        /// scene exited zero — see VerifyHeadless.
+        /// </summary>
+        public static int VerifyAndReport()
         {
             Scene scene = EditorSceneManager.OpenScene(GreyBoxScenePath, OpenSceneMode.Single);
             var report = new StringBuilder();
@@ -196,6 +204,18 @@ namespace CoD.EditorTools
                     // file over the settings on every death.
                     Check(context, "_settings", stillNull);
                 }
+                // The ammo and health readout. Every one of its Update paths
+                // early-returns on a null reference, so a Hud wired to nothing
+                // looks exactly like a Hud with nothing to say — and it was the
+                // one component the builder wires that this verifier never read.
+                foreach (Hud hud in root.GetComponentsInChildren<Hud>(true))
+                {
+                    Check(hud, "_weapon", stillNull);
+                    Check(hud, "_playerHealth", stillNull);
+                    Check(hud, "_ammoLabel", stillNull);
+                    Check(hud, "_healthLabel", stillNull);
+                    Check(hud, "_lowAmmoTint", stillNull);
+                }
                 foreach (WaveRunner waveRunner in root.GetComponentsInChildren<WaveRunner>(true))
                 {
                     Check(waveRunner, "_run", stillNull);
@@ -298,6 +318,8 @@ namespace CoD.EditorTools
             {
                 Debug.Log("GreyBoxVerify: every checked reference survived a save/reload round trip.");
             }
+
+            return stillNull.Count;
         }
 
         /// <summary>
@@ -393,7 +415,18 @@ namespace CoD.EditorTools
         {
             try
             {
-                VerifyAndRepair();
+                int unresolved = VerifyAndReport();
+                if (unresolved > 0)
+                {
+                    // The whole reason this file exists is that a build reported
+                    // success over a scene with every asset reference null. Exiting
+                    // 0 after PROVING that again put the gate right back where it
+                    // started: LogError is not a failure, an exit code is.
+                    Debug.LogError(
+                        $"GreyBoxVerify: {unresolved} unresolved reference(s) — failing the build.");
+                    EditorApplication.Exit(1);
+                    return;
+                }
                 EditorApplication.Exit(0);
             }
             catch (System.Exception exception)
@@ -469,7 +502,17 @@ namespace CoD.EditorTools
         {
             var serialized = new SerializedObject(target);
             SerializedProperty property = serialized.FindProperty(field);
-            if (property != null && property.objectReferenceValue == null)
+            if (property == null)
+            {
+                // A field that no longer exists is the failure this verifier is
+                // LEAST able to survive: rename a serialized reference and every
+                // Check naming the old one silently starts passing, so the checks
+                // quietly stop covering the thing they were written for. Ensure
+                // and CheckArray both already report it; this one used to shrug.
+                stillNull.Add($"{target.GetType().Name}.{field} (no such field)");
+                return;
+            }
+            if (property.objectReferenceValue == null)
             {
                 stillNull.Add($"{target.GetType().Name}.{field}");
             }

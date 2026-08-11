@@ -38,6 +38,17 @@ namespace CoD.Enemies
         private Transform? _transform;
         private MaterialPropertyBlock? _propertyBlock;
 
+        // Shader property ids, resolved once. Shader.PropertyToID does a string
+        // hash every call, and the telegraph is written every frame of a windup
+        // by every drone in the wave. static readonly, so the no-mutable-statics
+        // rule is untouched.
+        private static readonly int BaseColorId = Shader.PropertyToID("_BaseColor");
+        private static readonly int EmissionColorId = Shader.PropertyToID("_EmissionColor");
+
+        /// <summary>Only used before Initialize supplies a config. The real values live on DroneConfig.</summary>
+        private static readonly Color DefaultIdleCore = new(0.75f, 0.12f, 0.10f);
+        private static readonly Color DefaultTelegraphCore = new(1f, 0.95f, 0.75f);
+
         private DroneAttackState _attack;
         private float _nextRepathAt;
         private float _speedMultiplier = 1f;
@@ -49,7 +60,15 @@ namespace CoD.Enemies
         /// shared assets, and a buffer living on one would be written by every
         /// drone using it at the same time.
         /// </summary>
-        private readonly Collider[] _overlapBuffer = new Collider[16];
+        /// <remarks>
+        /// Sized well past the alive cap's worth of nearby colliders. OverlapSphere
+        /// fills a full buffer with an ARBITRARY subset and reports no overflow, so
+        /// a blast in a dense pack could come back holding only drones and miss the
+        /// player entirely — the attack silently doing nothing, which reads as the
+        /// enemy being broken rather than as a near miss. Each drone contributes
+        /// two colliders (hull + Core), so 16 covered barely eight bodies.
+        /// </remarks>
+        private readonly Collider[] _overlapBuffer = new Collider[64];
 
         // Instance events, never static — Domain Reload is off, and a static event
         // would still be holding the previous Play session's subscribers.
@@ -202,6 +221,13 @@ namespace CoD.Enemies
         /// <summary>Called by the token pool when a drone has held a token too long — one stuck drone must not starve the pack.</summary>
         public void ForceReleaseAttackToken()
         {
+            // Cancel FIRST, like Retire does. Resetting the two state fields left
+            // whatever the windup had started still running on the drone: the
+            // Rusher kept its 1.35x lunge speed and both archetypes kept the
+            // bright telegraph tint, permanently. A drone stuck behind cover long
+            // enough to lose its token then chased the player for the rest of the
+            // wave looking like it was about to detonate, and moving as if it had.
+            if (_config != null && _config.attack != null) _config.attack.Cancel(this, ref _attack);
             _attack.HasToken = false;
             _attack.Phase = DroneAttackPhase.Idle;
         }
@@ -213,10 +239,22 @@ namespace CoD.Enemies
             // MaterialPropertyBlock rather than renderer.material: touching
             // .material clones it per drone, which is forty extra materials and
             // forty broken batches in a full wave.
+            //
+            // The two ends of the ramp come from the ARCHETYPE, not from this
+            // file. They used to be literals here, and Initialize calls this with
+            // 0 on every spawn — so the first thing every drone did was overwrite
+            // its authored core colour with the Rusher's red, and a Shooter, a
+            // Tank and a Rusher were indistinguishable at a glance in the one
+            // place the player has to tell them apart instantly.
             float t = Mathf.Clamp01(amount);
-            Color color = Color.Lerp(new Color(0.75f, 0.12f, 0.10f), new Color(1f, 0.95f, 0.75f), t);
-            _propertyBlock.SetColor("_BaseColor", color);
-            _propertyBlock.SetColor("_EmissionColor", color * (0.4f + 3.5f * t));
+            Color idle = _config != null ? _config.idleCoreColor : DefaultIdleCore;
+            Color hot = _config != null ? _config.telegraphCoreColor : DefaultTelegraphCore;
+            float idleGlow = _config != null ? _config.idleEmission : 0.4f;
+            float hotGlow = _config != null ? _config.telegraphEmission : 3.9f;
+
+            Color color = Color.Lerp(idle, hot, t);
+            _propertyBlock.SetColor(BaseColorId, color);
+            _propertyBlock.SetColor(EmissionColorId, color * Mathf.Lerp(idleGlow, hotGlow, t));
             _coreRenderer.SetPropertyBlock(_propertyBlock);
         }
 

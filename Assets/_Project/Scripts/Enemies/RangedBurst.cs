@@ -51,7 +51,8 @@ namespace CoD.Enemies
         [Range(0.5f, 10f)] public float projectileLifetime = 3f;
         [Tooltip("Pooled prefab carrying DroneProjectile.")]
         public GameObject? projectilePrefab;
-        public LayerMask hitMask = ~0;
+        [Tooltip("Physics.DefaultRaycastLayers, not Everything: it excludes Ignore Raycast, which is where spent shell casings live. Everything let the player's own brass absorb incoming fire and eat blast slots.")]
+        public LayerMask hitMask = Physics.DefaultRaycastLayers;
         public AudioClip? fireClip;
 
         public override float TriggerRange => triggerRange;

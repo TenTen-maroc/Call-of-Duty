@@ -48,6 +48,17 @@ namespace CoD.Waves
 
         public bool TryReroll(int wave)
         {
+            // Check there is something to draw BEFORE taking the money. The pool
+            // is finite — ten entries, capped by maxOwned — so a late run can
+            // exhaust it, and a reroll then charged an escalating price to redraw
+            // the same empty list. Nothing to offer is a refusal, not a purchase.
+            BuildEligible(wave);
+            if (_eligible.Count == 0)
+            {
+                GameLog.Info("Reroll refused: nothing left in the shop pool for this wave.");
+                return false;
+            }
+
             int cost = RerollCost;
             if (!_run.TrySpend(cost)) return false;
             _rerollsThisBreak++;
@@ -74,26 +85,26 @@ namespace CoD.Waves
                     if (item.passive != null) _run.BuyPassive(item.passive);
                     break;
                 case ShopItemKind.EffectModule:
-                    if (_weapon == null || item.effect == null)
+                    // Installed on the weapon's RUNTIME list, never on the config
+                    // asset — see WeaponController.AddEffectModule. The install is
+                    // CHECKED, not assumed: the weapon refuses while its runtime is
+                    // still null, and taking the money anyway sold the player
+                    // nothing while the offer vanished from the list.
+                    if (_weapon == null || item.effect == null || !_weapon.AddEffectModule(item.effect))
                     {
-                        // Refuse and refund rather than take the money for nothing.
-                        GameLog.Warn($"'{item.displayName}' has no weapon to install into; refunding.");
-                        _run.AddMoney(price);
+                        GameLog.Warn($"'{item.displayName}' could not be installed; refunding.");
+                        _run.Refund(price);
                         return false;
                     }
-                    // Installed on the weapon's RUNTIME list, never on the config
-                    // asset — see WeaponController.AddEffectModule.
-                    _weapon.AddEffectModule(item.effect);
                     break;
                 case ShopItemKind.Weapon:
-                    if (_weapon == null || item.weapon == null)
+                    // Installed modules travel with the player, not the gun.
+                    if (_weapon == null || item.weapon == null || !_weapon.EquipWeapon(item.weapon))
                     {
-                        GameLog.Warn($"'{item.displayName}' has no weapon to equip; refunding.");
-                        _run.AddMoney(price);
+                        GameLog.Warn($"'{item.displayName}' could not be equipped; refunding.");
+                        _run.Refund(price);
                         return false;
                     }
-                    // Installed modules travel with the player, not the gun.
-                    _weapon.EquipWeapon(item.weapon);
                     break;
             }
 

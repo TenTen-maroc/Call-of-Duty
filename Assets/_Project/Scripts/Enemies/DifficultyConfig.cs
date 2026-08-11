@@ -39,6 +39,15 @@ namespace CoD.Enemies
         [Tooltip("Which archetypes appear past the authored waves, and how heavily. Weights are relative, sampled per wave.")]
         public MixEntry[] endlessMix = System.Array.Empty<MixEntry>();
 
+        [Header("Endless economy — the late game's only payout")]
+        [Tooltip("Clear bonus for a wave past the last authored one: base + perWave * wave. Was a literal in WaveRunner, which made the whole late-game economy untunable.")]
+        [Min(0)] public int endlessClearBonusBase = 100;
+        [Min(0)] public int endlessClearBonusPerWave = 10;
+        [Tooltip("Total drones an endless wave plans when there is no authored wave to scale from.")]
+        [Min(1)] public int endlessFallbackWaveSize = 8;
+        [Tooltip("Seconds an endless wave drips its drones in over.")]
+        [Min(1f)] public float endlessSpawnOverSeconds = 20f;
+
         /// <summary>One archetype's share of the endless mix, as a curve over wave number.</summary>
         [System.Serializable]
         public struct MixEntry

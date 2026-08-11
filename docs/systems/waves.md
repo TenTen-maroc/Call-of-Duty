@@ -74,6 +74,37 @@ replays and most runs never get past. Past wave 10 the endless ramp takes over.
   split by the mix weights, capped at 3× the alive cap. With no mix authored it
   falls back to the spawner's default drone rather than spawning an empty wave.
 
+## Audit fixes (2026-08-11)
+
+**Three ways the run could hang in `RunPhase.Wave` forever** — no timeout, no
+death, no way out but quitting. All three came from the same clear condition:
+`_queue.Count == 0 && AliveCount == 0 && _spawnedThisWave > 0`.
+
+1. **A wave that planned nothing** (every `WaveConfig` entry lost its drone, or an
+   endless wave with no mix and no fallback) starts with an empty queue and can
+   never satisfy `_spawnedThisWave > 0`. `StartWave` now detects it, logs an error
+   and ends the wave — **without paying the clear bonus**, because a mis-authored
+   wave is mis-authored every time it comes round, and paying for it turns one bad
+   asset into an unbounded money press that also inflates the permanent record.
+2. **Spawns that can never be placed** (no spawn point reaching the navmesh, a
+   missing prefab) left `task.Remaining` undecremented forever, and the retry
+   re-sampled every spawn point against the navmesh every frame. The runner now
+   backs off to the entry's own interval, warns at 30 consecutive failures, and
+   gives up at 120 — ending the wave outright if not one drone was ever placed.
+3. The round is banked only once the wave is known to be real: `SetWave` used to
+   run before `BuildQueue` had said whether there was anything to fight.
+
+**The endless economy is data now.** The clear bonus past the last authored wave
+was `100 + wave * 10` in the script — untunable, and a pay CUT at wave 11 (210
+against Wave_10's 220) on the wave where count, health and prices all step up.
+It reads `DifficultyConfig.endlessClearBonusBase/PerWave`, authored at 120/12.
+The endless base count and spawn window moved to the same asset.
+
+**`WaveConfig.maxAliveOverride` finally does something.** It was serialized in all
+ten wave assets and read by nothing; `StartWave` now passes it to the spawner.
+0 still means "use `DifficultyConfig.maxAliveDrones`".
+
+
 ## Related Systems
 
 - [drones.md](drones.md) — what a wave is made of; the token interface lives there.

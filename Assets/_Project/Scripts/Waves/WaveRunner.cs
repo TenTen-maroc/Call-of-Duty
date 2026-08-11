@@ -61,6 +61,13 @@ namespace CoD.Waves
         private int _wave;
         private int _spawnedThisWave;
         private int _plannedThisWave;
+        private int _placementFailuresThisWave;
+
+        /// <summary>Consecutive failed placements before the runner says so. A hang guard's log threshold, not a tuning value.</summary>
+        private const int PLACEMENT_FAILURE_WARN_AT = 30;
+
+        /// <summary>And the point at which it stops trying. Same reasoning: a hang guard, not a knob.</summary>
+        private const int PLACEMENT_FAILURE_ABANDON_AT = 120;
 
         private struct SpawnTask
         {
@@ -162,11 +169,44 @@ namespace CoD.Waves
         private void StartWave(int wave)
         {
             _wave = wave;
-            _run?.State.SetWave(wave);
             BuildQueue(wave);
+
+            // Every Wave_NN.asset serializes maxAliveOverride and, until now,
+            // nothing anywhere read it — a designed per-wave knob that silently
+            // did nothing. 0 still means "use DifficultyConfig".
+            WaveConfig? shape = ConfigForWave(wave);
+            _spawner?.SetAliveCapOverride(shape != null ? shape.maxAliveOverride : 0);
             _spawnedThisWave = 0;
+            _placementFailuresThisWave = 0;
             SetPhase(RunPhase.Wave);
             WaveStarted?.Invoke(wave);
+
+            // The round is banked only once the wave is real. SetWave used to run
+            // before BuildQueue had said whether there was anything to fight, so
+            // the recovery path below — which deliberately refuses to PAY for a
+            // fight that never happened — still let that wave count toward the
+            // best round written to disk.
+            if (_plannedThisWave > 0) _run?.State.SetWave(wave);
+
+            // A wave that planned nothing can never satisfy the clear condition —
+            // the queue is already empty and nothing will ever have spawned — so
+            // the run hangs in RunPhase.Wave forever, staring at an empty arena
+            // with no drones, no shop and no way out but the pause menu. Reachable
+            // from a WaveConfig whose entries all lost their drone reference, and
+            // from an endless wave with no mix authored and no fallback drone on
+            // the spawner. Mis-authored data must cost a log line, never the run.
+            if (_plannedThisWave <= 0)
+            {
+                GameLog.Error(
+                    $"Wave {wave} planned no drones — check the WaveConfig entries, the endless mix, " +
+                    "and the spawner's default drone. Skipping it so the run can continue.", this);
+                // SKIPPED, not cleared. A cleared wave pays moneyBonusOnClear and
+                // counts toward the record, and a wave that is mis-authored is
+                // mis-authored EVERY time it comes round — so paying for it turns
+                // one bad asset into an unbounded money press that also inflates
+                // the permanent best-round. Nothing was fought; nothing is owed.
+                EndWave(payClearBonus: false);
+            }
         }
 
         private void TickWave(float now)
@@ -180,8 +220,53 @@ namespace CoD.Waves
                 if (!_spawner.CanSpawn()) continue;   // at the alive cap: the queue waits for deaths
 
                 WaveScaling scaling = _difficulty != null ? _difficulty.ScalingForWave(_wave) : WaveScaling.None;
-                if (_spawner.Spawn(task.Drone, scaling) == null) continue;
+                if (_spawner.Spawn(task.Drone, scaling) == null)
+                {
+                    // Placement failed rather than the cap being full — no spawn
+                    // point sampled onto the navmesh, or the prefab is missing.
+                    // Back off to the entry's own interval instead of retrying
+                    // every frame: the retry re-samples every spawn point against
+                    // the navmesh, so a broken arena would burn real frame time
+                    // silently, forever, while the wave never ends.
+                    task.NextAt = now + Mathf.Max(0.5f, task.Interval);
+                    _queue[i] = task;
+                    _placementFailuresThisWave++;
 
+                    if (_placementFailuresThisWave == PLACEMENT_FAILURE_WARN_AT)
+                    {
+                        GameLog.Warn(
+                            $"Wave {_wave}: {_placementFailuresThisWave} spawns in a row could not be placed. " +
+                            "Check the spawn points reach the navmesh and the drone prefabs are assigned.", this);
+                    }
+                    else if (_placementFailuresThisWave >= PLACEMENT_FAILURE_ABANDON_AT)
+                    {
+                        // Give up on the rest of the queue. Backing off stopped the
+                        // busy-spin but not the HANG: an entry that can never be
+                        // placed never decrements, so the queue never empties, the
+                        // clear condition can never be met, and the run sits in
+                        // RunPhase.Wave until the player quits — no timeout, no
+                        // death, no way out. Dropping the remainder lets the wave
+                        // finish on the drones that did make it, which is a bad
+                        // wave rather than a dead session.
+                        GameLog.Error(
+                            $"Wave {_wave}: giving up on {RemainingQueued()} unplaceable spawns. " +
+                            "The wave will end on whatever reached the arena.", this);
+                        _queue.Clear();
+
+                        // Ending the wave OUTRIGHT when not one drone was ever
+                        // placed. Emptying the queue alone still left the run
+                        // hanging: the clear condition below also requires
+                        // _spawnedThisWave > 0, so an arena where nothing can be
+                        // placed produced an empty queue, an empty arena, and a
+                        // phase with no way out — the exact hang this whole branch
+                        // exists to prevent. Nothing was fought, so nothing is paid.
+                        if (_spawnedThisWave == 0) EndWave(payClearBonus: false);
+                        return;
+                    }
+                    continue;
+                }
+
+                _placementFailuresThisWave = 0;
                 _spawnedThisWave++;
                 task.Remaining--;
                 task.NextAt = now + task.Interval;
@@ -197,15 +282,50 @@ namespace CoD.Waves
             }
         }
 
-        private void ClearWave()
+        /// <summary>Everything queued but not yet released. Used only for diagnostics.</summary>
+        private int RemainingQueued()
         {
-            WaveConfig? config = ConfigForWave(_wave);
-            int bonus = config != null ? config.moneyBonusOnClear : 100 + _wave * 10;
-            _run?.AddMoney(bonus);
+            int queued = 0;
+            for (int i = 0; i < _queue.Count; i++) queued += _queue[i].Remaining;
+            return queued;
+        }
+
+        private void ClearWave() => EndWave(payClearBonus: true);
+
+        /// <summary>
+        /// Moves the run out of the wave phase. The bonus is a parameter because
+        /// the recovery paths — a wave that planned nothing, a wave whose spawns
+        /// could not be placed — have to end the wave WITHOUT paying for a fight
+        /// that never happened.
+        /// </summary>
+        private void EndWave(bool payClearBonus)
+        {
+            if (payClearBonus)
+            {
+                WaveConfig? config = ConfigForWave(_wave);
+                int bonus = config != null
+                    ? config.moneyBonusOnClear
+                    : EndlessClearBonus(_wave);
+                _run?.AddMoney(bonus);
+            }
 
             _phaseEndsAt = Time.time + _clearedSeconds;
             SetPhase(RunPhase.Cleared);
             WaveCleared?.Invoke(_wave);
+        }
+
+        /// <summary>
+        /// The clear bonus past the last authored wave. Read from DifficultyConfig
+        /// rather than a formula in this file: it is the entire late-game economy,
+        /// and it used to be `100 + wave * 10` in code — untunable, and a cliff at
+        /// wave 11, where the payout dropped below wave 10's authored bonus while
+        /// enemy count, health and shop prices all kept climbing.
+        /// </summary>
+        private int EndlessClearBonus(int wave)
+        {
+            if (_difficulty == null) return 0;
+            return Mathf.Max(0, _difficulty.endlessClearBonusBase
+                                + _difficulty.endlessClearBonusPerWave * wave);
         }
 
         private void EnterShop()
@@ -291,7 +411,7 @@ namespace CoD.Waves
         {
             if (_difficulty == null) return;
 
-            int baseCount = 8;
+            int baseCount = Mathf.Max(1, _difficulty.endlessFallbackWaveSize);
             WaveConfig? last = _waves.Length > 0 ? _waves[_waves.Length - 1] : null;
             if (last != null) baseCount = Mathf.Max(1, last.TotalCount);
 
@@ -311,7 +431,7 @@ namespace CoD.Waves
                 // No mix authored yet: fall back to the spawner's default drone so
                 // an endless wave is never an empty one.
                 DroneConfig? fallback = _spawner != null ? _spawner.DefaultDrone : null;
-                if (fallback != null) Enqueue(fallback, total, 20f, 0f);
+                if (fallback != null) Enqueue(fallback, total, _difficulty.endlessSpawnOverSeconds, 0f);
                 return;
             }
 
@@ -322,7 +442,7 @@ namespace CoD.Waves
                 float weight = Mathf.Max(0f, mix.weightByWave.Evaluate(wave));
                 if (weight <= 0f) continue;
                 int count = Mathf.RoundToInt(total * (weight / weightSum));
-                if (count > 0) Enqueue(mix.drone, count, 20f, 0f);
+                if (count > 0) Enqueue(mix.drone, count, _difficulty.endlessSpawnOverSeconds, 0f);
             }
         }
 

@@ -58,6 +58,8 @@ namespace CoD.Weapons
         [Range(0.1f, 2f)] public float swapTime = 0.6f;
         [Tooltip("Fraction of the reload after which cancelling still keeps the ammo.")]
         [Range(0f, 1f)] public float reloadCommitPoint = 0.75f;
+        [Tooltip("Delay after a click on an empty magazine before the gun will try again. Stops a held trigger machine-gunning the dry-fire sound.")]
+        [Range(0.05f, 1f)] public float dryFireCooldown = 0.25f;
 
         [Header("Recoil (degrees)")]
         public float verticalKickFirstShot = 0.6f;
@@ -104,6 +106,8 @@ namespace CoD.Weapons
         public AudioClip? fireTailLayer;    // distance / reverb tail
         public AudioClip? dryFireClip;
         public AudioClip? reloadClip;
+        [Tooltip("How long a pooled muzzle flash stays up. Was a literal in WeaponController while every other lifetime on that path already lived here.")]
+        [Range(0.01f, 0.5f)] public float muzzleFlashLifetime = 0.08f;
         [Range(0f, 2f)] public float cameraShakeAmplitude = 0.6f;
         [Tooltip("A real point light for a couple of frames is what sells a muzzle flash.")]
         [Range(0f, 0.2f)] public float muzzleLightDuration = 0.03f;

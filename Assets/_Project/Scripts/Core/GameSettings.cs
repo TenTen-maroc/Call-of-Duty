@@ -46,15 +46,23 @@ namespace CoD.Core
 
         public void SetInvertLook(bool value) => InvertLook = value;
 
-        /// <summary>Nudge by one step. Direction is -1 or +1; anything else is ignored.</summary>
+        /// <summary>
+        /// Nudge by one step. Direction is -1 or +1; anything else is ignored.
+        ///
+        /// Not Mathf.Sign: Unity's returns +1 for ZERO, so a caller passing 0 —
+        /// which every one of these reads as "no input this frame" — would step
+        /// the value UP instead of doing nothing.
+        /// </summary>
         public void StepMouseSensitivity(int direction)
-            => SetMouseSensitivity(MouseSensitivity + _bounds.sensitivityStep * Mathf.Sign(direction));
+            => SetMouseSensitivity(MouseSensitivity + _bounds.sensitivityStep * StepSign(direction));
 
         public void StepFovVertical(int direction)
-            => SetFovVertical(FovVertical + _bounds.fovStep * Mathf.Sign(direction));
+            => SetFovVertical(FovVertical + _bounds.fovStep * StepSign(direction));
 
         public void StepMasterVolume(int direction)
-            => SetMasterVolume(MasterVolume + _bounds.volumeStep * Mathf.Sign(direction));
+            => SetMasterVolume(MasterVolume + _bounds.volumeStep * StepSign(direction));
+
+        private static float StepSign(int direction) => direction == 0 ? 0f : (direction > 0 ? 1f : -1f);
 
         /// <summary>0..1 across the allowed range, for drawing a bar without the caller knowing the bounds.</summary>
         public float SensitivityFraction => Fraction(MouseSensitivity, _bounds.sensitivityMin, _bounds.sensitivityMax);

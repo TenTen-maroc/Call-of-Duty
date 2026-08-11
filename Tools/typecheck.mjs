@@ -78,6 +78,9 @@ const unityRefs = [
   ...listDlls(join(editor.data, 'NetStandard', 'ref', '2.1.0')),
 ]
 
+/** Unity's .NET Framework facades, needed only by the net40 test dependencies. */
+const netfxShims = listDlls(join(editor.data, 'NetStandard', 'compat', '2.1.0', 'shims', 'netfx'))
+
 function listDlls(directory) {
   if (!existsSync(directory)) return []
   return readdirSync(directory).filter((f) => f.endsWith('.dll')).map((f) => join(directory, f))
@@ -225,11 +228,50 @@ const packageRefs = {
 }
 
 /**
+ * Assemblies Unity references from EVERY assembly without being asked. ugui is
+ * the only one here: no asmdef in this repo lists it, and every UI file compiles
+ * in the editor regardless. Everything not on this list has to be declared.
+ */
+const AUTO_REFERENCED = ['UnityEngine.UI']
+
+/**
  * Any other package assembly a first-party asmdef names. Unity already compiled
  * it into Library/ScriptAssemblies, so no source build is needed — and resolving
  * lazily means adding a package reference to an asmdef never again requires
  * editing this file to keep the gate honest.
  */
+/**
+ * A precompiledReference (nunit.framework.dll and friends) as Unity resolves it:
+ * from the editor's own managed folders, or from the package cache.
+ */
+function prebuiltPath(fileName) {
+  // Straightforward spots first, then a bounded search through the package
+  // sources Unity actually ships these in. nunit lives at
+  // com.unity.ext.nunit/net40/unity-custom/, which is not guessable from the
+  // assembly name alone.
+  const direct = [
+    join(repoRoot, 'Library', 'ScriptAssemblies', fileName),
+    join(editor.data, 'Managed', fileName),
+  ].find((c) => existsSync(c))
+  if (direct) return direct
+
+  const roots = [
+    join(repoRoot, 'Library', 'PackageCache'),
+    join(editor.data, 'Resources', 'PackageManager', 'BuiltInPackages'),
+  ].filter((r) => existsSync(r))
+
+  const nested = ['', 'lib', join('net40', 'unity-custom'), join('net35', 'unity-custom')]
+  for (const root of roots) {
+    for (const entry of readdirSync(root)) {
+      for (const sub of nested) {
+        const hit = sub ? join(root, entry, sub, fileName) : join(root, entry, fileName)
+        if (existsSync(hit)) return hit
+      }
+    }
+  }
+  return null
+}
+
 function packageRef(name) {
   if (name in packageRefs) return packageRefs[name]
   packageRefs[name] = prebuiltAssembly(name)
@@ -238,16 +280,37 @@ function packageRef(name) {
 
 // ---------- first-party assemblies, in dependency order ----------
 
-const scriptsRoot = join(repoRoot, 'Assets', '_Project', 'Scripts')
-const asmdefs = readdirSync(scriptsRoot)
-  .map((folder) => {
-    const dir = join(scriptsRoot, folder)
+/**
+ * Scripts AND Tests. The test assemblies were left out originally, and the hole
+ * showed: a test referencing a type whose `using` was missing compiled fine here
+ * and then aborted the whole Unity test run with "Scripts have compiler errors" —
+ * a gate reporting clean over 1,600 lines it had never looked at. They are
+ * first-party code under the same rules, so they get the same pass.
+ */
+const sourceRoots = [
+  join(repoRoot, 'Assets', '_Project', 'Scripts'),
+  join(repoRoot, 'Assets', '_Project', 'Tests'),
+]
+
+const asmdefs = sourceRoots
+  .filter((root) => existsSync(root))
+  .flatMap((root) => readdirSync(root).map((folder) => {
+    const dir = join(root, folder)
     if (!statSync(dir).isDirectory()) return null
     const file = readdirSync(dir).find((f) => f.endsWith('.asmdef'))
     if (!file) return null
     const json = JSON.parse(readFileSync(join(dir, file), 'utf8'))
-    return { name: json.name, dir, references: json.references ?? [], isEditor: (json.includePlatforms ?? []).includes('Editor') }
-  })
+    return {
+      name: json.name,
+      dir,
+      references: json.references ?? [],
+      isEditor: (json.includePlatforms ?? []).includes('Editor'),
+      // Test assemblies compile against nunit and the TestRunner, which are
+      // prebuilt in Library/ScriptAssemblies once Unity has opened the project.
+      precompiled: json.precompiledReferences ?? [],
+      defineConstraints: json.defineConstraints ?? [],
+    }
+  }))
   .filter(Boolean)
 
 const byName = new Map(asmdefs.map((a) => [a.name, a]))
@@ -279,16 +342,47 @@ for (const assembly of ordered) {
     continue
   }
 
+  // Package refs are filtered by what the asmdef DECLARES, exactly like the
+  // first-party ones below. Spreading every known package handed CoD.Core a
+  // reference to Unity.InputSystem and Unity.AI.Navigation that its asmdef does
+  // not list — so `using UnityEngine.InputSystem;` in Core would compile here
+  // and fail in Unity, which is precisely the drift this gate exists to catch.
+  //
+  // AUTO_REFERENCED is the one honest exception: ugui is auto-referenced by
+  // Unity for every assembly, which is why no asmdef in this repo declares it
+  // and every UI file still compiles in the editor. Withholding it here would
+  // make the gate stricter than Unity, not more accurate — a gate that fails on
+  // working code gets switched off.
   const refs = [
-    ...Object.values(packageRefs).filter(Boolean),
+    ...AUTO_REFERENCED.map((r) => packageRef(r)).filter(Boolean),
+    ...assembly.references
+      .filter((r) => !AUTO_REFERENCED.includes(r) && packageRef(r))
+      .map((r) => packageRefs[r])
+      .filter(Boolean),
     ...assembly.references.filter((r) => byName.has(r)).map((r) => join(cacheDir, `${r}.dll`)),
+    ...(assembly.precompiled ?? [])
+      .map((dll) => prebuiltPath(dll))
+      .filter(Boolean),
   ]
+
+  // A defineConstraint the compile does not satisfy means Unity would not build
+  // this assembly either — UNITY_INCLUDE_TESTS is exactly that, and it is on
+  // whenever the test runner is.
+  const constraintDefines = (assembly.defineConstraints ?? [])
+    .filter((d) => !d.startsWith('!'))
+    .map((d) => `-define:${d}`)
+
+  // nunit ships as net40 and its attributes derive from mscorlib 4.0.0.0, which
+  // the netstandard ref set does not carry. Unity's own netfx shims are what make
+  // that resolve — the same facades the editor uses to compile these assemblies.
+  const shims = (assembly.precompiled ?? []).length > 0 ? netfxShims : []
 
   const lines = [
     '-nologo', '-target:library', '-nostdlib', '-langversion:9.0', '-nullable:enable', '-warnaserror-',
     '-define:UNITY_EDITOR',
+    ...constraintDefines,
     `-out:"${join(cacheDir, `${assembly.name}.dll`)}"`,
-    ...[...unityRefs, ...refs].map((r) => `-r:"${r}"`),
+    ...[...unityRefs, ...shims, ...refs].map((r) => `-r:"${r}"`),
     ...collectCs(assembly.dir).map((s) => `"${s}"`),
   ]
 

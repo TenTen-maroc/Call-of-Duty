@@ -26,5 +26,9 @@ MonoBehaviour:
   moneyReward: 12
   prefab: {fileID: 4885437377781018693, guid: 5879e592f6b40de4686befc9257ccc29, type: 3}
   attack: {fileID: 11400000, guid: d7faaece21567c84b91bb11b2fd04b9c, type: 2}
+  idleCoreColor: {r: 0.75, g: 0.12, b: 0.1, a: 1}
+  telegraphCoreColor: {r: 1, g: 0.95, b: 0.75, a: 1}
+  idleEmission: 0.4
+  telegraphEmission: 3.9
   deathVfx: {fileID: 2729887339346492243, guid: 2803e14bef355f84d8532d1d6ab969fa, type: 3}
   deathVfxLifetime: 0.9

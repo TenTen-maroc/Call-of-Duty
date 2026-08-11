@@ -116,6 +116,38 @@ Abandoning still calls `RunContext.RecordRunEnded()`. You reached that round
 either way, and a record that only lands on death rewards suiciding to bank it —
 the opposite of what a permadeath score is for.
 
+## Audit fixes (2026-08-11)
+
+- **A dead player kept full control.** Entering `RunPhase.GameOver` only toggled a
+  panel visible: nothing blocked the action map, nothing freed the cursor, and
+  pausing is refused at game over — so the death screen drew over an arena the
+  corpse was still walking and shooting around, and R was the only key the game
+  answered. `PausePanel` now takes the keyboard on that phase change, because it
+  is already the single owner of who holds the controls.
+- **One keypress could do two things.** `Resume()` clears `_paused` from inside
+  `Update`, so any panel whose `Update` ran later in the same frame saw
+  `IsPaused == false` and consumed the very keypress that resumed the game — and
+  SPACE is both the pause menu's confirm key and the shop's "next wave" key.
+  Panels now test `OwnsInputThisFrame`, which stays true for the rest of the frame
+  that unpaused. MonoBehaviour order is undefined, so this misbehaved on some
+  machines and not others.
+- **Resuming during a shop break handed the arena back** while the shop was still
+  covering the screen. `Resume` now returns control to whoever should have it.
+- **"NEW BEST" was shown for a tie, and in Sandbox.** See [save.md](save.md) — the
+  panel reads `RunContext.SetANewRecord` instead of comparing against a
+  `bestRound` that had already been raised.
+- **Stepping a settings slider by zero moved it.** `Mathf.Sign(0)` is +1 in Unity,
+  and 0 is exactly what "no input this frame" passes.
+
+### Still open
+
+The game-over screen has no exit to the menu. `CanPause` refuses at
+`RunPhase.GameOver` — deliberately, so the menu cannot cover the one number the
+player is there to read — and `GameOverPanel` handles only R. That leaves Alt-F4
+as the only way out of a finished run. It is a missing feature rather than a
+defect, so it is recorded here rather than invented during an audit.
+
+
 ## Related Systems
 
 - [settings.md](settings.md) — what the settings page edits.

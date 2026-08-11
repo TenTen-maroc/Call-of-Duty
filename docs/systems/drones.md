@@ -148,6 +148,38 @@ the player's speed and this one has to move with it.
   touching `.material` clones it per drone, which is forty extra materials and
   forty broken batches in a full wave.
 
+## Audit fixes (2026-08-11)
+
+- **A Shooter's round could hang in the air forever.** `DroneProjectile` treated a
+  drone as a hit, and `Resolve` returned early for its own kind WITHOUT despawning
+  and without advancing — so the sweep restarted from the same point every frame.
+  The round never moved, never expired, and never released its pooled instance; a
+  wave of shooters leaked the pool for the rest of the run. Drones are now skipped
+  inside the sweep, so the round keeps going.
+- **Its weakpoint `Core` was still solid.** `DroneController` lives on the hull;
+  the `Core` child carries only a `Weakpoint`. Testing the collider alone
+  recognised one and not the other, so a round clipping another drone's core hit
+  something with no Health and vanished — the shooter's own kind acting as cover.
+  `BelongsToADrone` resolves the collider to the Health behind it first.
+- **Every archetype repainted itself Rusher-red on spawn.** `Initialize` calls
+  `SetTelegraph(0f)`, and the two ends of the ramp were literals in
+  `DroneController` — so the Shooter's amber core and the Tank's crimson one, both
+  authored by the builder, were overwritten on the first frame. The colours are
+  now per-archetype fields on `DroneConfig`, authored to match each prefab's
+  material. Hue says which drone; brightness says how close the attack is.
+- **A timed-out attack token left the windup running.** `ForceReleaseAttackToken`
+  reset two state fields but never called `attack.Cancel`, so a drone that lost
+  its token kept its lunge speed multiplier and its bright telegraph tint — for
+  the rest of the wave, looking and moving as though it were about to detonate.
+- **The alive cap failed open.** `CanSpawn` returned true with no
+  `DifficultyConfig`, removing the cap that exists to protect a 4 GB GPU. It now
+  falls back to a hard 40 and logs once.
+- **Blast damage could miss the player entirely.** `Blast.Apply` ran a
+  16-collider overlap with mask Everything; each drone takes two slots, so in a
+  dense pack the player could be outside the truncated result and the detonation
+  did nothing at all. Buffer 16 to 64, and a full buffer is now reported.
+
+
 ## Related Systems
 
 - [pooling.md](pooling.md) — every drone, explosion and death VFX comes from the pool.

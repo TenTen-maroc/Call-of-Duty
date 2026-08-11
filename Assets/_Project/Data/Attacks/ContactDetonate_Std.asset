@@ -20,7 +20,7 @@ MonoBehaviour:
   minBlastMultiplier: 0.33
   damageMask:
     serializedVersion: 2
-    m_Bits: 4294967295
+    m_Bits: 4294967291
   explosionVfx: {fileID: 6847219676677777461, guid: 1d9d431549a96da45849b0e0b54feea6, type: 3}
   explosionLifetime: 1.2
   alertClip: {fileID: 8300000, guid: 39c4be71d505e9f419ce049207beec33, type: 3}

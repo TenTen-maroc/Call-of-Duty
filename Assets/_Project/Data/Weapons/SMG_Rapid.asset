@@ -34,6 +34,7 @@ MonoBehaviour:
   reloadEmptyTime: 2.3
   swapTime: 0.6
   reloadCommitPoint: 0.75
+  dryFireCooldown: 0.25
   verticalKickFirstShot: 0.45
   verticalKickAtShotEight: 0.95
   horizontalKickMax: 0.45
@@ -64,6 +65,7 @@ MonoBehaviour:
   fireTailLayer: {fileID: 8300000, guid: 9c89ddc94eeb7bfff85cc289c4351320, type: 3}
   dryFireClip: {fileID: 8300000, guid: d4eb67c03035d1cf3a420a3329ffadc1, type: 3}
   reloadClip: {fileID: 8300000, guid: 21c305d77a740d3a605152777a6a7c57, type: 3}
+  muzzleFlashLifetime: 0.08
   cameraShakeAmplitude: 0.6
   muzzleLightDuration: 0.03
   muzzleLightIntensity: 12

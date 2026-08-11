@@ -31,6 +31,16 @@ namespace CoD.Weapons
 
             int count = Physics.OverlapSphereNonAlloc(context.Point, jumpRange, buffer, shooter.HitMask,
                 QueryTriggerInteraction.Ignore);
+
+            // A FULL buffer means an arbitrary subset came back and the rest
+            // is gone, with no overflow flag to read. Blast.Apply already says so
+            // on the drone side; a chain quietly reaching nobody in a crowd is the
+            // same failure and was the only one of the three that stayed silent.
+            if (count >= buffer.Length)
+            {
+                GameLog.Warn($"{name} filled its {buffer.Length}-collider buffer — " +
+                    "targets past that were dropped. Raise WeaponController's effect overlap buffer.", this);
+            }
             int queued = 0;
 
             for (int i = 0; i < count && queued < jumpsPerHit; i++)

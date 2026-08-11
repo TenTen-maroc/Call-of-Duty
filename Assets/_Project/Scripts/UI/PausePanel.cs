@@ -44,24 +44,78 @@ namespace CoD.UI
 
         private bool _paused;
         private float _timeScaleBeforePause = 1f;
+        private int _resumedOnFrame = -1;
 
         public bool IsPaused => _paused;
+
+        /// <summary>
+        /// True while paused AND for the remainder of the frame that unpaused.
+        /// The other keyboard panels test THIS, not IsPaused.
+        ///
+        /// Resume() clears the flag from inside Update, so any panel whose Update
+        /// happened to run later in the same frame saw IsPaused already false and
+        /// consumed the very keypress that resumed the game. SPACE is this menu's
+        /// confirm key and the shop's "next wave" key, so pressing RESUME during a
+        /// shop break started the next wave as well — and MonoBehaviour order is
+        /// undefined, so it did that on some machines and not others.
+        /// </summary>
+        public bool OwnsInputThisFrame => _paused || Time.frameCount == _resumedOnFrame;
+
+        /// <summary>
+        /// Hand the player's controls to a full-screen panel that is not this one.
+        /// The shop uses it: with the shop open the player used to keep walking,
+        /// jumping and firing behind it, and R and SPACE were live in the Player
+        /// action map and the shop at the same time.
+        ///
+        /// It lives here because this component is already the single answer to
+        /// "who is holding the keyboard" — a second component calling SetBlocked
+        /// is how the two of them start disagreeing.
+        /// </summary>
+        public void SetPlayerControlsBlocked(bool blocked)
+        {
+            // Pause outranks every other panel while it is open.
+            if (_paused) return;
+            // And a request to GIVE CONTROL BACK is refused once the run is over,
+            // because the shop closing and the run ending arrive as the same phase
+            // change and the order between the two listeners is undefined.
+            if (!blocked && _runner != null && _runner.Phase == RunPhase.GameOver) return;
+            _input?.SetBlocked(blocked);
+        }
 
         private void Awake() => Show(false);
 
         private void OnEnable()
         {
             if (_settingsPanel != null) _settingsPanel.Closed += OnSettingsClosed;
+            if (_runner != null) _runner.PhaseChanged += OnPhaseChanged;
         }
 
         private void OnDisable()
         {
             if (_settingsPanel != null) _settingsPanel.Closed -= OnSettingsClosed;
+            if (_runner != null) _runner.PhaseChanged -= OnPhaseChanged;
 
             // A scene load while paused would otherwise leave the next scene
             // frozen at timeScale 0 with no panel to unfreeze it — a hang that
             // looks exactly like a crash.
             if (_paused) RestoreTime();
+        }
+
+        /// <summary>
+        /// Death takes the keyboard away, here, because this component is already
+        /// the one thing that owns "who is holding the controls".
+        ///
+        /// Without it the run ends and NOTHING stops the player: the death screen
+        /// draws over an arena the corpse is still walking and shooting around,
+        /// the mouse stays captured, and pausing is refused (CanPause), so the
+        /// only key that does anything is R. The game over is the moment the
+        /// player is meant to read a number, not keep playing.
+        /// </summary>
+        private void OnPhaseChanged(RunPhase phase)
+        {
+            if (phase != RunPhase.GameOver) return;
+            _input?.SetBlocked(true);
+            PlayerLook.SetCursorLocked(false);
         }
 
         private void Update()
@@ -122,14 +176,22 @@ namespace CoD.UI
         {
             if (!_paused) return;
             RestoreTime();
-            _input?.SetBlocked(false);
-            PlayerLook.SetCursorLocked(true);
             Show(false);
+
+            // The controls go back to whoever should hold them, which is not
+            // always the player. Pausing during a shop break and resuming used to
+            // hand the arena straight back while the shop was still covering the
+            // screen — walking and firing under a full-screen menu, which is the
+            // very thing SetPlayerControlsBlocked exists to stop.
+            bool aPanelStillOwnsThem = _runner != null && _runner.Phase == RunPhase.Shop;
+            _input?.SetBlocked(aPanelStillOwnsThem);
+            PlayerLook.SetCursorLocked(true);
         }
 
         private void RestoreTime()
         {
             _paused = false;
+            _resumedOnFrame = Time.frameCount;
             Time.timeScale = _timeScaleBeforePause;
         }
 

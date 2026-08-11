@@ -86,6 +86,18 @@ namespace CoD.Core
             return true;
         }
 
+        /// <summary>
+        /// Undoes a spend at face value. The shop uses this when a purchase turns
+        /// out to be unfulfillable; see <see cref="RunState.Refund"/> for why it
+        /// must not go through AddMoney.
+        /// </summary>
+        public void Refund(int amount)
+        {
+            if (amount <= 0) return;
+            State.Refund(amount);
+            MoneyChanged?.Invoke(State.Money);
+        }
+
         public void BuyPassive(PassiveConfig passive)
         {
             State.AddPassive(passive);
@@ -93,22 +105,38 @@ namespace CoD.Core
         }
 
         /// <summary>
-        /// Push the rebuilt sheet everywhere. Raising max health tops the player
-        /// up as a side effect — deliberate: a health upgrade that leaves you at
-        /// 12/125 reads as broken, and the shop only opens between waves anyway.
+        /// Push the rebuilt sheet everywhere. A max-health upgrade grants its own
+        /// increase to current health as it lands — a health upgrade that leaves
+        /// you at 12/125 reads as broken — but nothing else here heals.
         /// </summary>
         public void ApplyStats()
         {
             if (_playerHealth != null && _config != null)
             {
-                _playerHealth.ConfigureMax(Stats.Effective(Stat.MaxHealth, _config.playerMaxHealth));
+                // AdjustMax, not ConfigureMax: this runs on EVERY purchase, and
+                // ConfigureMax refills to full. A player at 8 HP could buy the
+                // cheapest passive in the shop — reload speed, greed, anything —
+                // and walk into the next wave at maximum. A max-health upgrade
+                // still grants its own increase immediately; nothing else heals.
+                _playerHealth.AdjustMax(Stats.Effective(Stat.MaxHealth, _config.playerMaxHealth));
             }
             StatsChanged?.Invoke(Stats);
         }
 
+        /// <summary>
+        /// True only when the run that just ended actually beat the stored record
+        /// and the new number reached disk. The death screen reads this instead of
+        /// re-deriving it: comparing RoundReached against an ALREADY-UPDATED
+        /// bestRound announced "NEW BEST" for a tie, and announced it in Sandbox
+        /// too — where RecordRunEnded deliberately writes nothing at all, so the
+        /// record it congratulated the player on did not exist.
+        /// </summary>
+        public bool SetANewRecord { get; private set; }
+
         /// <summary>Called when a run ends. The only moment anything is written to disk.</summary>
         public void RecordRunEnded()
         {
+            SetANewRecord = false;
             SaveData save = Save;
 
             // Sandbox has infinite money and a cheat console. A record set there
@@ -122,7 +150,11 @@ namespace CoD.Core
 
             save.totalRuns++;
             save.totalKills += State.Kills;
-            if (State.RoundReached > save.bestRound) save.bestRound = State.RoundReached;
+            if (State.RoundReached > save.bestRound)
+            {
+                save.bestRound = State.RoundReached;
+                SetANewRecord = true;
+            }
             SaveSystem.Save(save);
         }
     }

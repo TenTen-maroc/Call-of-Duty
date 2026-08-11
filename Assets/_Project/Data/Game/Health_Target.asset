@@ -13,4 +13,4 @@ MonoBehaviour:
   m_Name: Health_Target
   m_EditorClassIdentifier: 
   maxHealth: 100
-  weakpointMultiplier: 2
+  targetRespawnSeconds: 2.5

@@ -57,10 +57,19 @@ namespace CoD.UI
             if (_titleLabel != null) _titleLabel.text = "YOU DIED";
             if (_detailLabel != null)
             {
-                bool newBest = state.RoundReached >= save.bestRound && state.RoundReached > 0;
+                // Asked, not re-derived. Comparing RoundReached against bestRound
+                // here read a value RecordRunEnded had ALREADY raised, so `>=` was
+                // true for every run that merely tied the record — and true in
+                // Sandbox, where RecordRunEnded writes nothing at all and there was
+                // no record to have beaten. RunContext knows which of those
+                // actually happened; this panel does not need to guess.
+                string record = _run.Mode == GameMode.Sandbox
+                    ? "SANDBOX  —  NOT RECORDED"
+                    : _run.SetANewRecord ? "NEW BEST" : "BEST  " + save.bestRound;
+
                 _detailLabel.text =
                     "ROUND " + state.RoundReached + "        KILLS " + state.Kills + "\n" +
-                    (newBest ? "NEW BEST" : "BEST  " + save.bestRound) + "\n\n" +
+                    record + "\n\n" +
                     "R)  run it again";
             }
         }
@@ -68,7 +77,8 @@ namespace CoD.UI
         private void Update()
         {
             if (_runner == null || _runner.Phase != RunPhase.GameOver) return;
-            if (_pause != null && _pause.IsPaused) return;
+            // Same one-frame rule the shop uses — see PausePanel.OwnsInputThisFrame.
+            if (_pause != null && _pause.OwnsInputThisFrame) return;
 
             Keyboard? keyboard = Keyboard.current;
             if (keyboard == null) return;

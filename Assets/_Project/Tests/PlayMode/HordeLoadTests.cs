@@ -51,9 +51,16 @@ namespace CoD.Tests
         /// </summary>
         private const float PressureSeconds = 20f;
 
+        // Forty Rushers converging on one player. They win, and that ends a run.
+        private readonly SaveFileGuard _save = new();
+
         [UnitySetUp]
         public IEnumerator LoadGreyBox()
         {
+            // Reset, not just capture: a Sandbox lastMode left behind by a real
+            // play session silences RecordRunEnded, and a run ending here then
+            // logged an Info that LogAssert.NoUnexpectedReceived failed on.
+            _save.CaptureAndReset();
             AsyncOperation? load = SceneManager.LoadSceneAsync("10_GreyBox", LoadSceneMode.Single);
             Assert.IsNotNull(load);
             while (load != null && !load.isDone) yield return null;
@@ -65,6 +72,7 @@ namespace CoD.Tests
         {
             var registry = Object.FindFirstObjectByType<DroneRegistry>();
             if (registry != null) registry.DespawnAll();
+            _save.Restore();
             yield return null;
         }
 

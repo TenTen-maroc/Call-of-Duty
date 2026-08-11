@@ -51,6 +51,18 @@ namespace CoD.Core
             return scaled;
         }
 
+        /// <summary>
+        /// Gives back money that was already spent, at face value. Deliberately
+        /// NOT AddMoney: that folds in the MoneyGainMult passives, so refunding a
+        /// 500 purchase while carrying a x1.5 Greed stack would hand back 750 and
+        /// turn any refusable shop item into an infinite money press.
+        /// </summary>
+        public void Refund(int amount)
+        {
+            if (amount <= 0) return;
+            Money += amount;
+        }
+
         public bool CanAfford(int cost) => Money >= cost;
 
         public bool TrySpend(int cost)

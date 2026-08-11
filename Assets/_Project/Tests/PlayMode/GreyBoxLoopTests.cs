@@ -25,12 +25,24 @@ namespace CoD.Tests
     {
         private const string ScenePath = "Assets/_Project/Scenes/10_GreyBox.unity";
 
+        // These tests let real Rushers reach a real player for up to 45 seconds.
+        // If one kills them, the run ends and the record is written.
+        private readonly SaveFileGuard _save = new();
+
         [UnitySetUp]
         public IEnumerator LoadGreyBox()
         {
+            _save.CaptureAndReset();
             AsyncOperation? load = SceneManager.LoadSceneAsync("10_GreyBox", LoadSceneMode.Single);
             Assert.IsNotNull(load, $"'{ScenePath}' must be in the build settings — the builder registers it");
             while (load != null && !load.isDone) yield return null;
+            yield return null;
+        }
+
+        [UnityTearDown]
+        public IEnumerator RestoreTheSave()
+        {
+            _save.Restore();
             yield return null;
         }
 
