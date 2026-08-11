@@ -66,7 +66,9 @@ This is the honest boundary, and the reason earlier sessions stopped short.
 | Every scene reference is wired | ✅ | `GreyBoxVerify` save/reload round trip |
 | The maths is right (stats, falloff, save round-trip, recursion bounds) | ✅ | EditMode tests |
 | The loop actually runs — waves spawn, drones path, damage lands, the shop opens | ✅ | PlayMode tests |
-| Frame time with 40 alive on a 3050 | ⚠️ partly | a PlayMode test can assert no allocation and no exception; only a human sees a stutter |
+| The two caps hold under a full arena | ✅ | `HordeLoadTests` — 40 alive, tokens peak 3/3 |
+| Per-frame allocation at 40 alive | ✅ | `ProfilerRecorder`, 450 B/frame mean against a 16 KB budget |
+| Frame time with 40 alive on a 3050 | ❌ | headless has no GPU work; only a human sees a stutter |
 | The BUILT game runs at all | ✅ | `verify-build.mjs` — builds a `.exe` and executes it |
 | **Is it fun** | ❌ | the tuning card, played by a human |
 
@@ -145,6 +147,18 @@ never been exercised in a real player. See [systems/build.md](systems/build.md).
 their own `SaveData`, so ending a run rewrote the whole file and reverted every
 setting. Invisible to every editor gate; obvious in the save a built player left
 behind. Fixed, verified, and covered by two PlayMode tests.
+
+### S4 — The caps under load (done, 2026-08-11)
+
+`maxAliveDrones 40` and `maxSimultaneousAttackers 3` are called "not tuning
+knobs" and nothing checked them. Four PlayMode tests now push a full arena:
+400 spawn attempts past the cap never exceed it, attack tokens saturate at
+**3 / 3 with 40 alive**, an 8-second pressure window throws nothing, and GC
+allocation holds at **450 B/frame mean, 610 B worst** — the pool doing its job.
+See [systems/performance.md](systems/performance.md).
+
+Frame time on the 3050 is still NOT verified and cannot be from a headless run.
+That stays item 9 on the tuning card.
 
 ### M4 — Human tuning pass (blocked on a person)
 

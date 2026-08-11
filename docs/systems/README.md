@@ -23,10 +23,11 @@ obvious, emphasise the non-obvious.
 | [settings.md](settings.md) | Sensitivity, FOV, invert, volume — bounds, the runtime layer, schema 2 | ✅ |
 | [menus.md](menus.md) | Main menu, pause, the shared settings page, Run vs Sandbox | ✅ |
 | [build.md](build.md) | Producing the Windows .exe, and the smoke test that proves it runs | ✅ |
+| [performance.md](performance.md) | The two caps under load, the allocation budget, what headless cannot prove | ✅ |
 
 ## Automated verification
 
-Beyond `typecheck.mjs` and the guards, the project has 58 tests:
+Beyond `typecheck.mjs` and the guards, the project has 62 tests:
 
 ```
 Unity.exe -batchmode -runTests -projectPath . -testPlatform EditMode -testResults Logs/tests-editmode.xml
