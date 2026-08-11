@@ -129,7 +129,12 @@ if (files.length === 0) {
 const violations = []
 
 for (const file of files) {
-  const lines = readFileSync(file, 'utf8').split('\n')
+  // Split on /\r?\n/, not '\n': a CRLF file leaves a trailing '\r' on every
+  // line, and that silently breaks the comment stripping below — `.` will not
+  // cross '\r', and '$' without the /m/ flag only matches end-of-string, so
+  // `// ... static ...` never gets stripped. The symptom is a false positive
+  // on a COMMENT that merely mentions the pattern, on Windows only.
+  const lines = readFileSync(file, 'utf8').split(/\r?\n/)
   for (const { method, start, end } of perFrameRanges(lines)) {
     for (let lineIndex = start; lineIndex <= end; lineIndex++) {
       const line = lines[lineIndex]

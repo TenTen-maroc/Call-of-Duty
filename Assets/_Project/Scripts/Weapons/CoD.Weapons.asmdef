@@ -3,6 +3,7 @@
     "rootNamespace": "CoD.Weapons",
     "references": [
         "CoD.Core",
+        "CoD.Player",
         "Unity.InputSystem"
     ],
     "includePlatforms": [],

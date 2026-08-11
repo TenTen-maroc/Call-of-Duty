@@ -11,7 +11,7 @@ namespace CoD.Core
     [DisallowMultipleComponent]
     public sealed class Health : MonoBehaviour, IDamageable
     {
-        [SerializeField] private HealthConfig? _config;
+        [SerializeField] private HealthConfig? _config = null;
 
         private float _current;
 

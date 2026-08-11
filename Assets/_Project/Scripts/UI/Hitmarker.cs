@@ -17,26 +17,26 @@ namespace CoD.UI
     [DisallowMultipleComponent]
     public sealed class Hitmarker : MonoBehaviour
     {
-        [SerializeField] private WeaponController? _weapon;
+        [SerializeField] private WeaponController? _weapon = null;
         [Tooltip("The bars that form the X. Driven as one - built from primitives so the project ships no sprite binary.")]
         [SerializeField] private Graphic[] _markerParts = System.Array.Empty<Graphic>();
-        [SerializeField] private AudioSource? _audio;
+        [SerializeField] private AudioSource? _audio = null;
 
         [Header("Hit")]
         [SerializeField] private Color _hitColor = new(1f, 1f, 1f, 0.9f);
-        [SerializeField] private AudioClip? _hitClip;
+        [SerializeField] private AudioClip? _hitClip = null;
         [Range(0.02f, 0.5f)][SerializeField] private float _hitDuration = 0.09f;
 
         [Header("Kill")]
         [SerializeField] private Color _killColor = new(1f, 0.35f, 0.25f, 1f);
-        [SerializeField] private AudioClip? _killClip;
+        [SerializeField] private AudioClip? _killClip = null;
         [Range(0.05f, 0.8f)][SerializeField] private float _killDuration = 0.22f;
 
         [Tooltip("Scale punch at the moment of the hit, easing back to 1.")]
         [SerializeField] private float _punchScale = 1.35f;
 
         private Transform? _markerTransform;
-        [SerializeField] private Transform? _markerRoot;
+        [SerializeField] private Transform? _markerRoot = null;
         private float _visibleUntil;
         private float _duration = 0.1f;
 

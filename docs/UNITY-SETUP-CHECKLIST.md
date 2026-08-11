@@ -1,184 +1,143 @@
 # Unity setup checklist
 
-> Everything in this file is a thing Claude Code cannot do for you — installers,
-> Hub dialogs, and Project Settings toggles. Work top to bottom. The order
-> matters in two places, both flagged.
+> Almost all of this is **already done**. It is kept as the record of what was
+> configured and why, and because a second machine will need it again.
 >
-> Machine: MSI Katana GF76, i7-12650H, 32 GB RAM, **RTX 3050 Laptop / 4 GB VRAM**,
-> 175 GB free. Every setting below is chosen for that.
+> Machine: MSI Katana GF76, i7-12650H, 32 GB RAM, **RTX 3050 Laptop / 4 GB VRAM**.
+> Every setting below is chosen for that.
 
-Tick these off as you go — the repo is at Phase 0 until step 8 passes.
+## What is left for you — one thing
+
+**Sign in to Unity Hub with a Unity ID** (Personal is free). Unity refuses to
+start without an activated licence — `No valid Unity Editor license found`,
+exit code 198 — and no script can clear that. Nothing else is blocked on you.
+
+Then, in the editor:
+
+1. Open the project: Unity Hub → Open → `C:\Users\abuye\Call-of-Duty`
+2. Menu: **CoD → Build Grey Box**
+3. Open `Assets/_Project/Scenes/10_GreyBox.unity` and press **Play**
+
+Step 2 generates every prefab, both scenes, the materials and the tuning assets,
+and registers the scenes in Build Settings. It is idempotent — safe to re-run.
+
+Prefer the command line? Same thing, headless:
+
+```bash
+"C:/Program Files/Unity/Hub/Editor/6000.0.81f1/Editor/Unity.exe" \
+  -batchmode -quit -projectPath . \
+  -executeMethod CoD.EditorTools.GreyBoxBuilder.BuildHeadless
+```
 
 ---
 
-## 1. Fix the dual-GPU trap — BEFORE installing anything
+## Done already
 
-**Do this first.** The machine has Intel UHD *and* the RTX 3050, and Windows will
-happily run the Unity editor on the Intel chip. The symptom is not an error — it
-is a vaguely sluggish editor and a mysterious 15 fps in Play Mode. People lose
-days to this before they think to check.
+### 1. Dual-GPU fix ✅
 
-1. Windows Settings → System → Display → **Graphics**
-   → add **Unity Hub** and, after step 2, the editor's `Unity.exe`
-   → set both to **High performance**.
-2. NVIDIA Control Panel → Manage 3D Settings → **Program Settings** → same two
-   executables → **High-performance NVIDIA processor**.
+The machine has Intel UHD *and* the RTX 3050, and Windows will happily run Unity
+on the Intel chip. The symptom is not an error — it is a sluggish editor and a
+mysterious 15 fps in Play Mode, and people lose days to it.
 
-Verify later, once the editor is open: **Help → About Unity** must name the
-**RTX 3050**. Do not proceed past step 4 until it does.
+`HKCU\SOFTWARE\Microsoft\DirectX\UserGpuPreferences` now has `GpuPreference=2;`
+(High performance) for Unity Hub and the editor. That registry key is exactly
+what the Settings → Display → Graphics UI writes.
 
-While you are here: plug the laptop in, Windows power mode → **Best
-performance**, MSI Center → **Cooler Boost** on. The GF76 throttles hard under
-sustained load, and a throttled i7 turns a 2-minute build into an 8-minute one.
+**Verify once the editor opens: Help → About Unity must name the RTX 3050.**
+If it does not, add `Unity.exe` in NVIDIA Control Panel → Manage 3D Settings →
+Program Settings → High-performance NVIDIA processor. That side has no
+scriptable API.
 
-## 2. Install Unity
+While you are here: plug in, Windows power mode **Best performance**, MSI Center
+→ **Cooler Boost** on. The GF76 throttles hard under sustained load, and a
+throttled i7 turns a 2-minute build into an 8-minute one.
 
-1. Install **Unity Hub**.
-2. Hub → Installs → Install Editor → **Unity 6 LTS (6000.x)**.
-3. Modules: **Windows Build Support (IL2CPP)** only.
-   Skip Android / iOS / WebGL — several GB each, and unused here.
-   Skip the Visual Studio module; VS Code + the **C# Dev Kit** extension is
-   lighter and already installed.
+### 2. Unity 6000.0.81f1 + Windows IL2CPP ✅
 
-Budget ~12 GB. Add the new `Unity.exe` to the two GPU lists from step 1.
+Installed at `C:\Program Files\Unity\Hub\Editor\6000.0.81f1`, so the Hub finds it
+automatically. Android/iOS/WebGL were skipped — several GB each, unused here.
 
-## 3. Create the project — note the folder trap
+Two LTS lines were available (6000.0.x and 6000.3.x). 6000.0.81f1 was chosen: it
+is what "Unity 6" means to most asset packs and tutorials, which matters more on
+a first Unity project than 6.3's longer support runway. It was patched four days
+before install, so it is alive.
 
-Unity Hub refuses to create a project into a directory that already has files in
-it, and this repo already contains `CLAUDE.md`, `Tools/`, and `docs/`. So create
-it elsewhere and move the three folders in:
+### 3. Project created from the URP template ✅
 
-1. Hub → New Project → template **3D (URP)** → name `Call-of-Duty` → location
-   `C:\Users\abuye\CoD-tmp` → Create. Wait for the first import to finish, then
-   **close Unity**.
-2. Move `Assets`, `Packages`, and `ProjectSettings` from
-   `C:\Users\abuye\CoD-tmp\Call-of-Duty\` into `C:\Users\abuye\Call-of-Duty\`
-   (the repo root — they end up as siblings of `.git`).
-3. Delete `C:\Users\abuye\CoD-tmp` entirely, `Library/` and all.
+Unity 6 renamed the templates, so this was identified rather than guessed: the
+file is `com.unity.template.3d-cross-platform-17.0.12.tgz`, and its `package.json`
+says `com.unity.template.urp-blank`, displayName **3D URP**. That tarball is what
+the Hub's "3D URP" button extracts, so unpacking it directly gives a project
+identical to the one the GUI would have made.
 
-   ```bash
-   mv /c/Users/abuye/CoD-tmp/Call-of-Duty/{Assets,Packages,ProjectSettings} /c/Users/abuye/Call-of-Duty/
-   rm -rf /c/Users/abuye/CoD-tmp
-   ```
+`Assets/`, `Packages/` and `ProjectSettings/` sit at the repo root — the guards
+resolve `Assets/` from there, so it is not really optional.
 
-4. Open the repo folder from the Hub (Open → pick `C:\Users\abuye\Call-of-Duty`).
-   Unity regenerates `Library/` here, which `.gitignore` already excludes.
+### 4. Project Settings ✅
 
-*(If your Hub version accepts the non-empty repo folder directly, use it and skip
-the move. The end state is identical: `Assets/` at the repo root, which is where
-the guards look.)*
+Set by editing `ProjectSettings/*.asset` directly. Nothing was clicked.
 
-Two constraints already satisfied, worth knowing why: the path has **no spaces**,
-and it is **not inside OneDrive**. OneDrive silently syncing a 20 GB `Library/`
-is its own category of disaster.
+| Setting | Value | Why |
+| --- | --- | --- |
+| Asset Serialization | Force Text | Scenes and prefabs stay diffable; without it every merge conflict is unresolvable |
+| Version Control | Visible Meta Files | Non-negotiable for git |
+| Enter Play Mode | enabled, **Reload Domain and Reload Scene both off** | Instant Play Mode entry. The cost is that statics survive between plays — which is why `guard-no-mutable-statics` exists |
+| Colour space | Linear | URP default, verified rather than assumed |
+| Line endings | Unix (LF) | Matches `.gitattributes` |
+| Identity | TenTen / Call of Duty | — |
 
-## 4. Project Settings
+**Not applicable on Unity 6: "uncheck Auto Generate lighting".** The playbook
+calls for it because auto-generate silently rebakes whenever a light or static
+object moves and pins the GPU. Unity 6 removed the mode outright —
+`Lightmapping.giWorkflowMode` and `LightingSettings.autoGenerate` are both
+obsolete now. Baking is on-demand by default; there is nothing to turn off.
 
-### Edit → Project Settings → Editor
+### 5. Packages ✅
 
-- Asset Serialization → Mode: **Force Text** — makes scenes and prefabs diffable.
-  Without it, every merge conflict is unresolvable.
-- Version Control → Mode: **Visible Meta Files**.
-- Enter Play Mode Settings → **Enter Play Mode Options: enabled**, with
-  **Reload Domain** and **Reload Scene** both **unchecked**. This takes Play Mode
-  entry from seconds to instant, which over a full-time project is worth days.
-  The cost is that `static` fields no longer reset between plays — which is why
-  `guard-no-mutable-statics.mjs` exists.
+Kept: Input System, AI Navigation (for drone pathing later), URP, uGUI, Test
+Framework, Visual Studio integration.
 
-### Window → Rendering → Lighting
+Removed: **Timeline**, **Visual Scripting**, **Collab (Version Control)**,
+**Rider integration** — compile time and editor weight for nothing here.
 
-- **Uncheck Auto Generate.** On by default; it silently rebakes every time a
-  light or static object moves, pinning the GPU.
+**Cinemachine is deliberately absent.** See CLAUDE.md: its impulse listener needs
+a `CinemachineCamera` driven by a Brain, which fights `PlayerLook` for FOV and
+rotation. The grey box uses a 40-line `CameraShake` instead, and the swap is one
+file when the camera work gets richer.
 
-### Edit → Project Settings → Player
-
-- Colour Space: **Linear**.
-- Scripting Backend: **Mono** for iteration, **IL2CPP** for release builds.
-
-### Edit → Project Settings → Quality
-
-- Keep two levels: a low one selected for the **editor**, the real one for
-  builds. Halve shadow resolution and shadow distance in the editor profile —
-  they are the biggest VRAM consumers.
-
-### Texture import defaults
-
-- Max Size **1024** project-wide; **512** for anything not held near the camera;
-  **2048** only for weapons and hands, which are what the player actually looks
-  at. Compression Normal Quality, DXT/BC.
-- Turn **Read/Write Enabled off** on every mesh and texture that does not need
-  CPU access — it doubles memory when on.
-
-## 5. Packages
-
-**Window → Package Manager** — add:
-
-- **Input System** — then accept the prompt to set Active Input Handling to
-  *Input System Package (New)*. The editor restarts.
-- **Cinemachine** — camera shake, recoil impulse, follow.
-- **AI Navigation** — the modern NavMesh package, for drone pathing.
-
-Remove if present and unused: **Visual Scripting**, **Timeline**, **Terrain**.
-They cost compile time and editor weight for nothing here.
-
-## 6. Unity Smart Merge
-
-`.gitattributes` already routes `.unity`/`.prefab`/`.asset` through
-`merge=unityyamlmerge`. Without the driver registered, git **silently falls back
-to a plain text merge** — which corrupts Unity YAML. Not yet configured on this
-machine; run once, filling in your installed version number:
+### 6. Guards, hook, and type-checking ✅
 
 ```bash
-git config --global merge.unityyamlmerge.name "Unity SmartMerge"
-git config --global merge.unityyamlmerge.driver '"C:/Program Files/Unity/Hub/Editor/<version>/Editor/Data/Tools/UnityYAMLMerge.exe" merge -p %O %B %A %A'
+node Tools/check.mjs        # six guards
+node Tools/typecheck.mjs    # compiles every assembly, no editor needed
 ```
 
-## 7. Activate the pre-commit hook
+`core.hooksPath` is set to `Tools/hooks`, so both run on every commit and the
+hook survives a fresh clone. It was verified by deliberately staging
+`Library/dummy.txt` and confirming the commit was refused.
 
-Only now — the hook could not be switched on earlier, because
-`guard-meta-files.mjs` fails while there is no `Assets/` folder.
+That redirect has a sharp edge, already handled: pointing `core.hooksPath`
+elsewhere makes git ignore `.git/hooks/` **entirely**, which is where
+`git lfs install` puts LFS's four hooks. They are mirrored into `Tools/hooks/`
+and `guard-lfs-hooks.mjs` fails the build if any go missing. Without them a push
+uploads pointer files while the actual binaries never leave the machine, and the
+damage only shows up on the next clone.
+
+**On a second machine**, re-run these two — both are per-clone git config:
 
 ```bash
-cd /c/Users/abuye/Call-of-Duty
 git config core.hooksPath Tools/hooks
-node Tools/check.mjs                    # all six guards must pass now
+git config --global merge.unityyamlmerge.name "Unity SmartMerge"
+git config --global merge.unityyamlmerge.driver '"C:/Program Files/Unity/Hub/Editor/6000.0.81f1/Editor/Data/Tools/UnityYAMLMerge.exe" merge -p %O %B %A %A'
 ```
 
-`core.hooksPath` (rather than `.git/hooks/`) means the hook is committed and
-survives a fresh clone. It is per-clone config, so re-run that line on any new
-machine.
+The second one matters: `.gitattributes` routes `.unity`/`.prefab`/`.asset`
+through `merge=unityyamlmerge`, and without the driver registered git **silently**
+falls back to a plain text merge, which corrupts Unity YAML.
 
-That redirect has a sharp edge, already handled: it makes git ignore
-`.git/hooks/` **entirely**, which is where `git lfs install` puts LFS's own
-`pre-push`, `post-checkout`, `post-commit`, and `post-merge`. Those four are
-mirrored into `Tools/hooks/` and committed, so LFS keeps working. Losing them
-would not look like an error — pushes would still succeed, uploading pointer
-files while the actual binaries never leave the machine, and the damage would
-only appear on the next clone. `guard-lfs-hooks.mjs` now fails the build if any
-of them go missing.
+---
 
-## 8. Prove the hook actually blocks — do not skip
-
-A guard that has never been seen to fail is a guard that might not work.
-
-```bash
-mkdir -p Library && echo test > Library/dummy.txt
-git add -f Library/dummy.txt
-git commit -m "should be blocked"       # must FAIL
-git reset && rm -rf Library
-```
-
-If that commit succeeds, the hook is not wired — go back to step 7.
-
-Then commit the real thing:
-
-```bash
-git add Assets Packages ProjectSettings
-git commit -m "chore: unity 6 urp project"
-git push
-```
-
-## 9. Before the first binary — decide the LFS story
+## Still to decide — before the first binary asset
 
 GitHub's free tier is **1 GB LFS storage and 1 GB bandwidth per month**. A single
 weapon or environment pack blows through that, and hitting the cap blocks pushes
@@ -186,19 +145,18 @@ weapon or environment pack blows through that, and hitting the cap blocks pushes
 
 - buy GitHub data packs (cheap, least friction), or
 - move the remote to **Azure DevOps** — free private repos, no published hard LFS
-  cap, and the common choice for solo gamedev for exactly this reason.
+  cap, the common choice for solo gamedev for exactly this reason.
 
 Migrating LFS remotes later is possible but tedious.
 
----
+## Texture discipline (per asset, ongoing)
 
-## Done when
+4 GB of VRAM is spent on textures, not geometry.
 
-- [ ] Help → About Unity shows the **RTX 3050**
-- [ ] `Assets/`, `Packages/`, `ProjectSettings/` sit at the repo root
-- [ ] `node Tools/check.mjs` → **all five guards pass**
-- [ ] A deliberate `Library/dummy.txt` commit is **blocked**
-- [ ] Input System, Cinemachine, AI Navigation installed; Play Mode entry is instant
-
-Then the next Claude Code session builds **Phase 2** (folders + `CoD.*` asmdefs)
-and **Phase 3** (the grey box: one gun in a grey room that feels good).
+- Max Size **1024** by default, **512** for anything not near the camera,
+  **2048** only for weapons and hands — what the player actually looks at.
+- **Read/Write Enabled off** on every mesh and texture that does not need CPU
+  access; it doubles memory when on.
+- Audio: Vorbis, streaming for anything over ~5 s, mono for short SFX.
+- Check Window → Analysis → **Profiler → Memory** before adding the *next* asset
+  pack, not after ten of them.

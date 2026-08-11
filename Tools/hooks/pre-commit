@@ -1,8 +1,15 @@
 #!/bin/sh
-# Committed hook — activate once with:  git config core.hooksPath Tools/hooks
+# Committed hook — activate once per clone with:
+#   git config core.hooksPath Tools/hooks
 #
-# Unlike .git/hooks/, this survives a fresh clone. It stays inactive until the
-# config line above is run, which is deliberate: guard-meta-files fails while
-# there is no Assets/ folder, so the hook is switched on only after the Unity
-# project exists. See docs/UNITY-SETUP-CHECKLIST.md.
+# Unlike .git/hooks/, this survives a fresh clone. Note that switching
+# core.hooksPath makes git ignore .git/hooks/ ENTIRELY, which is why Git LFS's
+# own four hooks are mirrored into this folder — see guard-lfs-hooks.mjs.
+
 node Tools/check.mjs || exit 1
+
+# Compiles every first-party assembly with Unity's own Roslyn. Slower than the
+# guards (a few seconds warm, ~40s on the first run while it builds the package
+# assemblies), and worth it: Unity will not even start without an activated
+# licence, so without this there is no automatic signal that the C# compiles.
+node Tools/typecheck.mjs || exit 1

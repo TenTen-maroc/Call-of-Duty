@@ -17,8 +17,8 @@ namespace CoD.Player
     [DisallowMultipleComponent]
     public sealed class PlayerMotor : MonoBehaviour
     {
-        [SerializeField] private GameConfig? _config;
-        [SerializeField] private PlayerInput? _input;
+        [SerializeField] private GameConfig? _config = null;
+        [SerializeField] private PlayerInput? _input = null;
         [Tooltip("Layers the crouch/stand check treats as blocking geometry.")]
         [SerializeField] private LayerMask _headroomMask = ~0;
 

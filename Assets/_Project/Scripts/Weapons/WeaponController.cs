@@ -19,21 +19,21 @@ namespace CoD.Weapons
     public sealed class WeaponController : MonoBehaviour
     {
         [Header("Data")]
-        [SerializeField] private PlayerLoadoutConfig? _loadout;
-        [SerializeField] private ImpactConfig? _impact;
+        [SerializeField] private PlayerLoadoutConfig? _loadout = null;
+        [SerializeField] private ImpactConfig? _impact = null;
 
         [Header("Wiring")]
-        [SerializeField] private PlayerInput? _input;
-        [SerializeField] private PlayerLook? _look;
-        [SerializeField] private PlayerMotor? _motor;
-        [SerializeField] private ObjectPool? _pool;
-        [SerializeField] private CameraShake? _shake;
+        [SerializeField] private PlayerInput? _input = null;
+        [SerializeField] private PlayerLook? _look = null;
+        [SerializeField] private PlayerMotor? _motor = null;
+        [SerializeField] private ObjectPool? _pool = null;
+        [SerializeField] private CameraShake? _shake = null;
         [Tooltip("Where the muzzle flash and casings spawn from.")]
-        [SerializeField] private Transform? _muzzle;
-        [SerializeField] private Transform? _casingEject;
-        [SerializeField] private Light? _muzzleLight;
-        [SerializeField] private AudioSource? _audioClose;
-        [SerializeField] private AudioSource? _audioTail;
+        [SerializeField] private Transform? _muzzle = null;
+        [SerializeField] private Transform? _casingEject = null;
+        [SerializeField] private Light? _muzzleLight = null;
+        [SerializeField] private AudioSource? _audioClose = null;
+        [SerializeField] private AudioSource? _audioTail = null;
         [Tooltip("What bullets can hit. Leave the player's own layer out of this.")]
         [SerializeField] private LayerMask _hitMask = ~0;
 

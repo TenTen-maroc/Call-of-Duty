@@ -16,7 +16,7 @@ namespace CoD.Player
     [DisallowMultipleComponent]
     public sealed class PlayerInput : MonoBehaviour
     {
-        [SerializeField] private InputActionAsset? _actions;
+        [SerializeField] private InputActionAsset? _actions = null;
         [SerializeField] private string _actionMapName = "Player";
 
         private InputActionMap? _map;

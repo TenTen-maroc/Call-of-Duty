@@ -15,12 +15,12 @@ namespace CoD.Player
     [DisallowMultipleComponent]
     public sealed class PlayerLook : MonoBehaviour
     {
-        [SerializeField] private GameConfig? _config;
-        [SerializeField] private PlayerInput? _input;
-        [SerializeField] private PlayerMotor? _motor;
+        [SerializeField] private GameConfig? _config = null;
+        [SerializeField] private PlayerInput? _input = null;
+        [SerializeField] private PlayerMotor? _motor = null;
         [Tooltip("The pitch pivot. The camera itself lives under this.")]
-        [SerializeField] private Transform? _cameraPivot;
-        [SerializeField] private Camera? _camera;
+        [SerializeField] private Transform? _cameraPivot = null;
+        [SerializeField] private Camera? _camera = null;
 
         private Transform? _selfTransform;
         private float _yaw;

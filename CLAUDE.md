@@ -165,6 +165,9 @@ arena scale, and spawn distance are tuned around it. Change it deliberately.
 
 ## Quality gates (every task)
 
+- `node Tools/typecheck.mjs` — every assembly compiles with zero errors AND zero
+  warnings. This is the automatable form of "clean Unity console", and it works
+  without a licence or a running editor, so it is the gate that actually holds.
 - Unity console: zero errors, zero warnings in first-party code
 - `node Tools/check.mjs` — all guards pass
 - The smoke test scene boots, spawns the player, and fires one shot with working

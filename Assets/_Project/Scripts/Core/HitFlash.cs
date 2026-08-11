@@ -17,7 +17,7 @@ namespace CoD.Core
     {
         private static readonly int BaseColorId = Shader.PropertyToID("_BaseColor");
 
-        [SerializeField] private Renderer? _renderer;
+        [SerializeField] private Renderer? _renderer = null;
         [SerializeField] private Color _flashColor = new(1f, 0.28f, 0.2f, 1f);
         [Range(0.02f, 0.5f)][SerializeField] private float _flashDuration = 0.08f;
 

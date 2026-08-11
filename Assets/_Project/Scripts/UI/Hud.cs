@@ -17,11 +17,11 @@ namespace CoD.UI
     [DisallowMultipleComponent]
     public sealed class Hud : MonoBehaviour
     {
-        [SerializeField] private WeaponController? _weapon;
-        [SerializeField] private Health? _playerHealth;
-        [SerializeField] private Text? _ammoLabel;
-        [SerializeField] private Text? _healthLabel;
-        [SerializeField] private Graphic? _lowAmmoTint;
+        [SerializeField] private WeaponController? _weapon = null;
+        [SerializeField] private Health? _playerHealth = null;
+        [SerializeField] private Text? _ammoLabel = null;
+        [SerializeField] private Text? _healthLabel = null;
+        [SerializeField] private Graphic? _lowAmmoTint = null;
         [Range(0f, 1f)][SerializeField] private float _lowAmmoFraction = 0.25f;
 
         private int _lastAmmo = -1;

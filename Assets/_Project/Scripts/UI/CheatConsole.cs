@@ -19,13 +19,13 @@ namespace CoD.UI
     public sealed class CheatConsole : MonoBehaviour
     {
 #if UNITY_EDITOR || DEVELOPMENT_BUILD
-        [SerializeField] private GameConfig? _config;
-        [SerializeField] private WeaponController? _weapon;
-        [SerializeField] private Health? _playerHealth;
-        [SerializeField] private ObjectPool? _pool;
+        [SerializeField] private GameConfig? _config = null;
+        [SerializeField] private WeaponController? _weapon = null;
+        [SerializeField] private Health? _playerHealth = null;
+        [SerializeField] private ObjectPool? _pool = null;
         [Tooltip("Spawned by the 'spawn dummy' cheat. Must be registered in the pool.")]
-        [SerializeField] private GameObject? _dummyTargetPrefab;
-        [SerializeField] private Transform? _spawnOrigin;
+        [SerializeField] private GameObject? _dummyTargetPrefab = null;
+        [SerializeField] private Transform? _spawnOrigin = null;
         [SerializeField] private Key _toggleKey = Key.Backquote;
 
         private bool _open;

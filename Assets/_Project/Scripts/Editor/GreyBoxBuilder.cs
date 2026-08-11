@@ -225,9 +225,12 @@ namespace CoD.EditorTools
         {
             Scene scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
 
-            // Bake-on-save is off: every light here is realtime, and an automatic
-            // rebake on every object move pins the GPU on a 4 GB laptop.
-            Lightmapping.giWorkflowMode = Lightmapping.GIWorkflowMode.OnDemand;
+            // No lighting setup needed. The playbook says to disable Auto Generate
+            // because it silently rebakes whenever a light or static object moves
+            // and pins the GPU — but Unity 6 removed that mode outright, and both
+            // Lightmapping.giWorkflowMode and LightingSettings.autoGenerate are
+            // now obsolete. Baking is on-demand by default, so nothing to turn off.
+            // Everything here is realtime lit regardless.
 
             GameObject sun = new("Directional Light");
             Light light = sun.AddComponent<Light>();

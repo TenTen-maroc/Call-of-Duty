@@ -14,22 +14,29 @@ meta-goal is the highest round reached.
 | Namespace | `CoD.*` (`CoD.Core`, `CoD.Player`, `CoD.Weapons`, `CoD.Enemies`, `CoD.Waves`, `CoD.UI`) |
 | Target TTK | ~250 ms on a standard drone with the starter rifle |
 
-## Status — Phase 0
+## Status — Phases 0–3 authored, one step from playable
 
-The repo foundation is in place. **The Unity project itself does not exist yet**
-and Unity is not installed on this machine.
+Unity 6000.0.81f1 + IL2CPP is installed, the URP project is at the repo root, and
+all of the grey-box code compiles clean. The repo foundation landed *before*
+Unity deliberately: Unity's first import generates a 5–20 GB `Library/`, and a
+`Library/` committed once is in history forever.
 
-Start at **[docs/UNITY-SETUP-CHECKLIST.md](docs/UNITY-SETUP-CHECKLIST.md)** —
-installer, the dual-GPU fix, project creation, Project Settings, packages, and
-hook activation, in the order that matters.
+**What is left is one thing only: sign in to Unity Hub with a Unity ID.** Unity
+will not start without an activated licence, and that is not something a script
+can do. Then:
 
-Phase 0 landed before Unity deliberately: the first time Unity opens a project it
-generates a `Library/` folder of 5–20 GB, and a `Library/` committed once is in
-history forever. `.gitignore`, LFS, and the guards had to exist first.
+```
+CoD → Build Grey Box
+```
 
-Next: **Phase 2** (folders + asmdefs) → **Phase 3, the grey box** — one gun in a
-grey room, tuned until firing it is satisfying on its own. No drones, no waves,
-no shop until that is true.
+which generates every prefab, both scenes (`00_Boot`, `10_GreyBox`) and the
+tuning assets, and adds the scenes to Build Settings. Open `10_GreyBox`, press
+Play, and shoot the red blocks.
+
+The scripts compile but have never *run*. Expect to fix runtime wiring, then
+spend real time in the grey room tuning recoil, ADS and the hitmarker — working
+and feeling good are different milestones, and only the second one matters.
+After that: the Rusher drone, then waves, then the shop.
 
 ## Working in this repo
 
@@ -45,11 +52,19 @@ suggestion. The headline rules:
 - `#nullable enable` atop every first-party `.cs` file; zero console warnings.
 - Everything that spawns goes through the object pool.
 
-## Guards
+## Guards and type-checking
 
 ```bash
-node Tools/check.mjs
+node Tools/check.mjs        # six guards
+node Tools/typecheck.mjs    # compiles every assembly, no editor, no licence
 ```
+
+`typecheck.mjs` drives Unity's bundled Roslyn against the editor's own reference
+assemblies, so it answers "does this compile?" without launching Unity — which
+matters because Unity refuses to start without an activated licence. It builds
+ugui from the editor's source and fetches the pinned Input System from the Unity
+registry, caching both under `Library/`. Warnings count as failure: first-party
+code stays at zero. Both run automatically on every commit.
 
 Six guards, plain Node, no dependencies. They cover: build artifacts tracked in
 git, `.meta` file integrity (on disk *and* in git), binaries outside LFS, LFS
@@ -57,20 +72,18 @@ hooks surviving the `core.hooksPath` redirect, per-frame lookups, and mutable
 statics. Each script's header documents the disaster it prevents — read it
 before deleting one.
 
-**One guard fails on purpose right now**: `guard-meta-files` exits 1 while there
-is no `Assets/` folder, which is how it detects being run from the wrong
-directory. The pre-commit hook at `Tools/hooks/pre-commit` is committed but
-inactive until the Unity project exists. See
-[Tools/guards/README.md](Tools/guards/README.md).
+The hook is active (`core.hooksPath Tools/hooks`) and has been verified to block
+a deliberate `Library/` commit. See [Tools/guards/README.md](Tools/guards/README.md).
 
 ## Layout
 
 ```text
-Assets/            ← created by Unity (step 3 of the checklist)
+Assets/            ← URP project, merged at the repo root
   _Project/        ← all first-party work
   ThirdParty/      ← bought packs, never edited in place
 Tools/
   check.mjs        ← runs every guard
+  typecheck.mjs    ← compiles all assemblies without the editor
   guards/          ← the six guards + their README
   hooks/           ← committed hooks, enabled via core.hooksPath
                      pre-commit (guards) + LFS's four (pre-push, post-*)
