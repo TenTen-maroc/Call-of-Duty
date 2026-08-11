@@ -63,6 +63,8 @@ namespace CoD.EditorTools
             NavMeshData? navMesh = AssetDatabase.LoadAssetAtPath<NavMeshData>(
                 "Assets/_Project/Scenes/NavMesh_GreyBox.asset");
             ShopConfig? shop = Load<ShopConfig>("Assets/_Project/Data/Game/Shop.asset");
+            ObjectiveConfig? objectiveConfig = Load<ObjectiveConfig>(
+                "Assets/_Project/Data/Game/Objective_Beacon.asset");
             Explosive? explosive = Load<Explosive>("Assets/_Project/Data/Effects/Effect_Explosive.asset");
 
             foreach (GameObject root in scene.GetRootGameObjects())
@@ -108,6 +110,15 @@ namespace CoD.EditorTools
                     repaired += Ensure(surface, "m_NavMeshData", navMesh, report, ref missing);
                 foreach (RunContext context in root.GetComponentsInChildren<RunContext>(true))
                     repaired += Ensure(context, "_config", game, report, ref missing);
+                foreach (ArenaObjective objective in root.GetComponentsInChildren<ArenaObjective>(true))
+                {
+                    // Caught by a failing test, exactly as the gotcha predicts:
+                    // every SCENE reference on this component survived the save
+                    // and the one ASSET reference came back {fileID: 0}. A null
+                    // config means the beacon never sets a budget, so it silently
+                    // heals nothing and never moves — no error, no warning.
+                    repaired += Ensure(objective, "_config", objectiveConfig, report, ref missing);
+                }
                 foreach (WaveRunner waveRunner in root.GetComponentsInChildren<WaveRunner>(true))
                 {
                     repaired += Ensure(waveRunner, "_difficulty", difficulty, report, ref missing);

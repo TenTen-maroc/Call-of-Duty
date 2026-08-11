@@ -220,6 +220,61 @@ namespace CoD.Tests
             }
         }
 
+        /// <summary>
+        /// The beacon moves between waves and heals a hurt player standing on it,
+        /// but only up to the wave's budget.
+        ///
+        /// The budget is the part worth guarding: without it the beacon is a free
+        /// full reset every wave, which removes the decision it was added to
+        /// create rather than adding one.
+        /// </summary>
+        [UnityTest]
+        public IEnumerator TheBeacon_Relocates_AndHealsWithinItsBudget()
+        {
+            var objective = Object.FindFirstObjectByType<ArenaObjective>();
+            var runner = Object.FindFirstObjectByType<WaveRunner>();
+            var registry = Object.FindFirstObjectByType<DroneRegistry>();
+            var motor = Object.FindFirstObjectByType<CoD.Player.PlayerMotor>();
+            Assert.IsNotNull(objective, "no ArenaObjective — the lanes have nothing to reward");
+            Assert.IsNotNull(runner);
+            Assert.IsNotNull(motor);
+
+            yield return WaitUntil(() => runner!.Phase == RunPhase.Wave, 30f, "the first wave");
+
+            Vector3 first = objective!.Position;
+            Assert.AreNotEqual(Vector3.zero, first,
+                "the beacon is at the origin, which is inside the centre bunker");
+
+            // Hurt the player, then stand them on the pad.
+            Health? health = motor!.GetComponent<Health>();
+            Assert.IsNotNull(health);
+            var wound = new DamageInfo(60f, motor.transform.position, Vector3.up, Vector3.forward, false);
+            health!.ApplyDamage(in wound);
+            float hurt = health.Current;
+            Assert.Less(hurt, health.Max);
+
+            motor.transform.position = first + Vector3.up * 0.1f;
+            float budget = objective.BudgetRemaining;
+            Assert.Greater(budget, 0f, "the beacon starts a wave with nothing to give");
+
+            yield return WaitUntil(() => objective.BudgetRemaining <= 0f || health.Current >= health.Max,
+                20f, "the beacon to spend its budget");
+
+            Assert.Greater(health.Current, hurt, "standing on the beacon healed nothing");
+            Assert.LessOrEqual(health.Current, health.Max, "healing went past the maximum");
+            Assert.LessOrEqual(health.Current - hurt, budget + 1f,
+                "the beacon gave more than its per-wave budget allows");
+
+            // And it moves. Never the same lane twice in a row, so one wave is enough.
+            yield return WaitUntil(() => runner!.Phase == RunPhase.Shop, 90f, "the break",
+                () => KillEverything(registry!));
+            runner!.ContinueFromShop();
+            yield return WaitUntil(() => runner.Phase == RunPhase.Wave, 30f, "the second wave");
+
+            Assert.AreNotEqual(first, objective.Position,
+                "the beacon stayed put, so camping one corner is still free");
+        }
+
         [UnityTest]
         public IEnumerator ThePoolReusesDrones_RatherThanGrowing()
         {

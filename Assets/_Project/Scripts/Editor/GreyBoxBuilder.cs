@@ -189,7 +189,14 @@ namespace CoD.EditorTools
             SetArrayRef(shopConfig, "alwaysOffered", BuildAlwaysOffered());
             WaveConfig[] waves = BuildWaves(rusher, shooter, tank);
             EnsureEndlessMix(difficulty, rusher, shooter, tank);
-            var runAssets = new RunAssets(shopConfig, waves);
+            ObjectiveConfig objective = LoadOrCreate<ObjectiveConfig>(
+                DataGame + "/Objective_Beacon.asset", _ => { });
+            // Green, and the only green in the game. Red, amber and crimson are
+            // threats and cool blue is architecture, so the one thing that helps
+            // you gets a hue nothing else is allowed to use.
+            Material beacon = LoadOrCreateEmissiveMaterial(Materials + "/Objective_Beacon.mat",
+                new Color(0.20f, 0.90f, 0.55f), 1.8f);
+            var runAssets = new RunAssets(shopConfig, waves, objective, beacon);
 
             SetRef(impact, "decalPrefab", decal);
             SetRef(impact, "particlePrefab", sparks);
@@ -273,11 +280,15 @@ namespace CoD.EditorTools
         {
             public readonly ShopConfig Shop;
             public readonly WaveConfig[] Waves;
+            public readonly ObjectiveConfig Objective;
+            public readonly Material BeaconMaterial;
 
-            public RunAssets(ShopConfig shop, WaveConfig[] waves)
+            public RunAssets(ShopConfig shop, WaveConfig[] waves, ObjectiveConfig objective, Material beacon)
             {
                 Shop = shop;
                 Waves = waves;
+                Objective = objective;
+                BeaconMaterial = beacon;
             }
         }
 
@@ -1442,6 +1453,8 @@ namespace CoD.EditorTools
             // Update/FixedUpdate/LateUpdate, and this is editor build code.
             PlayerInput playerInput = playerTransform.GetComponent<PlayerInput>();
 
+            BuildObjective(runAssets, runner, playerTransform, playerHealth);
+
             BuildHud(weapon, playerHealth, game, pool, dummyPrefab, muzzle, spawner, registry, cameraTransform,
                 run, runner, settingsHub, playerInput);
 
@@ -1868,6 +1881,79 @@ namespace CoD.EditorTools
             SetRef(weapon, "_audioTail", tailAudio);
 
             return (weapon, look, health, muzzle.transform, player.transform, cameraObject.transform);
+        }
+
+        /// <summary>
+        /// The repair beacon and the three lane anchors it moves between.
+        ///
+        /// Anchor positions are picked to sit clear of every block in BuildRoom:
+        /// the west and east lanes south of their cover strips, and the north lane
+        /// between the two NW/NE covers. Never the origin — that is inside the
+        /// centre bunker, which is the arena's oldest trap.
+        ///
+        /// The pad carries NO collider. It sits on the floor the player walks
+        /// across, and a collider there would either block movement or, worse, be
+        /// something the aim ray hits.
+        /// </summary>
+        private static void BuildObjective(RunAssets runAssets, WaveRunner runner, Transform player,
+            Health playerHealth)
+        {
+            GameObject root = new("Objective");
+            ArenaObjective objective = root.AddComponent<ArenaObjective>();
+
+            GameObject anchorsRoot = new("Anchors");
+            anchorsRoot.transform.SetParent(root.transform, false);
+
+            Vector3[] spots =
+            {
+                new(-14.5f, 0f, -4f),   // west lane
+                new(14.5f, 0f, -4f),    // east lane
+                new(0f, 0f, 15f),       // north, between the two covers
+            };
+
+            var anchors = new Object[spots.Length];
+            for (int i = 0; i < spots.Length; i++)
+            {
+                GameObject point = new("Anchor_" + i);
+                point.transform.SetParent(anchorsRoot.transform, false);
+                point.transform.position = spots[i];
+                anchors[i] = point.transform;
+            }
+
+            float radius = runAssets.Objective.radius;
+
+            GameObject visual = new("Beacon");
+            visual.transform.SetParent(root.transform, false);
+
+            GameObject pad = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+            pad.name = "Pad";
+            pad.transform.SetParent(visual.transform, false);
+            // A cylinder primitive is 2 units tall and 1 across, so the diameter
+            // is the radius doubled and the height is halved twice over.
+            pad.transform.localScale = new Vector3(radius * 2f, 0.02f, radius * 2f);
+            pad.transform.localPosition = new Vector3(0f, 0.02f, 0f);
+            Object.DestroyImmediate(pad.GetComponent<Collider>());
+
+            MeshRenderer padRenderer = pad.GetComponent<MeshRenderer>();
+            padRenderer.sharedMaterial = runAssets.BeaconMaterial;
+            padRenderer.shadowCastingMode = ShadowCastingMode.Off;
+
+            GameObject glow = new("Glow");
+            glow.transform.SetParent(visual.transform, false);
+            glow.transform.localPosition = new Vector3(0f, 1.6f, 0f);
+            Light light = glow.AddComponent<Light>();
+            light.type = LightType.Point;
+            light.color = new Color(0.30f, 1f, 0.60f);
+            light.intensity = 2.4f;
+            light.range = radius * 3f;
+            light.shadows = LightShadows.None;
+
+            SetRef(objective, "_config", runAssets.Objective);
+            SetRef(objective, "_runner", runner);
+            SetRef(objective, "_player", player);
+            SetRef(objective, "_playerHealth", playerHealth);
+            SetRef(objective, "_visual", visual.transform);
+            SetArrayRef(objective, "_anchors", anchors);
         }
 
         private static void BuildTargets(GameObject dummyPrefab, Material material)
