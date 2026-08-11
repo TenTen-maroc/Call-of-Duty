@@ -22,8 +22,12 @@ namespace CoD.Core
         /// 1 → 2 added the settings block (fov, invert, the initialised flag) and
         /// the remembered mode. Bumped rather than added silently, because the
         /// migration below has to decide what a v1 file's settings meant.
+        ///
+        /// 2 → 3 added the graphics block (post-processing, anti-aliasing). Bumped
+        /// even though the migration is a no-op, because the version is what tells
+        /// a downgraded build that this file holds fields it does not understand.
         /// </summary>
-        public const int CurrentSchemaVersion = 2;
+        public const int CurrentSchemaVersion = 3;
 
         private const string FileName = "cod_save.json";
         private const string BackupName = "cod_save.bak.json";
@@ -143,6 +147,16 @@ namespace CoD.Core
                 // which is the only source of a correct default.
                 data.settingsInitialised = false;
                 data.lastMode = GameMode.Run;
+            }
+
+            if (data.schemaVersion < 3)
+            {
+                // Deliberately nothing. The graphics block defaults to
+                // graphicsInitialised = false, which is precisely what makes
+                // SettingsHub seed it from SettingsConfig on the next resolve —
+                // the same path a brand-new save takes. Writing real values here
+                // instead would put a tuning number in a migration, and tuning
+                // numbers live in ScriptableObjects.
             }
 
             data.schemaVersion = CurrentSchemaVersion;

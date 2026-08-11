@@ -298,7 +298,12 @@ namespace CoD.Tests
             // The refusal is logged at ERROR on purpose: GameLog.Warn is compiled
             // out of a shipping build, and a save path that silently does nothing
             // forever is exactly the failure this guard exists to prevent.
-            LogAssert.Expect(LogType.Error, new Regex("Refusing to write over a v3 save"));
+            // Derived, not hardcoded: this line said "v3" when the current schema
+            // was 2, and it silently stopped matching the moment the schema was
+            // bumped — the test failed on the message text while the behaviour it
+            // guards was still perfectly correct.
+            LogAssert.Expect(LogType.Error,
+                new Regex($"Refusing to write over a v{SaveSystem.CurrentSchemaVersion + 1} save"));
             SaveSystem.Save(loaded);
 
             string onDisk = File.ReadAllText(_savePath);
@@ -348,7 +353,7 @@ namespace CoD.Tests
         [Test]
         public void SteppingByZero_ChangesNothing()
         {
-            var settings = new GameSettings(_bounds, 0.12f, 62f, 0.5f, false);
+            var settings = new GameSettings(_bounds, 0.12f, 62f, 0.5f, false, true, AntiAliasingMode.Smaa);
 
             settings.StepMouseSensitivity(0);
             settings.StepFovVertical(0);
@@ -364,7 +369,7 @@ namespace CoD.Tests
         [Test]
         public void SteppingUpAndDown_StillMovesByExactlyOneStep()
         {
-            var settings = new GameSettings(_bounds, 0.12f, 62f, 0.5f, false);
+            var settings = new GameSettings(_bounds, 0.12f, 62f, 0.5f, false, true, AntiAliasingMode.Smaa);
 
             settings.StepFovVertical(1);
             Assert.AreEqual(63f, settings.FovVertical, 1e-4f);

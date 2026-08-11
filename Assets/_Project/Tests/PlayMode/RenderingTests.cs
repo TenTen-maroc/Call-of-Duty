@@ -1,5 +1,7 @@
 #nullable enable
 using System.Collections;
+using CoD.Core;
+using CoD.Player;
 using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.Rendering;
@@ -63,6 +65,44 @@ namespace CoD.Tests
         {
             yield return Load("20_MainMenu");
             AssertPostProcessingIsLive("20_MainMenu");
+        }
+
+        /// <summary>
+        /// The settings actually REACH the camera.
+        ///
+        /// CameraGraphics holds a serialized SettingsHub reference, and a null one
+        /// is silent: the component sits there, the menu row moves, and nothing
+        /// changes on screen. Driving the hub and reading the camera back is the
+        /// only way to prove the link survived the scene build.
+        /// </summary>
+        [UnityTest]
+        public IEnumerator GraphicsSettings_ReachTheCamera()
+        {
+            yield return Load("10_GreyBox");
+
+            var graphics = Object.FindFirstObjectByType<CameraGraphics>();
+            Assert.IsNotNull(graphics, "no CameraGraphics — the graphics settings would do nothing");
+
+            SettingsHub? hub = Object.FindFirstObjectByType<SettingsHub>();
+            Assert.IsNotNull(hub);
+            var data = Camera.main!.GetComponent<UniversalAdditionalCameraData>();
+            Assert.IsNotNull(data);
+
+            hub!.Current.SetPostProcessing(false);
+            hub.Current.SetAntiAliasing(AntiAliasingMode.Off);
+            hub.Apply();
+            yield return null;
+
+            Assert.IsFalse(data!.renderPostProcessing, "turning post-processing off did not reach the camera");
+            Assert.AreEqual(AntialiasingMode.None, data.antialiasing);
+
+            hub.Current.SetPostProcessing(true);
+            hub.Current.SetAntiAliasing(AntiAliasingMode.Smaa);
+            hub.Apply();
+            yield return null;
+
+            Assert.IsTrue(data.renderPostProcessing, "turning it back on did not reach the camera either");
+            Assert.AreEqual(AntialiasingMode.SubpixelMorphologicalAntiAliasing, data.antialiasing);
         }
 
         /// <summary>

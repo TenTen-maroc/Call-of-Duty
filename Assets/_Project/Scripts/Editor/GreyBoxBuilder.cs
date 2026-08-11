@@ -1573,6 +1573,10 @@ namespace CoD.EditorTools
             cameraObject.AddComponent<AudioListener>();
             CameraShake shake = cameraObject.AddComponent<CameraShake>();
 
+            CameraGraphics graphics = cameraObject.AddComponent<CameraGraphics>();
+            SetRef(graphics, "_settings", settings);
+            SetRef(graphics, "_camera", camera);
+
             PlayerLook look = player.AddComponent<PlayerLook>();
             SetRef(look, "_config", game);
             SetRef(look, "_input", input);
@@ -2124,6 +2128,12 @@ namespace CoD.EditorTools
             SettingsHub settingsHub = new GameObject("Settings").AddComponent<SettingsHub>();
             SetRef(settingsHub, "_bounds", settingsConfig);
             SetRef(settingsHub, "_defaults", game);
+
+            // The menu honours the graphics settings too — changing them here has
+            // to show here, or the page reads as broken until a run starts.
+            CameraGraphics menuGraphics = cameraObject.AddComponent<CameraGraphics>();
+            SetRef(menuGraphics, "_settings", settingsHub);
+            SetRef(menuGraphics, "_camera", camera);
 
             GameObject canvasObject = new("MenuCanvas");
             Canvas canvas = canvasObject.AddComponent<Canvas>();

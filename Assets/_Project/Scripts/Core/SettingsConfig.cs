@@ -34,6 +34,12 @@ namespace CoD.Core
         [Range(0f, 1f)] public float volumeMax = 1f;
         [Range(0.01f, 0.5f)] public float volumeStep = 0.05f;
 
+        [Header("Graphics — the SHIPPED choice, not the player's")]
+        [Tooltip("Post-processing on by default. The off switch is the escape hatch on a 4 GB laptop.")]
+        public bool postProcessingDefault = true;
+        [Tooltip("SMAA by default: the arena is built from hard-edged primitives, the worst case for edge crawl.")]
+        public AntiAliasingMode antiAliasingDefault = AntiAliasingMode.Smaa;
+
 #if UNITY_EDITOR
         private void OnValidate()
         {

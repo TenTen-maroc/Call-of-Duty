@@ -37,8 +37,9 @@ namespace CoD.Tests
         [TearDown]
         public void DropBounds() => Object.DestroyImmediate(_bounds);
 
-        private GameSettings New(float sensitivity = 0.12f, float fov = 62f, float volume = 1f, bool invert = false)
-            => new(_bounds, sensitivity, fov, volume, invert);
+        private GameSettings New(float sensitivity = 0.12f, float fov = 62f, float volume = 1f, bool invert = false,
+            bool postProcessing = true, AntiAliasingMode antiAliasing = AntiAliasingMode.Smaa)
+            => new(_bounds, sensitivity, fov, volume, invert, postProcessing, antiAliasing);
 
         [Test]
         public void Construction_ClampsEveryValueIntoRange()
@@ -95,6 +96,47 @@ namespace CoD.Tests
             GameSettings settings = New(fov: 70f);
             Assert.AreEqual(0f, settings.FovFraction, 1e-5f);
             Assert.IsFalse(float.IsNaN(settings.FovFraction), "a pinned range must not produce NaN");
+        }
+
+        [Test]
+        public void AntiAliasing_Cycles_AndWrapsBothWays()
+        {
+            GameSettings settings = New(antiAliasing: AntiAliasingMode.Off);
+
+            settings.CycleAntiAliasing(1);
+            Assert.AreEqual(AntiAliasingMode.Fxaa, settings.AntiAliasing);
+            settings.CycleAntiAliasing(1);
+            Assert.AreEqual(AntiAliasingMode.Smaa, settings.AntiAliasing);
+
+            // Wrapping matters more than it looks: a row that stops at the end is
+            // a row the player gets stuck on, because this menu has no mouse.
+            settings.CycleAntiAliasing(1);
+            Assert.AreEqual(AntiAliasingMode.Off, settings.AntiAliasing, "forward must wrap");
+            settings.CycleAntiAliasing(-1);
+            Assert.AreEqual(AntiAliasingMode.Smaa, settings.AntiAliasing, "backward must wrap");
+        }
+
+        [Test]
+        public void AntiAliasing_OutsideTheEnum_ClampsInsteadOfReachingTheCamera()
+        {
+            // A hand-edited save, or one written by a build that had more modes.
+            GameSettings settings = New(antiAliasing: (AntiAliasingMode)99);
+            Assert.AreEqual(AntiAliasingMode.Off, settings.AntiAliasing);
+        }
+
+        [Test]
+        public void PostProcessing_IsCarried_AndWritten()
+        {
+            GameSettings settings = New(postProcessing: false);
+            Assert.IsFalse(settings.PostProcessing);
+
+            settings.SetPostProcessing(true);
+            var save = new SaveData();
+            settings.WriteTo(save);
+
+            Assert.IsTrue(save.postProcessing);
+            Assert.IsTrue(save.graphicsInitialised,
+                "without this flag SettingsHub would re-seed the block and throw the choice away");
         }
 
         [Test]
@@ -178,6 +220,9 @@ namespace CoD.Tests
                 masterVolume = 0.4f,
                 invertLook = true,
                 lastMode = GameMode.Sandbox,
+                graphicsInitialised = true,
+                postProcessing = false,
+                antiAliasing = AntiAliasingMode.Fxaa,
             };
             SaveSystem.Save(data);
 
@@ -188,6 +233,34 @@ namespace CoD.Tests
             Assert.AreEqual(0.4f, loaded.masterVolume, 1e-4f);
             Assert.IsTrue(loaded.invertLook);
             Assert.AreEqual(GameMode.Sandbox, loaded.lastMode, "the mode must survive the scene load that follows it");
+
+            // The graphics block shares this file with the record, so it is the
+            // same failure mode that once wiped every setting on every death.
+            Assert.IsTrue(loaded.graphicsInitialised);
+            Assert.IsFalse(loaded.postProcessing, "turning post-processing off must survive a restart");
+            Assert.AreEqual(AntiAliasingMode.Fxaa, loaded.antiAliasing);
+        }
+
+        [Test]
+        public void V2Save_UpgradesToV3_AndGetsItsGraphicsBlockSeeded()
+        {
+            // A real v2 file: settings chosen, no graphics block at all.
+            string json = "{\"schemaVersion\":2,\"bestRound\":9,\"settingsInitialised\":true," +
+                          "\"mouseSensitivity\":0.3,\"fovVertical\":70.0,\"masterVolume\":0.8,\"invertLook\":true}";
+            File.WriteAllText(_savePath, json);
+
+            SaveData loaded = SaveSystem.Load();
+
+            Assert.AreEqual(SaveSystem.CurrentSchemaVersion, loaded.schemaVersion);
+            Assert.AreEqual(9, loaded.bestRound, "a schema bump must never cost the player their record");
+            Assert.IsTrue(loaded.settingsInitialised, "v2 settings were a real choice and must be kept");
+            Assert.AreEqual(0.3f, loaded.mouseSensitivity, 1e-4f);
+
+            // Left un-seeded on purpose: the migration writes no defaults, because
+            // a default is a tuning number and those live in SettingsConfig.
+            // SettingsHub is what fills this in on the next resolve.
+            Assert.IsFalse(loaded.graphicsInitialised,
+                "the migration must NOT invent graphics defaults — SettingsHub seeds them from the config");
         }
     }
 }

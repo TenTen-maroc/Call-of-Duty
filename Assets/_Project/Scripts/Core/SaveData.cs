@@ -40,5 +40,15 @@ namespace CoD.Core
         public float fovVertical;
         public float masterVolume;
         public bool invertLook;
+
+        // The graphics block, added in schema 3. Same shape as the settings block
+        // above and for the same reason: a real default is a TUNING NUMBER, so it
+        // lives in SettingsConfig, and this flag is how the loader tells "the
+        // player turned post-processing off" apart from "nobody has chosen yet".
+        // That is also what lets a v2 save upgrade without a single literal in
+        // SaveSystem.Migrate.
+        public bool graphicsInitialised;
+        public bool postProcessing;
+        public AntiAliasingMode antiAliasing;
     }
 }

@@ -74,8 +74,18 @@ namespace CoD.Core
                 save.settingsInitialised = true;
             }
 
+            if (!save.graphicsInitialised)
+            {
+                // First launch, or a save written before schema 3 existed. Same
+                // rule as the block above: the only place a default may live is a
+                // config asset, so the migration writes nothing and this seeds it.
+                save.postProcessing = _bounds.postProcessingDefault;
+                save.antiAliasing = _bounds.antiAliasingDefault;
+                save.graphicsInitialised = true;
+            }
+
             return new GameSettings(_bounds, save.mouseSensitivity, save.fovVertical,
-                save.masterVolume, save.invertLook);
+                save.masterVolume, save.invertLook, save.postProcessing, save.antiAliasing);
         }
 
         /// <summary>

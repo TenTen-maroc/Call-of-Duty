@@ -25,14 +25,22 @@ namespace CoD.Core
         public float FovVertical { get; private set; }
         public float MasterVolume { get; private set; }
         public bool InvertLook { get; private set; }
+        public bool PostProcessing { get; private set; }
+        public AntiAliasingMode AntiAliasing { get; private set; }
 
-        public GameSettings(SettingsConfig bounds, float sensitivity, float fov, float volume, bool invert)
+        public GameSettings(SettingsConfig bounds, float sensitivity, float fov, float volume, bool invert,
+            bool postProcessing, AntiAliasingMode antiAliasing)
         {
             _bounds = bounds;
             MouseSensitivity = Mathf.Clamp(sensitivity, bounds.sensitivityMin, bounds.sensitivityMax);
             FovVertical = Mathf.Clamp(fov, bounds.fovMin, bounds.fovMax);
             MasterVolume = Mathf.Clamp(volume, bounds.volumeMin, bounds.volumeMax);
             InvertLook = invert;
+            PostProcessing = postProcessing;
+            // Clamped like every other value: a save hand-edited to 7, or written
+            // by a build that had more modes, must not leave the camera holding a
+            // cast that means nothing.
+            AntiAliasing = Clamp(antiAliasing);
         }
 
         public void SetMouseSensitivity(float value)
@@ -45,6 +53,24 @@ namespace CoD.Core
             => MasterVolume = Mathf.Clamp(value, _bounds.volumeMin, _bounds.volumeMax);
 
         public void SetInvertLook(bool value) => InvertLook = value;
+
+        public void SetPostProcessing(bool value) => PostProcessing = value;
+
+        public void SetAntiAliasing(AntiAliasingMode value) => AntiAliasing = Clamp(value);
+
+        /// <summary>
+        /// Steps through the modes and wraps. Direction is -1 or +1; a row that
+        /// only moves one way is a row the player gets stuck on.
+        /// </summary>
+        public void CycleAntiAliasing(int direction)
+        {
+            const int count = (int)AntiAliasingMode.Smaa + 1;
+            int step = direction >= 0 ? 1 : -1;
+            AntiAliasing = (AntiAliasingMode)(((int)AntiAliasing + step + count) % count);
+        }
+
+        private static AntiAliasingMode Clamp(AntiAliasingMode value) =>
+            value < AntiAliasingMode.Off || value > AntiAliasingMode.Smaa ? AntiAliasingMode.Off : value;
 
         /// <summary>
         /// Nudge by one step. Direction is -1 or +1; anything else is ignored.
@@ -80,6 +106,10 @@ namespace CoD.Core
             save.masterVolume = MasterVolume;
             save.invertLook = InvertLook;
             save.settingsInitialised = true;
+
+            save.postProcessing = PostProcessing;
+            save.antiAliasing = AntiAliasing;
+            save.graphicsInitialised = true;
         }
     }
 }
