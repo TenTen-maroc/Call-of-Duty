@@ -177,7 +177,52 @@ const inputSystem = inputSystemDir
       ['-unsafe', '-define:UNITY_INPUT_SYSTEM_ENABLE_UI'], ugui ? [ugui] : [])
   : null
 
-const packageRefs = { 'Unity.InputSystem': inputSystem, 'UnityEngine.UI': ugui }
+/**
+ * Anything else a first-party asmdef references by package assembly name.
+ *
+ * Order matters: the DLL Unity already compiled is both cheapest and exactly
+ * what the editor will link against, so it wins. Building from the resolved
+ * package source is the fallback for a clone that has never been opened, and
+ * `null` — an honest "skipped" — is the last resort.
+ *
+ * WHY THIS EXISTS: the lookup below tests `packageRefs[name] === null` to decide
+ * whether to skip an assembly. An unlisted name is `undefined`, not `null`, so
+ * before this existed a reference to an unknown package was neither skipped NOR
+ * resolved: the assembly compiled without it and failed with errors that looked
+ * like our bug. A gate that lies is worse than one that stops.
+ */
+function prebuiltAssembly(name) {
+  const dll = join(repoRoot, 'Library', 'ScriptAssemblies', `${name}.dll`)
+  return existsSync(dll) ? dll : null
+}
+
+function packageSource(idPrefix, ...subPath) {
+  const packageCache = join(repoRoot, 'Library', 'PackageCache')
+  if (!existsSync(packageCache)) return null
+  const resolved = readdirSync(packageCache).find((d) => d.startsWith(idPrefix))
+  if (!resolved) return null
+  const dir = join(packageCache, resolved, ...subPath)
+  return existsSync(dir) ? dir : null
+}
+
+function resolvePackage(name, idPrefix, subPath, extraFlags = []) {
+  const prebuilt = prebuiltAssembly(name)
+  if (prebuilt) return prebuilt
+  const source = packageSource(idPrefix, ...subPath)
+  return source ? buildPackage(name, [source], extraFlags, []) : null
+}
+
+// AI Navigation: NavMeshSurface and friends, referenced by CoD.Enemies.
+// NMC_CAN_ACCESS_TERRAIN mirrors the package's own versionDefine — the terrain
+// module is in our manifest, so the editor compiles it with that symbol too.
+const navigation = resolvePackage('Unity.AI.Navigation', 'com.unity.ai.navigation',
+  ['Runtime'], ['-define:NMC_CAN_ACCESS_TERRAIN'])
+
+const packageRefs = {
+  'Unity.InputSystem': inputSystem,
+  'UnityEngine.UI': ugui,
+  'Unity.AI.Navigation': navigation,
+}
 
 // ---------- first-party assemblies, in dependency order ----------
 
@@ -213,7 +258,9 @@ let failed = 0
 let skipped = 0
 
 for (const assembly of ordered) {
-  const missing = assembly.references.filter((r) => !byName.has(r) && packageRefs[r] === null)
+  // Falsy, not `=== null`: an unlisted package name is `undefined`, and letting
+  // that through compiles the assembly without a reference it declared.
+  const missing = assembly.references.filter((r) => !byName.has(r) && !packageRefs[r])
   if (missing.length > 0) {
     console.log(`•  ${assembly.name.padEnd(14)} skipped — ${missing.join(', ')} not resolved yet (open Unity once)`)
     skipped++
@@ -221,8 +268,7 @@ for (const assembly of ordered) {
   }
 
   const refs = [
-    ...(ugui ? [ugui] : []),
-    ...(inputSystem ? [inputSystem] : []),
+    ...Object.values(packageRefs).filter(Boolean),
     ...assembly.references.filter((r) => byName.has(r)).map((r) => join(cacheDir, `${r}.dll`)),
   ]
 

@@ -256,9 +256,11 @@ namespace CoD.Weapons
         {
             float damage = config.DamageAtDistance(hit.distance) * DamageMultiplier;
 
-            // A weakpoint collider relays to its owner's Health and pays twice:
-            // the weapon's headshot multiplier here, the target's weakpoint
-            // multiplier inside Health. Both are tuning data, both stack.
+            // A weakpoint collider relays to its owner's Health, and the bonus is
+            // applied HERE and only here: WeaponConfig.headshotMultiplier is the
+            // single owner of that number. A second multiplier on the target
+            // (HealthConfig used to carry one) double-dipped every headshot, so
+            // it was deleted rather than balanced around.
             bool isWeakpoint = false;
             IDamageable? target = null;
             if (hit.collider.TryGetComponent(out Weakpoint weakpoint) && weakpoint.Owner != null)

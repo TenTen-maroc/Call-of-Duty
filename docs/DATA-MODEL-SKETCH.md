@@ -123,8 +123,14 @@ DroneConfig : ScriptableObject
     scoreValue, moneyReward
     prefab                     → pooled drone prefab
     attack                     → AttackModule ref
-    weakpointMultiplier        2.0            # headshots should pay on drones too
     deathVfx / deathSfx
+
+    # NOT weakpointMultiplier. This sketch originally put one here, but the
+    # 2026-08-11 audit made WeaponConfig.headshotMultiplier the SINGLE owner of
+    # the headshot bonus and deleted HealthConfig.weakpointMultiplier, which was
+    # silently double-dipping. Drones still reward headshots — they carry a
+    # `core` collider with the same Weakpoint component the grey-box dummy uses,
+    # and the weapon pays the multiplier. One number, one place.
 
 abstract AttackModule : ScriptableObject     # stateless, like EffectModule
 
