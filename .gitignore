@@ -20,6 +20,8 @@
 *.csproj
 *.unityproj
 *.sln
+*.slnx
+*.slnf
 *.suo
 *.user
 *.userprefs
