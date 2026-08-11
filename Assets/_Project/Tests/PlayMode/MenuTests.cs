@@ -1,5 +1,6 @@
 #nullable enable
 using System.Collections;
+using System.IO;
 using CoD.Core;
 using CoD.Player;
 using CoD.UI;
@@ -196,6 +197,85 @@ namespace CoD.Tests
             hub.Current.SetFovVertical(original);
             hub.Apply();
             yield return null;
+        }
+    }
+
+    /// <summary>
+    /// The record and the settings share one FILE, so they must share one
+    /// OBJECT. Two independently loaded SaveData instances each write the whole
+    /// file, and whichever wrote last silently reverted the other half.
+    ///
+    /// This was found by building the game and reading the save the built player
+    /// produced — every setting zeroed with settingsInitialised false, after a
+    /// run had ended. Nothing in the editor showed it.
+    /// </summary>
+    public sealed class SaveOwnershipTests
+    {
+        private string _savePath = string.Empty;
+        private string _backupPath = string.Empty;
+        private string? _originalSave;
+        private string? _originalBackup;
+
+        [UnitySetUp]
+        public IEnumerator LoadGreyBoxAndBackUpTheSave()
+        {
+            _savePath = Path.Combine(Application.persistentDataPath, "cod_save.json");
+            _backupPath = Path.Combine(Application.persistentDataPath, "cod_save.bak.json");
+            // Never destroy a real player record to run a test.
+            _originalSave = File.Exists(_savePath) ? File.ReadAllText(_savePath) : null;
+            _originalBackup = File.Exists(_backupPath) ? File.ReadAllText(_backupPath) : null;
+
+            AsyncOperation? load = SceneManager.LoadSceneAsync("10_GreyBox", LoadSceneMode.Single);
+            Assert.IsNotNull(load);
+            while (load != null && !load.isDone) yield return null;
+            yield return null;
+        }
+
+        [UnityTearDown]
+        public IEnumerator RestoreTheRealSave()
+        {
+            if (_originalSave != null) File.WriteAllText(_savePath, _originalSave);
+            else if (File.Exists(_savePath)) File.Delete(_savePath);
+
+            if (_originalBackup != null) File.WriteAllText(_backupPath, _originalBackup);
+            else if (File.Exists(_backupPath)) File.Delete(_backupPath);
+            yield return null;
+        }
+
+        [UnityTest]
+        public IEnumerator RunAndSettings_ShareOneSaveObject()
+        {
+            var hub = Object.FindFirstObjectByType<SettingsHub>();
+            var run = Object.FindFirstObjectByType<RunContext>();
+            Assert.IsNotNull(hub);
+            Assert.IsNotNull(run);
+
+            Assert.AreSame(hub!.Save, run!.Save,
+                "two SaveData objects means two writers of one file, and the second one wins");
+            yield return null;
+        }
+
+        [UnityTest]
+        public IEnumerator EndingARun_DoesNotWipeTheSettings()
+        {
+            var hub = Object.FindFirstObjectByType<SettingsHub>();
+            var run = Object.FindFirstObjectByType<RunContext>();
+            Assert.IsNotNull(hub);
+            Assert.IsNotNull(run);
+
+            // A value no default would produce, so a reset is unmistakable.
+            hub!.Current.SetFovVertical(77f);
+            hub.ApplyAndPersist();
+            yield return null;
+
+            run!.RecordRunEnded();
+            yield return null;
+
+            SaveData fromDisk = SaveSystem.Load();
+            Assert.IsTrue(fromDisk.settingsInitialised,
+                "recording a run must not reset the settings block to un-chosen");
+            Assert.AreEqual(hub.Current.FovVertical, fromDisk.fovVertical, 1e-3f,
+                "the FOV the player picked must survive their death");
         }
     }
 }

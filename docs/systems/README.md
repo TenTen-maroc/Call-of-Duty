@@ -22,14 +22,16 @@ obvious, emphasise the non-obvious.
 | [arena.md](arena.md) | The three-lane arena, cover heights, navmesh bake | ✅ |
 | [settings.md](settings.md) | Sensitivity, FOV, invert, volume — bounds, the runtime layer, schema 2 | ✅ |
 | [menus.md](menus.md) | Main menu, pause, the shared settings page, Run vs Sandbox | ✅ |
+| [build.md](build.md) | Producing the Windows .exe, and the smoke test that proves it runs | ✅ |
 
 ## Automated verification
 
-Beyond `typecheck.mjs` and the guards, the project has 56 tests:
+Beyond `typecheck.mjs` and the guards, the project has 58 tests:
 
 ```
 Unity.exe -batchmode -runTests -projectPath . -testPlatform EditMode -testResults Logs/tests-editmode.xml
 Unity.exe -batchmode -runTests -projectPath . -testPlatform PlayMode -testResults Logs/tests-playmode.xml
+node Tools/verify-build.mjs     # builds a real .exe and proves it boots
 ```
 
 EditMode covers the maths that fails silently — stat folding, save round-trip and

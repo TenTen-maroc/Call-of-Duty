@@ -1237,6 +1237,9 @@ namespace CoD.EditorTools
             SettingsHub settingsHub = new GameObject("Settings").AddComponent<SettingsHub>();
             SetRef(settingsHub, "_bounds", settingsConfig);
             SetRef(settingsHub, "_defaults", game);
+            // The record and the settings live in one file, so they must live in
+            // one SaveData object too. Two copies each write the whole file.
+            SetRef(run, "_settings", settingsHub);
 
             (WeaponController weapon, PlayerLook look, Health playerHealth, Transform muzzle,
                 Transform playerTransform, Transform cameraTransform) =
@@ -2061,6 +2064,10 @@ namespace CoD.EditorTools
             Scene scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
             GameObject boot = new("Boot");
             BootLoader loader = boot.AddComponent<BootLoader>();
+            // Dormant unless the exe is launched with -codSmokeTest. It is what
+            // lets a headless run prove the BUILT player boots, reaches the menu
+            // and loads the arena — the one thing no editor gate can check.
+            boot.AddComponent<BuildSmokeTest>();
             // Boot used to drop straight into the grey box. It now goes to the
             // menu, which is the only screen that can pick a mode.
             SetString(loader, "_firstScene", "20_MainMenu");

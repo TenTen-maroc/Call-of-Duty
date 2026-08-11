@@ -25,6 +25,8 @@ namespace CoD.Core
         [SerializeField] private Health? _playerHealth = null;
         [Tooltip("Money the run starts with. Also on ShopConfig; this is the fallback when no shop exists yet.")]
         [SerializeField] private int _startingMoney = 300;
+        [Tooltip("Optional but strongly wanted: the scene's SettingsHub, so both share ONE SaveData. See the Save property.")]
+        [SerializeField] private SettingsHub? _settings = null;
 
         private SaveData? _save;
 
@@ -35,8 +37,18 @@ namespace CoD.Core
         public event Action<StatSheet>? StatsChanged;
         public event Action<int>? MoneyChanged;
 
-        /// <summary>The persistent record. Loaded once, saved when a run ends.</summary>
-        public SaveData Save => _save ??= SaveSystem.Load();
+        /// <summary>
+        /// The persistent record. Loaded once, saved when a run ends.
+        ///
+        /// It comes from the SettingsHub when there is one, because the record
+        /// and the settings share a FILE and must therefore share an OBJECT. Two
+        /// independently loaded SaveData instances each write the whole file, so
+        /// whichever saved last silently reverted the other half: change your
+        /// sensitivity, die, and the settings block came back zeroed. Found by
+        /// running the built player and reading the save it produced, which is
+        /// the entire argument for building one.
+        /// </summary>
+        public SaveData Save => _settings != null ? _settings.Save : _save ??= SaveSystem.Load();
 
         /// <summary>
         /// Which mode this run is. Chosen in the main menu and carried here
@@ -47,7 +59,9 @@ namespace CoD.Core
 
         private void Awake()
         {
-            _save = SaveSystem.Load();
+            // Touch Save so the record is resolved before anything reads it. The
+            // property decides where it comes from; never load a second copy.
+            _ = Save;
             BeginRun(_startingMoney);
         }
 

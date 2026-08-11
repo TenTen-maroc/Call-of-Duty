@@ -192,6 +192,9 @@ namespace CoD.EditorTools
                 {
                     Check(context, "_config", stillNull);
                     Check(context, "_playerHealth", stillNull);
+                    // Unwired, the run loads a SECOND SaveData and writes the whole
+                    // file over the settings on every death.
+                    Check(context, "_settings", stillNull);
                 }
                 foreach (WaveRunner waveRunner in root.GetComponentsInChildren<WaveRunner>(true))
                 {

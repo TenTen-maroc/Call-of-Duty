@@ -32,10 +32,13 @@ unsaved state is expendable, the repo is not.
 5. Headless tests:
    `Unity.exe -batchmode -runTests -projectPath . -testPlatform EditMode -testResults Logs/tests-editmode.xml`
    then the same with `-testPlatform PlayMode`. Both must be green.
-6. `git diff --exit-code Packages/manifest.json` — opening the project re-adds
+6. `node Tools/verify-build.mjs` — builds a real Windows player and runs it.
+   The only gate that leaves the editor. Required for anything touching scenes,
+   Build Settings, save files, or a `#if UNITY_EDITOR` block.
+7. `git diff --exit-code Packages/manifest.json` — opening the project re-adds
    deprecated packages; revert if it moved.
-7. Update the matching `docs/systems/*.md` **in the same commit**.
-8. Commit (Conventional Commits, `[autopilot]` trailer) and push.
+8. Update the matching `docs/systems/*.md` **in the same commit**.
+9. Commit (Conventional Commits, `[autopilot]` trailer) and push.
 
 **Stop and report — do not improvise around:**
 
@@ -64,6 +67,7 @@ This is the honest boundary, and the reason earlier sessions stopped short.
 | The maths is right (stats, falloff, save round-trip, recursion bounds) | ✅ | EditMode tests |
 | The loop actually runs — waves spawn, drones path, damage lands, the shop opens | ✅ | PlayMode tests |
 | Frame time with 40 alive on a 3050 | ⚠️ partly | a PlayMode test can assert no allocation and no exception; only a human sees a stutter |
+| The BUILT game runs at all | ✅ | `verify-build.mjs` — builds a `.exe` and executes it |
 | **Is it fun** | ❌ | the tuning card, played by a human |
 
 Everything except the last two rows is autopilot's job, and a milestone is not
@@ -127,6 +131,20 @@ carried through `SaveData.lastMode`, never a static. See
 [systems/menus.md](systems/menus.md). **Acceptance:** a PlayMode test loads the
 menu scene, and pause is proven to stop the clock, block the action map, and
 restore whatever timeScale it found rather than a hard 1.
+
+### S3 — The Windows build, and proof it runs (done, 2026-08-11)
+
+Nothing produced a `.exe`. Now `GameBuilder` does, headlessly, and
+`node Tools/verify-build.mjs` builds one and RUNS it: `BuildSmokeTest` boots the
+player, reaches the menu, loads the arena, counts every error, and quits with an
+exit code. Release (93 MB) has no cheat console in the binary at all;
+development (132 MB) has it and correctly refuses outside Sandbox — that gate had
+never been exercised in a real player. See [systems/build.md](systems/build.md).
+
+**It immediately earned itself:** `RunContext` and `SettingsHub` each loaded
+their own `SaveData`, so ending a run rewrote the whole file and reverted every
+setting. Invisible to every editor gate; obvious in the save a built player left
+behind. Fixed, verified, and covered by two PlayMode tests.
 
 ### M4 — Human tuning pass (blocked on a person)
 
