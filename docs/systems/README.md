@@ -20,10 +20,11 @@ obvious, emphasise the non-obvious.
 | [shop.md](shop.md) | `ShopConfig`, `ShopItemConfig`, `PassiveConfig`, `StatSheet` rebuild | ✅ passives + modules |
 | [save.md](save.md) | Versioned JSON, `schemaVersion` migration, atomic write, `.bak` | ✅ |
 | [arena.md](arena.md) | The three-lane arena, cover heights, navmesh bake | ✅ |
+| [settings.md](settings.md) | Sensitivity, FOV, invert, volume — bounds, the runtime layer, schema 2 | ✅ |
 
 ## Automated verification
 
-Beyond `typecheck.mjs` and the guards, the project has 42 tests:
+Beyond `typecheck.mjs` and the guards, the project has 49 tests:
 
 ```
 Unity.exe -batchmode -runTests -projectPath . -testPlatform EditMode -testResults Logs/tests-editmode.xml

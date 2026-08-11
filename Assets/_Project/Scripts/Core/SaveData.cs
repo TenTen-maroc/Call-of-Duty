@@ -23,9 +23,22 @@ namespace CoD.Core
         public int totalRuns;
         public bool sandboxUnlocked = true;
 
+        /// <summary>Which mode the menu starts on. Carrying the choice through a scene load without a mutable static.</summary>
+        public GameMode lastMode = GameMode.Run;
+
         // Settings live here too: they are the other thing that must survive a
         // death, and a second file would be a second thing to keep versioned.
-        public float mouseSensitivity = 0.12f;
-        public float masterVolume = 1f;
+        //
+        // Every one of these defaults to zero rather than to a playable value.
+        // A real default is a TUNING NUMBER, and tuning numbers live in a
+        // ScriptableObject, never in a script — so an un-initialised save is
+        // seeded from SettingsConfig and GameConfig by SettingsService, and the
+        // flag below is how it knows the difference between "the player chose
+        // silence" and "nobody has chosen anything yet".
+        public bool settingsInitialised;
+        public float mouseSensitivity;
+        public float fovVertical;
+        public float masterVolume;
+        public bool invertLook;
     }
 }

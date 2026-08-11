@@ -41,6 +41,7 @@ namespace CoD.EditorTools
             int missing = 0;
 
             GameConfig? game = Load<GameConfig>("Assets/_Project/Data/Game/GameConfig.asset");
+            SettingsConfig? settings = Load<SettingsConfig>("Assets/_Project/Data/Game/Settings.asset");
             PlayerLoadoutConfig? loadout = Load<PlayerLoadoutConfig>("Assets/_Project/Data/Weapons/Loadout_Default.asset");
             ImpactConfig? impact = Load<ImpactConfig>("Assets/_Project/Data/Game/Impact_Default.asset");
             HealthConfig? health = Load<HealthConfig>("Assets/_Project/Data/Game/Health_Target.asset");
@@ -61,6 +62,14 @@ namespace CoD.EditorTools
                     repaired += Ensure(motor, "_config", game, report, ref missing);
                 foreach (PlayerLook look in root.GetComponentsInChildren<PlayerLook>(true))
                     repaired += Ensure(look, "_config", game, report, ref missing);
+                foreach (SettingsHub service in root.GetComponentsInChildren<SettingsHub>(true))
+                {
+                    // A SettingsHub with no bounds falls back to a throwaway
+                    // SettingsConfig at runtime: every slider still moves, and
+                    // every value it produces is wrong.
+                    repaired += Ensure(service, "_bounds", settings, report, ref missing);
+                    repaired += Ensure(service, "_defaults", game, report, ref missing);
+                }
                 foreach (WeaponController weapon in root.GetComponentsInChildren<WeaponController>(true))
                 {
                     repaired += Ensure(weapon, "_loadout", loadout, report, ref missing);
@@ -113,7 +122,17 @@ namespace CoD.EditorTools
                 foreach (PlayerMotor motor in root.GetComponentsInChildren<PlayerMotor>(true))
                     Check(motor, "_config", stillNull);
                 foreach (PlayerLook look in root.GetComponentsInChildren<PlayerLook>(true))
+                {
                     Check(look, "_config", stillNull);
+                    // Without this link the saved sensitivity and FOV are read,
+                    // clamped, saved — and never reach the camera.
+                    Check(look, "_settings", stillNull);
+                }
+                foreach (SettingsHub service in root.GetComponentsInChildren<SettingsHub>(true))
+                {
+                    Check(service, "_bounds", stillNull);
+                    Check(service, "_defaults", stillNull);
+                }
                 foreach (WeaponController weapon in root.GetComponentsInChildren<WeaponController>(true))
                 {
                     Check(weapon, "_loadout", stillNull);

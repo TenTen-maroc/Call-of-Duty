@@ -18,7 +18,12 @@ namespace CoD.Core
     /// </summary>
     public static class SaveSystem
     {
-        public const int CurrentSchemaVersion = 1;
+        /// <summary>
+        /// 1 → 2 added the settings block (fov, invert, the initialised flag) and
+        /// the remembered mode. Bumped rather than added silently, because the
+        /// migration below has to decide what a v1 file's settings meant.
+        /// </summary>
+        public const int CurrentSchemaVersion = 2;
 
         private const string FileName = "cod_save.json";
         private const string BackupName = "cod_save.bak.json";
@@ -91,10 +96,10 @@ namespace CoD.Core
         }
 
         /// <summary>
-        /// Handles a file written by a different version of the game. Today there
-        /// is only version 1, so this exists to make the NEXT change cheap and to
-        /// refuse to guess: a save from the future is left alone rather than
-        /// force-fitted into the current struct.
+        /// Handles a file written by a different version of the game. A save from
+        /// the FUTURE is left alone rather than force-fitted into the current
+        /// struct — refusing to guess is what keeps a downgrade from destroying a
+        /// record it merely failed to understand.
         /// </summary>
         private static SaveData Migrate(SaveData data)
         {
@@ -108,8 +113,19 @@ namespace CoD.Core
                 return data;
             }
 
-            // Older-than-current path. Each future version adds one step here and
-            // falls through the rest, which is why the version is read first.
+            // Older-than-current path. Each version adds one step and falls
+            // through the rest, which is why the version is read first.
+            if (data.schemaVersion < 2)
+            {
+                // v1 carried mouseSensitivity and masterVolume that NOTHING ever
+                // read — they were written once at default and never applied. So
+                // there is no player choice to preserve here: clearing the flag
+                // makes SettingsService re-seed the whole block from the configs,
+                // which is the only source of a correct default.
+                data.settingsInitialised = false;
+                data.lastMode = GameMode.Run;
+            }
+
             data.schemaVersion = CurrentSchemaVersion;
             return data;
         }

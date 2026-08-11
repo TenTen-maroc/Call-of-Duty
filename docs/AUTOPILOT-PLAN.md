@@ -108,6 +108,16 @@ a raised centre, cover that a Shooter can be forced out of.
 **Acceptance:** navmesh bakes with no isolated islands (asserted in a test), and
 the spawn ring still resolves from every point.
 
+### S1 — The runtime settings layer (done, 2026-08-11)
+
+`SaveData` carried `mouseSensitivity` and `masterVolume` that **nothing read**.
+Now: `SettingsConfig` bounds, a `GameSettings` runtime object that never writes
+to a ScriptableObject, a `SettingsHub` per scene, schema 2 with a migration, and
+`PlayerLook` driven by the saved values. Master volume drives
+`AudioListener.volume`; see [systems/settings.md](systems/settings.md) for why
+not an AudioMixer. **Acceptance:** a v1 save keeps its record and re-seeds its
+settings, asserted by test.
+
 ### M4 — Human tuning pass (blocked on a person)
 
 The card at the top of [NEXT-SESSION-PROMPT.md](NEXT-SESSION-PROMPT.md). Seven

@@ -54,6 +54,7 @@ namespace CoD.EditorTools
             EnsureFolders();
 
             GameConfig game = LoadOrCreate<GameConfig>(DataGame + "/GameConfig.asset", ConfigureGame);
+            SettingsConfig settings = LoadOrCreate<SettingsConfig>(DataGame + "/Settings.asset", ConfigureSettings);
             HealthConfig targetHealth = LoadOrCreate<HealthConfig>(DataGame + "/Health_Target.asset", h =>
             {
                 h.maxHealth = 100f;
@@ -180,7 +181,7 @@ namespace CoD.EditorTools
             SetRef(rifle, "reloadClip", LoadClip("Reload_AR"));
             EditorUtility.SetDirty(rifle);
 
-            BuildGreyBoxScene(game, loadout, impact, grey, wall, targetMat, gunmetal, gunAccent,
+            BuildGreyBoxScene(game, settings, loadout, impact, grey, wall, targetMat, gunmetal, gunAccent,
                 dummy, decal, sparks, flash, casing, drones, runAssets);
             BuildBootScene();
             RegisterScenes();
@@ -271,6 +272,29 @@ namespace CoD.EditorTools
         /// five shots to kill and ~267 ms, inside the same arcade window as the
         /// rifle but with a different texture (faster, twitchier, worse at range).
         /// </summary>
+        /// <summary>
+        /// What the player is allowed to pick, not what the designer picked —
+        /// the defaults themselves stay on GameConfig. The sensitivity ceiling is
+        /// five times the default rather than the Inspector's 1.0: at 1.0 a
+        /// normal mouse sweep is roughly nine full turns, which is not a setting,
+        /// it is a way to lose the game.
+        /// </summary>
+        private static void ConfigureSettings(SettingsConfig config)
+        {
+            config.sensitivityMin = 0.02f;
+            config.sensitivityMax = 0.60f;
+            config.sensitivityStep = 0.01f;
+            // 50-85 vertical is roughly 80-115 horizontal at 16:9. Below 50 the
+            // viewmodel eats the screen; above 85 the fisheye makes drone
+            // distance unreadable, and distance is how you survive a Rusher.
+            config.fovMin = 50f;
+            config.fovMax = 85f;
+            config.fovStep = 1f;
+            config.volumeMin = 0f;
+            config.volumeMax = 1f;
+            config.volumeStep = 0.05f;
+        }
+
         private static void ConfigureSmg(WeaponConfig config)
         {
             config.stableId = "wpn_smg_rapid";
@@ -1145,7 +1169,8 @@ namespace CoD.EditorTools
 
         // ---------- scenes ----------
 
-        private static void BuildGreyBoxScene(GameConfig game, PlayerLoadoutConfig loadout, ImpactConfig impact,
+        private static void BuildGreyBoxScene(GameConfig game, SettingsConfig settingsConfig,
+            PlayerLoadoutConfig loadout, ImpactConfig impact,
             Material floorMat, Material wallMat, Material targetMat, Material gunmetal, Material gunAccent,
             GameObject dummyPrefab, GameObject decal, GameObject sparks, GameObject flash, GameObject casing,
             DroneAssets drones, RunAssets runAssets)
@@ -1203,9 +1228,17 @@ namespace CoD.EditorTools
             WaveRunner runner = runObject.AddComponent<WaveRunner>();
             SetRef(run, "_config", game);
 
+            // Settings come before the player: PlayerLook subscribes to this
+            // component's Changed event, and a serialized reference cannot point
+            // at an object that does not exist yet. The service itself resolves
+            // lazily, so the Awake order between them does not matter.
+            SettingsHub settingsHub = new GameObject("Settings").AddComponent<SettingsHub>();
+            SetRef(settingsHub, "_bounds", settingsConfig);
+            SetRef(settingsHub, "_defaults", game);
+
             (WeaponController weapon, PlayerLook look, Health playerHealth, Transform muzzle,
                 Transform playerTransform, Transform cameraTransform) =
-                BuildPlayerRig(game, loadout, impact, pool, gunmetal, gunAccent, run);
+                BuildPlayerRig(game, loadout, impact, pool, gunmetal, gunAccent, run, settingsHub);
 
             BuildTargets(dummyPrefab, targetMat);
             (DroneSpawner spawner, DroneRegistry registry) = BuildDroneRig(drones, pool, playerTransform);
@@ -1391,7 +1424,7 @@ namespace CoD.EditorTools
 
         private static (WeaponController, PlayerLook, Health, Transform, Transform, Transform) BuildPlayerRig(
             GameConfig game, PlayerLoadoutConfig loadout, ImpactConfig impact, ObjectPool pool,
-            Material gunmetal, Material gunAccent, RunContext run)
+            Material gunmetal, Material gunAccent, RunContext run, SettingsHub settings)
         {
             GameObject player = new("Player");
             player.transform.position = new Vector3(0f, 0.1f, -12f);
@@ -1438,6 +1471,7 @@ namespace CoD.EditorTools
             SetRef(look, "_motor", motor);
             SetRef(look, "_cameraPivot", pivot.transform);
             SetRef(look, "_camera", camera);
+            SetRef(look, "_settings", settings);   // saved sensitivity / FOV / invert
 
             // The viewmodel. There was no gun on screen at all before this, which
             // is most of why the grey box read as a tech demo rather than a
