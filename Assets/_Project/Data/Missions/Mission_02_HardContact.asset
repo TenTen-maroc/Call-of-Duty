@@ -1,0 +1,38 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 8c7093eab5a79be41b10a0583948744d, type: 3}
+  m_Name: Mission_02_HardContact
+  m_EditorClassIdentifier: 
+  stableId: mission_02_hard_contact
+  displayName: HARD CONTACT
+  briefing: "The bay is awake, and it has stopped sending rushers on their own.\n\nBreak
+    twelve of them, then run the override from the control point \u2014 forty-five
+    seconds standing still, in the open, while the rest of the floor comes to you.\n\nThen
+    take the pad out."
+  arenaScene: 10_GreyBox
+  startingMoney: 450
+  steps:
+  - objective: {fileID: 11400000, guid: f1700c124b60eab41a7459b51558266d, type: 2}
+    parallel: 0
+    timeLimitSeconds: 0
+  - objective: {fileID: 11400000, guid: ba81de360d8f6ae4a94e4025cc23c7ff, type: 2}
+    parallel: 0
+    timeLimitSeconds: 0
+  - objective: {fileID: 11400000, guid: e2c08668a50685e45bcbfe0daac04577, type: 2}
+    parallel: 0
+    timeLimitSeconds: 0
+  waves:
+  - {fileID: 11400000, guid: 087b864a27832944d8a7164b8e246802, type: 2}
+  - {fileID: 11400000, guid: a8e51294eb9843f4bb2f2850e9e34fde, type: 2}
+  - {fileID: 11400000, guid: 077de65ead8859742998d0e21be20fc1, type: 2}
+  - {fileID: 11400000, guid: 3426667f6fd0b0243a62570259cd6971, type: 2}
+  - {fileID: 11400000, guid: 300eb251de1298944af27ecd8bf9ad95, type: 2}

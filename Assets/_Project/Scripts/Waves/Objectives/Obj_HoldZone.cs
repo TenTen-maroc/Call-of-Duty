@@ -30,6 +30,24 @@ namespace CoD.Waves
         [Tooltip("Only counts while a wave is actually running. Off would let the player bank the hold during the shop break, for free. This PAUSES the clock between waves; only stepping off the pad can reset it.")]
         public bool requireWavePhase = true;
 
+
+        /// <summary>
+
+        /// Only when the hold is authored to require a live wave — in which case
+
+        /// a suspended runner means the clock can never tick at all, because
+
+        /// phaseAllows tests for RunPhase.Wave and the runner never enters it.
+
+        /// A hold that does NOT require the wave phase is a quiet objective and
+
+        /// must not drag a wave in behind it.
+
+        /// </summary>
+
+        public override bool RequiresWaves => requireWavePhase;
+
+
         public override void Begin(in ObjectiveContext context, ref ObjectiveState state)
         {
             state.Accumulator = 0f;

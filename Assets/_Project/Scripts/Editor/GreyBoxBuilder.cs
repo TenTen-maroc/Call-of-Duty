@@ -41,6 +41,7 @@ namespace CoD.EditorTools
         private const string DataShop = "Assets/_Project/Data/Shop";
         private const string DataPassives = "Assets/_Project/Data/Passives";
         private const string DataEffects = "Assets/_Project/Data/Effects";
+        private const string DataMissions = "Assets/_Project/Data/Missions";
         private const string Materials = "Assets/_Project/Art/Materials";
         private const string Textures = "Assets/_Project/Art/Textures";
         private const string Prefabs = "Assets/_Project/Prefabs";
@@ -251,6 +252,32 @@ namespace CoD.EditorTools
                 new Color(0.20f, 0.90f, 0.55f), 1.8f);
             var runAssets = new RunAssets(shopConfig, waves, objective, beacon);
 
+            // ---- the mission layer ----------------------------------------
+            // Three assets and one prefab, and every one of them is inert until a
+            // save says campaign. Endless mode gets the same scene with the same
+            // components in it and does not notice: MissionDirector disables
+            // itself in Awake, the catalog it would read is empty, and nothing
+            // ever spawns an interact point.
+            //
+            // The configure callbacks are deliberately empty, exactly like
+            // PaletteConfig's: the field initialisers on InteractionConfig ARE the
+            // shipped defaults, and a second copy of those three numbers here is
+            // one more place for them to disagree with the asset a human tuned.
+            InteractionConfig interaction = LoadOrCreate<InteractionConfig>(
+                DataGame + "/Interaction_Default.asset", _ => { });
+
+            // Left EMPTY on purpose. The missions themselves are authored assets;
+            // this only has to EXIST, so the menu has something to read and the
+            // director has something to resolve a saved mission id against. An
+            // empty catalog is a campaign with no missions, which is exactly what
+            // this project has until they are written — and MissionSelectPanel
+            // already prints "NO MISSIONS AUTHORED YET" for it.
+            MissionCatalog missionCatalog = LoadOrCreate<MissionCatalog>(
+                DataMissions + "/Missions.asset", _ => { });
+
+            GameObject interactPoint = BuildInteractPointPrefab(beacon);
+            var missionAssets = new MissionAssets(missionCatalog, interaction, interactPoint);
+
             SetRef(impact, "decalPrefab", decal);
             SetRef(impact, "particlePrefab", sparks);
             EditorUtility.SetDirty(impact);
@@ -272,8 +299,8 @@ namespace CoD.EditorTools
             EditorUtility.SetDirty(rifle);
 
             BuildGreyBoxScene(game, settings, loadout, impact, grey, wall, targetMat, gunmetal, gunAccent,
-                dummy, decal, sparks, flash, casing, drones, runAssets, postFx, trim, palette);
-            BuildMainMenuScene(game, settings, postFx);
+                dummy, decal, sparks, flash, casing, drones, runAssets, missionAssets, postFx, trim, palette);
+            BuildMainMenuScene(game, settings, missionCatalog, postFx);
             BuildBootScene();
             RegisterScenes();
 
@@ -342,6 +369,27 @@ namespace CoD.EditorTools
                 Waves = waves;
                 Objective = objective;
                 BeaconMaterial = beacon;
+            }
+        }
+
+        /// <summary>The mission layer's assets, grouped for the same reason the two above are.</summary>
+        private readonly struct MissionAssets
+        {
+            /// <summary>Every mission there is. Empty until they are authored, and legal empty.</summary>
+            public readonly MissionCatalog Catalog;
+
+            /// <summary>Range, facing cone, hold decay. The only three numbers interaction has.</summary>
+            public readonly InteractionConfig Interaction;
+
+            /// <summary>Pooled, never placed by this builder — a mission decides where and when.</summary>
+            public readonly GameObject InteractPointPrefab;
+
+            public MissionAssets(MissionCatalog catalog, InteractionConfig interaction,
+                GameObject interactPointPrefab)
+            {
+                Catalog = catalog;
+                Interaction = interaction;
+                InteractPointPrefab = interactPointPrefab;
             }
         }
 
@@ -1185,6 +1233,90 @@ namespace CoD.EditorTools
             return SavePrefab(root, Prefabs + "/Target_Dummy.prefab");
         }
 
+        /// <summary>
+        /// A thing a mission can put in the arena for the player to use: a
+        /// terminal, a charge site, an extract pad, a data pad, a door. One prefab
+        /// for all of them, because the difference is DATA — kind, prompt, hold
+        /// length — and InteractPoint carries all of it as serialized fields.
+        ///
+        /// POOLED, and deliberately never placed in the scene by this builder. An
+        /// interact point that exists from the first frame of every run is one the
+        /// player can use before the objective that wants it, and one that costs
+        /// endless mode a prompt it has no business showing.
+        ///
+        /// NO COLLIDERS ANYWHERE ON IT, for the reason the repair beacon's pad
+        /// destroys its own: this sits on the floor the player walks across, and a
+        /// collider there either blocks movement or — worse, because it looks like
+        /// a weapon bug rather than a level bug — eats the aim ray that was meant
+        /// for the drone standing behind it.
+        ///
+        /// _registry is NOT wired here, and cannot be: it points at a scene
+        /// object, and a prefab asset can only hold references to assets. Whatever
+        /// spawns one of these has to hand it the scene's InteractableRegistry, or
+        /// it registers with nothing and the prompt never appears.
+        /// </summary>
+        private static GameObject BuildInteractPointPrefab(Material material)
+        {
+            GameObject root = new("Interact_Point");
+
+            // The visual is a CHILD rather than the root: InteractPoint hides this
+            // once the point is spent, and hiding the root would take the
+            // component, its OnDisable and the pooled instance's own bookkeeping
+            // down with it.
+            GameObject visual = new("Visual");
+            visual.transform.SetParent(root.transform, false);
+
+            GameObject pad = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+            pad.name = "Pad";
+            pad.transform.SetParent(visual.transform, false);
+            // A cylinder primitive is 2 units tall and 1 across, so x/z IS the
+            // diameter and y is halved twice over — same arithmetic as the beacon.
+            pad.transform.localScale = new Vector3(1.3f, 0.02f, 1.3f);
+            pad.transform.localPosition = new Vector3(0f, 0.02f, 0f);
+            Object.DestroyImmediate(pad.GetComponent<Collider>());
+
+            MeshRenderer padRenderer = pad.GetComponent<MeshRenderer>();
+            padRenderer.sharedMaterial = material;
+            padRenderer.shadowCastingMode = ShadowCastingMode.Off;
+
+            // A post, so the thing is findable from across the arena instead of
+            // only from standing on top of it. Green, and sharing the beacon's
+            // material rather than minting a second one: green is this game's
+            // "this is for you" hue, nothing else is allowed to use it, and two
+            // green materials are two things that can drift apart.
+            GameObject post = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            post.name = "Post";
+            post.transform.SetParent(visual.transform, false);
+            post.transform.localScale = new Vector3(0.12f, 1.1f, 0.12f);
+            post.transform.localPosition = new Vector3(0f, 0.55f, 0f);
+            Object.DestroyImmediate(post.GetComponent<Collider>());
+
+            MeshRenderer postRenderer = post.GetComponent<MeshRenderer>();
+            postRenderer.sharedMaterial = material;
+            postRenderer.shadowCastingMode = ShadowCastingMode.Off;
+
+            // Its own AudioSource, for the reason the explosion has one: the thing
+            // being used may hide itself in the same frame, and a clip played on a
+            // renderer that just went away is a clip nobody hears.
+            AudioSource audio = root.AddComponent<AudioSource>();
+            audio.playOnAwake = false;
+            audio.spatialBlend = 1f;
+            audio.maxDistance = 30f;
+            audio.rolloffMode = AudioRolloffMode.Linear;
+
+            root.AddComponent<PooledObject>();
+
+            InteractPoint point = root.AddComponent<InteractPoint>();
+            SetRef(point, "_audio", audio);
+            SetRef(point, "_visual", visual);
+            // The shop's confirm blip, standing in until there is a dedicated one.
+            // A silent interaction reads as a REFUSED interaction, which is the
+            // one thing the feedback here has to rule out.
+            SetRef(point, "_useClip", LoadClip("Shop_Buy"));
+
+            return SavePrefab(root, Prefabs + "/Interact_Point.prefab");
+        }
+
         /// <summary>Which silhouette to build. Read at 30 m through fog, shape and core colour are all the player has.</summary>
         private enum DroneShape { Rusher, Shooter, Tank }
 
@@ -1470,8 +1602,8 @@ namespace CoD.EditorTools
             PlayerLoadoutConfig loadout, ImpactConfig impact,
             Material floorMat, Material wallMat, Material targetMat, Material gunmetal, Material gunAccent,
             GameObject dummyPrefab, GameObject decal, GameObject sparks, GameObject flash, GameObject casing,
-            DroneAssets drones, RunAssets runAssets, VolumeProfile postFx, Material trimMat,
-            PaletteConfig palette)
+            DroneAssets drones, RunAssets runAssets, MissionAssets missions, VolumeProfile postFx,
+            Material trimMat, PaletteConfig palette)
         {
             Scene scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
 
@@ -1532,9 +1664,21 @@ namespace CoD.EditorTools
             var prewarm = new List<(GameObject prefab, int count)>
             {
                 (decal, 48), (sparks, 24), (flash, 4), (casing, 24), (dummyPrefab, 8),
+                // Eight is a mission's worth of terminals, charges and pads with
+                // room to spare. They cost nothing in endless mode — a prewarmed
+                // instance is an inactive GameObject with no Update.
+                (missions.InteractPointPrefab, 8),
             };
             prewarm.AddRange(drones.Pooled);
             SetPrewarm(pool, prewarm.ToArray());
+
+            // Beside the pool, and the same shape as DroneRegistry for the same
+            // reason: Domain Reload is off, so a static list would still hold the
+            // previous Play session's destroyed objects. Interactables put
+            // themselves in it when they turn on, which is what keeps
+            // PlayerInteractor from running a scene search every frame.
+            InteractableRegistry interactables =
+                new GameObject("Interactables").AddComponent<InteractableRegistry>();
 
             // The run layer is created BEFORE the player, because the player's
             // motor and weapon subscribe to its StatsChanged event and a
@@ -1543,6 +1687,15 @@ namespace CoD.EditorTools
             GameObject runObject = new("Run");
             RunContext run = runObject.AddComponent<RunContext>();
             WaveRunner runner = runObject.AddComponent<WaveRunner>();
+            // The campaign, on the same object as the run it drives. Its Awake
+            // disables itself unless the save says campaign, and Unity skips
+            // OnEnable entirely for a component disabled during its own Awake — so
+            // in endless mode this subscribes to nothing, ticks nothing and
+            // touches the runner not at all. Component ORDER on this object is
+            // irrelevant: Unity does not promise Awake order, only that every
+            // Awake lands before any Start, and that is the guarantee
+            // MissionDirector.Suspend relies on.
+            MissionDirector director = runObject.AddComponent<MissionDirector>();
             SetRef(run, "_config", game);
 
             // Settings come before the player: PlayerLook subscribes to this
@@ -1574,15 +1727,42 @@ namespace CoD.EditorTools
             SetArrayRef(runner, "_waves", runAssets.Waves);
             SetRef(weapon, "_ownerHealth", playerHealth);   // modules never damage the shooter
 
+            // The mission layer's five references, every one of them resolvable
+            // only now: the runner needs its spawner, the director needs the drone
+            // registry to count kills, and both need a player that did not exist
+            // when the Run object was created.
+            SetRef(director, "_run", run);
+            SetRef(director, "_runner", runner);
+            SetRef(director, "_catalog", missions.Catalog);
+            SetRef(director, "_registry", registry);
+            SetRef(director, "_player", playerTransform);
+            SetRef(director, "_playerHealth", playerHealth);
+            SetRef(director, "_settings", settingsHub);
+            SetRef(director, "_interactables", interactables);
+            BuildMissionZones(director);
+
             // The player's input component, so pause can switch the whole action
             // map off. GetComponent is fine here — the guard bans it inside
             // Update/FixedUpdate/LateUpdate, and this is editor build code.
             PlayerInput playerInput = playerTransform.GetComponent<PlayerInput>();
 
+            // Interaction lives on the Player but is wired HERE rather than inside
+            // BuildPlayerRig, because three of its five references — the registry,
+            // the interaction config and the player's own input handle — belong to
+            // the scene rather than to the rig. Threading them down would cost two
+            // more parameters and a seventh element on a tuple that is already at
+            // the edge of readable.
+            PlayerInteractor interactor = playerTransform.gameObject.AddComponent<PlayerInteractor>();
+            SetRef(interactor, "_config", missions.Interaction);
+            SetRef(interactor, "_registry", interactables);
+            SetRef(interactor, "_input", playerInput);
+            SetRef(interactor, "_look", look);
+            SetRef(interactor, "_health", playerHealth);
+
             BuildObjective(runAssets, runner, playerTransform, playerHealth);
 
             BuildHud(weapon, playerHealth, game, pool, dummyPrefab, muzzle, spawner, registry, cameraTransform,
-                run, runner, settingsHub, playerInput);
+                run, runner, settingsHub, playerInput, director, interactor);
 
             EditorSceneManager.MarkSceneDirty(scene);
             EditorSceneManager.SaveScene(scene, GreyBoxScenePath);
@@ -2277,7 +2457,8 @@ namespace CoD.EditorTools
         private static void BuildHud(WeaponController weapon, Health playerHealth, GameConfig game,
             ObjectPool pool, GameObject dummyPrefab, Transform spawnOrigin,
             DroneSpawner spawner, DroneRegistry registry, Transform cameraTransform,
-            RunContext run, WaveRunner runner, SettingsHub settingsHub, PlayerInput input)
+            RunContext run, WaveRunner runner, SettingsHub settingsHub, PlayerInput input,
+            MissionDirector director, PlayerInteractor interactor)
         {
             GameObject canvasObject = new("HUD");
             Canvas canvas = canvasObject.AddComponent<Canvas>();
@@ -2403,9 +2584,18 @@ namespace CoD.EditorTools
             SetRef(hud, "_healthLabel", healthLabel);
             SetRef(hud, "_lowAmmoTint", lowAmmoImage);
 
+            // The objective list and the interact prompt are HUD, not menu, so
+            // they are created BEFORE the shop, pause and death panels and are
+            // painted underneath them — the same sibling-order rule that makes
+            // BuildPauseUi the last call in this method. The mission BANNER is the
+            // exception and is built after all three; see BuildObjectiveHud.
+            Text objectiveLabel = BuildObjectiveLabel(canvasObject);
+            BuildInteractPrompt(canvasObject, interactor);
+
             BuildDamageFeedback(canvasObject, game, playerHealth, cameraTransform, hudAudio);
             BuildRunUi(canvasObject, run, runner, weapon, hudAudio);
             BuildPauseUi(canvasObject, settingsHub, input, run, runner);
+            BuildObjectiveHud(canvasObject, director, objectiveLabel);
 
             CheatConsole console = canvasObject.AddComponent<CheatConsole>();
             SetRef(console, "_config", game);
@@ -2561,6 +2751,189 @@ namespace CoD.EditorTools
             overRoot.SetActive(false);
         }
 
+        /// <summary>
+        /// The objective list, under the wave readout it belongs beside.
+        ///
+        /// Shipped EMPTY, and that is not cosmetic. BuildLabel seeds every label
+        /// with its own object name so an unwired one is obvious in the editor,
+        /// but ObjectiveHud only ever assigns this field when the text it would
+        /// write DIFFERS from what it wrote last — and in endless mode it has
+        /// nothing to write on the first pass, correctly leaves the label alone,
+        /// and the word "ObjectiveLabel" would sit in the corner for the whole run.
+        /// </summary>
+        private static Text BuildObjectiveLabel(GameObject canvasObject)
+        {
+            Text objective = BuildLabel(canvasObject, "ObjectiveLabel", new Vector2(90f, -150f),
+                TextAnchor.UpperLeft, new Vector2(0f, 1f), 26);
+            // Tall enough for a parallel group: three or four one-line objectives
+            // plus their live counters, which is the most a step ever shows.
+            objective.rectTransform.sizeDelta = new Vector2(660f, 240f);
+            objective.text = string.Empty;
+            return objective;
+        }
+
+        /// <summary>
+        /// "HOLD F" and the bar that fills while you do.
+        ///
+        /// Both ship blank and hidden for the same reason the objective list does:
+        /// InteractPrompt writes the label only when the TARGET changes, and with
+        /// no interactable in the scene at load there is no first change to write.
+        ///
+        /// The bar is the fiddly half. UnityEngine.UI.Image falls straight through
+        /// to a plain quad when its sprite is null — the filled path is never
+        /// reached and fillAmount is never read — so a bar built without one
+        /// renders FULL on the first frame and stays full through every hold.
+        /// Nothing is null, nothing errors, and the only symptom is a progress bar
+        /// that is always done. Unity's built-in UI sprite is what every Image
+        /// created from the GameObject menu gets, it ships inside the player, and
+        /// it costs this repo no binary.
+        /// </summary>
+        private static void BuildInteractPrompt(GameObject canvasObject, PlayerInteractor interactor)
+        {
+            Text prompt = BuildLabel(canvasObject, "InteractPrompt", new Vector2(0f, -120f),
+                TextAnchor.MiddleCenter, new Vector2(0.5f, 0.5f), 30);
+            prompt.rectTransform.sizeDelta = new Vector2(700f, 44f);
+            prompt.text = string.Empty;
+
+            GameObject barObject = new("InteractHoldBar", typeof(RectTransform));
+            barObject.transform.SetParent(canvasObject.transform, false);
+            Image bar = barObject.AddComponent<Image>();
+            bar.sprite = UiSprite();
+            bar.type = Image.Type.Filled;
+            bar.fillMethod = Image.FillMethod.Horizontal;
+            bar.fillOrigin = (int)Image.OriginHorizontal.Left;
+            bar.fillAmount = 0f;
+            bar.color = new Color(0.92f, 0.94f, 0.96f, 0.92f);
+            bar.raycastTarget = false;
+            // Hidden rather than drawn empty. An empty bar under every prompt
+            // reads as broken, and an instant interactable has no hold at all —
+            // InteractPrompt turns it back on the moment the fill leaves zero.
+            bar.enabled = false;
+
+            RectTransform barRect = barObject.GetComponent<RectTransform>();
+            barRect.anchorMin = new Vector2(0.5f, 0.5f);
+            barRect.anchorMax = new Vector2(0.5f, 0.5f);
+            barRect.pivot = new Vector2(0.5f, 0.5f);
+            barRect.anchoredPosition = new Vector2(0f, -164f);
+            barRect.sizeDelta = new Vector2(280f, 6f);
+
+            InteractPrompt promptHud = canvasObject.AddComponent<InteractPrompt>();
+            SetRef(promptHud, "_interactor", interactor);
+            SetRef(promptHud, "_promptLabel", prompt);
+            SetRef(promptHud, "_holdBar", bar);
+        }
+
+        /// <summary>
+        /// The mission banner, and the component that drives both it and the
+        /// objective list.
+        ///
+        /// Built LAST, after the shop, the pause menu and the death screen, and
+        /// that is the whole reason it is not created alongside the label it
+        /// shares a component with. MISSION COMPLETE has to be legible at the
+        /// moment the mission ends — which is also the moment WaveRunner enters
+        /// GameOver and GameOverPanel drops a full-screen backdrop over the HUD.
+        /// A banner painted underneath that is a banner nobody ever sees.
+        ///
+        /// Its height clears both things it now sits on top of: the wave banner at
+        /// y 150 and the death screen's title at y 90.
+        /// </summary>
+        /// <summary>
+        /// The named places a mission can send the player.
+        ///
+        /// THE DEFECT THIS EXISTS FOR: MissionProgress.RegisterZone had no caller
+        /// anywhere in the game, so IsInsideZone answered false forever —
+        /// correctly, by its own design — and every ReachZone, HoldZone and
+        /// Extract objective was uncompletable. Mission 1 stalled on its FIRST
+        /// step with the runner suspended and the arena empty, which is the state
+        /// MissionDirector's own comments call indistinguishable from a hang. The
+        /// missions validated clean and shipped in the catalog as locked rooms.
+        ///
+        /// Markers, not trigger volumes, and no colliders: this project has no
+        /// trigger colliders anywhere, and a collider on the arena floor either
+        /// blocks movement or eats the aim ray — which is why the repair beacon's
+        /// pad destroys its own.
+        ///
+        /// Ids are the indirection that lets one authored "hold the control
+        /// point" asset mean a different pad in every arena, because an objective
+        /// is a ScriptableObject shared by every mission and cannot hold a
+        /// Transform.
+        /// </summary>
+        private static void BuildMissionZones(MissionDirector director)
+        {
+            GameObject root = new("MissionZones");
+
+            // 0 — the control point. On the open floor just north of the centre
+            // bunker: reaching it means crossing the arena, and holding it means
+            // holding the one place with sightlines down all three lanes.
+            Transform control = NewZoneMarker(root, "Zone_ControlPoint", new Vector3(0f, 0.05f, 7.5f));
+
+            // 1 — extraction, back at the mouth the player entered by. Walking
+            // OUT is the shape of every extraction, and it means the last thing a
+            // mission asks is a fighting retreat across ground already fought over.
+            Transform extract = NewZoneMarker(root, "Zone_Extract", new Vector3(0f, 0.05f, -15f));
+
+            SetZones(director, control, extract);
+        }
+
+        private static Transform NewZoneMarker(GameObject parent, string name, Vector3 position)
+        {
+            GameObject marker = new(name);
+            marker.transform.SetParent(parent.transform, false);
+            marker.transform.position = position;
+            return marker.transform;
+        }
+
+        /// <summary>
+        /// Writes the MissionZone[] by hand, because SetArrayRef only handles
+        /// arrays of object references and a MissionZone is a struct with three
+        /// fields. Radii are shipped defaults, not tuning: a mission that wants a
+        /// different one edits the scene.
+        /// </summary>
+        private static void SetZones(MissionDirector director, Transform control, Transform extract)
+        {
+            var serialized = new SerializedObject(director);
+            SerializedProperty zones = serialized.FindProperty("_zones");
+            zones.arraySize = 2;
+
+            SerializedProperty first = zones.GetArrayElementAtIndex(0);
+            first.FindPropertyRelative("id").intValue = 0;
+            first.FindPropertyRelative("marker").objectReferenceValue = control;
+            first.FindPropertyRelative("radius").floatValue = 3f;
+
+            SerializedProperty second = zones.GetArrayElementAtIndex(1);
+            second.FindPropertyRelative("id").intValue = 1;
+            second.FindPropertyRelative("marker").objectReferenceValue = extract;
+            second.FindPropertyRelative("radius").floatValue = 3f;
+
+            serialized.ApplyModifiedPropertiesWithoutUndo();
+        }
+
+        private static void BuildObjectiveHud(GameObject canvasObject, MissionDirector director,
+            Text objectiveLabel)
+        {
+            Text banner = BuildLabel(canvasObject, "MissionBanner", new Vector2(0f, 300f),
+                TextAnchor.MiddleCenter, new Vector2(0.5f, 0.5f), 56);
+            banner.rectTransform.sizeDelta = new Vector2(1200f, 90f);
+            // Cleared by ObjectiveHud's own OnEnable too; shipped empty so the
+            // scene on disk never contains a placeholder the player could see.
+            banner.text = string.Empty;
+
+            ObjectiveHud hud = canvasObject.AddComponent<ObjectiveHud>();
+            SetRef(hud, "_director", director);
+            SetRef(hud, "_objectiveLabel", objectiveLabel);
+            SetRef(hud, "_bannerLabel", banner);
+        }
+
+        /// <summary>
+        /// Unity's built-in UI sprite — the same one a GameObject &gt; UI &gt; Image
+        /// gets, resolved from the editor's built-in extra resources and shipped
+        /// inside the player. The only sprite in this project, and the only reason
+        /// there is one at all is that a Filled Image without a sprite silently
+        /// stops being filled. See BuildInteractPrompt.
+        /// </summary>
+        private static Sprite? UiSprite()
+            => AssetDatabase.GetBuiltinExtraResource<Sprite>("UI/Skin/UISprite.psd");
+
         private static void StretchFull(GameObject target)
         {
             RectTransform rect = target.GetComponent<RectTransform>();
@@ -2710,7 +3083,8 @@ namespace CoD.EditorTools
         /// listeners" every frame, which is noise in the one console this project
         /// keeps at zero warnings.
         /// </summary>
-        private static void BuildMainMenuScene(GameConfig game, SettingsConfig settingsConfig, VolumeProfile postFx)
+        private static void BuildMainMenuScene(GameConfig game, SettingsConfig settingsConfig,
+            MissionCatalog missionCatalog, VolumeProfile postFx)
         {
             Scene scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
 
@@ -2755,11 +3129,31 @@ namespace CoD.EditorTools
                 new Color(0.05f, 0.055f, 0.065f, 1f), 48, 30);
             settings.Title.text = "SETTINGS";
 
+            // Created after the settings page, so it is the LAST child of the
+            // canvas and paints over both screens it can be opened from. Same
+            // three labels, same backdrop, same construction — a mission list is
+            // not a different kind of screen, it is a different body of text.
+            MenuScreen campaign = BuildMenuScreen(canvasObject, "MissionSelectPanel",
+                new Color(0.05f, 0.055f, 0.065f, 1f), 48, 30);
+            campaign.Title.text = "CAMPAIGN";
+
             SettingsPanel settingsPanel = canvasObject.AddComponent<SettingsPanel>();
             SetRef(settingsPanel, "_settings", settingsHub);
             SetRef(settingsPanel, "_root", settings.Root);
             SetRef(settingsPanel, "_bodyLabel", settings.Body);
             SetRef(settingsPanel, "_footerLabel", settings.Footer);
+
+            MissionSelectPanel missionPanel = canvasObject.AddComponent<MissionSelectPanel>();
+            SetRef(missionPanel, "_settings", settingsHub);
+            SetRef(missionPanel, "_catalog", missionCatalog);
+            SetRef(missionPanel, "_root", campaign.Root);
+            SetRef(missionPanel, "_titleLabel", campaign.Title);
+            SetRef(missionPanel, "_bodyLabel", campaign.Body);
+            SetRef(missionPanel, "_footerLabel", campaign.Footer);
+            // The arena a mission falls back to when it does not name its own. An
+            // empty string here is a Launch that loads nothing and looks like a
+            // dead ENTER key, which is why GreyBoxVerify checks it as a string.
+            SetString(missionPanel, "_defaultSceneName", "10_GreyBox");
 
             MainMenuPanel menuPanel = canvasObject.AddComponent<MainMenuPanel>();
             SetRef(menuPanel, "_settings", settingsHub);
@@ -2769,6 +3163,10 @@ namespace CoD.EditorTools
             SetRef(menuPanel, "_bodyLabel", menu.Body);
             SetRef(menuPanel, "_footerLabel", menu.Footer);
             SetRef(menuPanel, "_settingsPanel", settingsPanel);
+            // Unwired, the CAMPAIGN row hides the main menu and opens nothing —
+            // a black screen that ignores every key except ESC, which the panel
+            // that is not open cannot handle either.
+            SetRef(menuPanel, "_missionPanel", missionPanel);
             SetString(menuPanel, "_gameSceneName", "10_GreyBox");
 
             EditorSceneManager.MarkSceneDirty(scene);
@@ -2810,7 +3208,7 @@ namespace CoD.EditorTools
             {
                 "Assets/_Project/Art", Materials, Textures, "Assets/_Project/Audio",
                 "Assets/_Project/Data", DataGame, DataWeapons, DataDrones, DataAttacks,
-                DataWaves, DataShop, DataPassives, DataEffects, Audio,
+                DataWaves, DataShop, DataPassives, DataEffects, DataMissions, Audio,
                 Prefabs, Scenes,
             };
             foreach (string folder in folders)

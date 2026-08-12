@@ -24,6 +24,30 @@ namespace CoD.Waves
         [Tooltip("Leave empty to count every drone. Set it and only this archetype counts.")]
         public DroneConfig? droneFilter;
 
+
+        /// <summary>
+
+        /// Yes: a kill quota with no wave loop is a locked empty room.
+
+        ///
+
+        /// MissionObjective.RequiresWaves defaults to FALSE and only
+
+        /// Obj_SurviveWaves overrode it, so MissionDirector's wave gate left the
+
+        /// runner suspended for a mission whose only steps were a quota and a
+
+        /// hold. Nothing spawned, the quota could never fill, and the asset
+
+        /// validated clean — so the mission shipped in the catalog as a room
+
+        /// with nothing in it and no error anywhere saying why.
+
+        /// </summary>
+
+        public override bool RequiresWaves => true;
+
+
         public override void Begin(in ObjectiveContext context, ref ObjectiveState state)
         {
             // KillsOf(null) is the grand total on purpose, so the filtered and

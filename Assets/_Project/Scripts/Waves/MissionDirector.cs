@@ -39,9 +39,17 @@ namespace CoD.Waves
         [SerializeField] private RunContext? _run = null;
         [SerializeField] private WaveRunner? _runner = null;
         [SerializeField] private MissionCatalog? _catalog = null;
+        [Tooltip("Where the mission RESULT is written. Never the permadeath record.")]
+        [SerializeField] private SettingsHub? _settings = null;
         [SerializeField] private DroneRegistry? _registry = null;
+        [Tooltip("The scene's interactables. The director subscribes for the counting; it never touches one.")]
+        [SerializeField] private CoD.Core.InteractableRegistry? _interactables = null;
         [Tooltip("Where the player is. Zone objectives measure from here.")]
         [SerializeField] private Transform? _player = null;
+        [Tooltip("The player's Health. A campaign death is a rewind, and a rewind has to put them back on their feet.")]
+        [SerializeField] private Health? _playerHealth = null;
+        [Tooltip("Named places a mission can send the player. Registered on mission start; objectives address them by id.")]
+        [SerializeField] private MissionZone[] _zones = System.Array.Empty<MissionZone>();
 
         private readonly MissionProgress _progress = new();
 
@@ -51,6 +59,7 @@ namespace CoD.Waves
         private bool _running;
         private bool _finished;
 
+        private float _startedAt;
         private int _checkpointStep;
         private int _checkpointWave;
 
@@ -101,6 +110,7 @@ namespace CoD.Waves
                 _runner.PlayerDown += OnPlayerDown;
             }
             if (_registry != null) _registry.Killed += OnDroneKilled;
+            if (_interactables != null) _interactables.Interacted += RecordInteraction;
         }
 
         private void OnDisable()
@@ -111,6 +121,7 @@ namespace CoD.Waves
                 _runner.PlayerDown -= OnPlayerDown;
             }
             if (_registry != null) _registry.Killed -= OnDroneKilled;
+            if (_interactables != null) _interactables.Interacted -= RecordInteraction;
         }
 
         private void Start()
@@ -133,6 +144,9 @@ namespace CoD.Waves
             _run.BeginRun(_mission.startingMoney);
             _runner.SetWaves(_mission.waves);
             _running = true;
+            _startedAt = Time.time;
+
+            RegisterZones();
 
             // Deliberately NOT resumed here. The runner stays suspended until a
             // step actually asks for enemies — see ApplyWaveGate.
@@ -192,8 +206,16 @@ namespace CoD.Waves
 
             if (wanted)
             {
-                _runner.StartFrom(_runner.WaveNumber + 1);
+                // ORDER MATTERS, and it is the opposite of the obvious one.
+                // Resume gives back the time the runner spent suspended by
+                // adding it to _phaseEndsAt — correct on its own. StartFrom then
+                // overwrites _phaseEndsAt outright with a fresh countdown, which
+                // is also correct on its own. Do StartFrom first and Resume adds
+                // the whole suspended interval ON TOP of the new countdown: a
+                // player who took 25 s to walk to the first objective would then
+                // stare at an empty arena for 29 seconds instead of 4.
                 _runner.Resume();
+                _runner.StartFrom(_runner.WaveNumber + 1);
             }
             else
             {
@@ -201,6 +223,29 @@ namespace CoD.Waves
                 // delete the drones already in the arena and standing between the
                 // player and the next objective.
                 _runner.Suspend();
+            }
+        }
+
+        /// <summary>
+        /// Hands the mission layer the real positions of the places a mission
+        /// can send the player.
+        ///
+        /// Without this, MissionProgress.RegisterZone has no caller anywhere in
+        /// the game, IsInsideZone answers false forever — correctly, by its own
+        /// design — and every ReachZone, HoldZone and Extract objective is
+        /// uncompletable. The failure is silent and total: the mission simply
+        /// sits on its first step with the arena empty, which is the state this
+        /// file's own comments call indistinguishable from a hang.
+        ///
+        /// Re-run after a checkpoint rewind because Reset() clears them.
+        /// </summary>
+        private void RegisterZones()
+        {
+            for (int i = 0; i < _zones.Length; i++)
+            {
+                MissionZone zone = _zones[i];
+                if (zone.marker == null) continue;
+                _progress.RegisterZone(zone.id, zone.marker.position, zone.radius);
             }
         }
 
@@ -317,6 +362,24 @@ namespace CoD.Waves
             _running = false;
 
             _runner?.FinishRun(outcome);
+
+            // Write the record. Without this SettingsHub.RecordMissionResult has
+            // no caller at all, no mission is ever marked complete, and mission
+            // select therefore never unlocks anything past mission one — the
+            // campaign would have no progression whatsoever.
+            //
+            // Deliberately NOT RecordRunEnded: that writes bestRound, and a
+            // campaign mission must never touch the permadeath record.
+            if (_mission != null && _settings != null)
+            {
+                _settings.RecordMissionResult(
+                    _mission.stableId,
+                    completed: outcome == RunOutcome.MissionComplete,
+                    rating: 0,
+                    timeSeconds: Time.time - _startedAt,
+                    deaths: _progress.Deaths);
+            }
+
             MissionEnded?.Invoke(outcome);
         }
 
@@ -335,12 +398,37 @@ namespace CoD.Waves
             _progress.RecordDeath();
             _runner.AbortWave();
 
+            // PUT THE PLAYER BACK ON THEIR FEET. Everything else here is
+            // bookkeeping; this is the line that makes a rewind a rewind.
+            //
+            // RunContext.BeginRun ends in ApplyStats, which uses AdjustMax and
+            // NOT ConfigureMax — deliberately, because it runs on every shop
+            // purchase and a player at 8 HP must not be healed by buying a
+            // reload-speed passive. With an unchanged max the delta is zero, so
+            // current health stays at zero and the player stays dead. Health
+            // then refuses all damage (IsAlive is false so ApplyDamage returns 0), Died can
+            // never fire again, and WeaponController refuses to fire at all --
+            // so waves respawn around an invincible corpse that cannot shoot,
+            // no quota or clear can ever complete, and the mission wedges
+            // forever with no error anywhere.
+            _playerHealth?.ResetHealth();
+
             _activeStep = _checkpointStep;
             _run.BeginRun(_mission.startingMoney);
             // Suspend first so ActivateFrom's gate sees a consistent state and
             // decides for itself whether this step wants waves back.
             _runner.Suspend();
             _runner.StartFrom(_checkpointWave);
+            // NOT Progress.Reset(). It wipes Deaths, which is the one counter
+            // that must survive a rewind -- it counts what the mission has cost
+            // you across every attempt, and a rating that forgot it would score
+            // a mission finished on the twelfth try like one finished clean.
+            //
+            // Nothing else needs clearing either. Every counting objective
+            // re-baselines against the current total in its own Begin, so a
+            // quota re-activated by this rewind asks for N MORE from here --
+            // and the zones survive precisely BECAUSE Reset is not called,
+            // since Reset is the only thing that drops them.
             ActivateFrom(_activeStep);
         }
 
@@ -352,26 +440,25 @@ namespace CoD.Waves
         /// <summary>
         /// Wired from PlayerInteractor, which speaks Core's InteractKind because
         /// the player RAISES interactions, the mission layer COUNTS them, and
-        /// neither assembly may reference the other.
+        /// neither assembly may reference the other. Core is the only assembly
+        /// both can see, so Core is where the enum lives.
         ///
-        /// The mapping below is a seam, not a feature: two enums for one concept
-        /// is one too many, and this collapses to a single Core enum in a
-        /// follow-up. Written out rather than cast, so the day the two diverge
-        /// is a compile error instead of a silently miscounted objective.
+        /// There used to be a hand-written switch here translating that enum
+        /// into a second one owned by CoD.Waves. It was a seam, not a feature:
+        /// one concept described twice, with a mapping that had to be kept
+        /// correct by hand. It is gone — the kind now travels from the thing the
+        /// player used all the way to the counter without being translated, so
+        /// there is no longer a place for the two halves to disagree.
+        ///
+        /// One behaviour changed with it, deliberately: Generic and Extract had
+        /// no case, so they fell out of the switch and were not counted AT ALL —
+        /// not even in the running total, which documents itself as
+        /// "interactions of every kind". They count now. Nothing reads them
+        /// today (an extraction is an objective watching a zone, not a tally),
+        /// but an authored Generic interaction being invisible to the record was
+        /// the mapping's bug, not its design.
         /// </summary>
-        public void RecordInteraction(InteractKind kind)
-        {
-            switch (kind)
-            {
-                case InteractKind.Terminal: _progress.RecordInteraction(InteractionKind.Terminal); break;
-                case InteractKind.Charge: _progress.RecordInteraction(InteractionKind.Charge); break;
-                case InteractKind.Intel: _progress.RecordInteraction(InteractionKind.Intel); break;
-                case InteractKind.Door: _progress.RecordInteraction(InteractionKind.Door); break;
-                // Generic and Extract carry no counter: an extraction is an
-                // objective watching a zone, not a tally.
-                default: break;
-            }
-        }
+        public void RecordInteraction(InteractKind kind) => _progress.RecordInteraction(kind);
 
         public void RaiseAlarm() => _progress.RaiseAlarm();
 
@@ -387,7 +474,22 @@ namespace CoD.Waves
         public void DescribeActive(StringBuilder into)
         {
             if (_mission == null) return;
-            for (int i = _activeStep; i < _mission.StepCount; i++)
+
+            // Bounded by _states, NOT by StepCount, and the difference is a
+            // crash on scene load.
+            //
+            // Awake resolves _mission; BeginMission sizes _states, and it runs
+            // in Start. Every OnEnable in the scene lands in between --
+            // including ObjectiveHud, which redraws immediately so the first
+            // frame is not blank. So there is a real window where the mission
+            // has three steps and this array has none, and indexing StepCount
+            // into it throws before the mission has begun.
+            //
+            // Bounding on the array is the fix rather than an IsRunning guard,
+            // because the honest answer to "what are the objectives" before the
+            // mission starts is "nothing yet", not an exception.
+            int steps = Mathf.Min(_mission.StepCount, _states.Length);
+            for (int i = _activeStep; i < steps; i++)
             {
                 if (i > _activeStep && !_mission.steps[i].parallel) break;
                 MissionObjective? objective = _mission.steps[i].objective;

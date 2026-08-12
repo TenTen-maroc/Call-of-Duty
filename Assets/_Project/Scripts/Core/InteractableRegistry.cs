@@ -21,6 +21,26 @@ namespace CoD.Core
     {
         private readonly List<IInteractable> _all = new(32);
 
+        /// <summary>
+        /// Raised after a completed interaction, by whoever completed it.
+        ///
+        /// It lives HERE rather than on PlayerInteractor because of the assembly
+        /// graph: the player RAISES interactions and the mission layer COUNTS
+        /// them, CoD.Player references only CoD.Core, and CoD.Waves does not
+        /// reference CoD.Player at all. This registry is the one object both
+        /// sides already hold a reference to, so routing the event through it
+        /// costs no new dependency, no bridge component and no serialized field.
+        ///
+        /// Without it PlayerInteractor's event had no subscriber anywhere and
+        /// MissionDirector.RecordInteraction had no caller, so every Interact
+        /// objective was uncompletable -- the same silent, total failure as a
+        /// zone nobody registered.
+        /// </summary>
+        public event System.Action<InteractKind>? Interacted;
+
+        /// <summary>Called by the interactor once a use completes. Never by the interactable itself.</summary>
+        public void RaiseInteracted(InteractKind kind) => Interacted?.Invoke(kind);
+
         public int Count => _all.Count;
 
         public void Register(IInteractable interactable)

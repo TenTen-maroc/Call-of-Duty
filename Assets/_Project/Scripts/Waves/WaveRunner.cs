@@ -135,6 +135,12 @@ namespace CoD.Waves
         /// the attack tokens are all exactly where Suspend() left them.
         /// </summary>
         public bool Suspended { get; private set; }
+
+        /// <summary>
+        /// True once anything has ever suspended this runner. One-way: it marks
+        /// that a director is driving, which outlives any particular suspend.
+        /// </summary>
+        private bool _directorOwned;
         public int WaveNumber => _wave;
         public ShopService? Shop => _shop;
         /// <summary>What the next clear will pay, as a multiplier. 1 unless the player skipped a break.</summary>
@@ -200,7 +206,14 @@ namespace CoD.Waves
             // director does all three later, on its own schedule, after the
             // briefing. With no director in the scene Suspended is false and this
             // line is unreachable, which is what keeps endless mode identical.
-            if (Suspended) return;
+            // Guarded on "a director owns me", NOT on the transient Suspended
+            // flag. Awake order between components is undefined, so a director
+            // that suspends in Awake and RESUMES in its own Start can leave
+            // Suspended false by the time this runs -- and then the runner would
+            // begin its own run and open its own countdown underneath a mission
+            // that had already started one. The ownership flag is set once, in
+            // Suspend, and never cleared.
+            if (_directorOwned || Suspended) return;
 
             if (_run != null && _shopConfig != null)
             {
@@ -646,6 +659,7 @@ namespace CoD.Waves
         /// </summary>
         internal void Suspend()
         {
+            _directorOwned = true;
             if (Suspended) return;
             Suspended = true;
             _suspendedAt = Time.time;

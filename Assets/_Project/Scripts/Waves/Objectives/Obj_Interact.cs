@@ -1,5 +1,6 @@
 #nullable enable
 using System.Text;
+using CoD.Core;
 using UnityEngine;
 
 namespace CoD.Waves
@@ -10,6 +11,12 @@ namespace CoD.Waves
     /// tag — a typo in a string id is a mission that can never be completed and
     /// nothing anywhere says why.
     ///
+    /// It is Core's <see cref="InteractKind"/>, the one the player raises and
+    /// <c>InteractPoint</c> is authored with. There was briefly a second enum
+    /// here for the mission layer's own use, translated at the director; two
+    /// enums for one concept is a mapping that has to be maintained by hand and
+    /// silently miscounts the day it is not.
+    ///
     /// The interaction itself — the hold, the prompt, the distance-and-facing
     /// test — belongs to the interaction component and the director. This
     /// objective only counts, which is why it needs no scene to be tested.
@@ -17,8 +24,12 @@ namespace CoD.Waves
     [CreateAssetMenu(fileName = "Objective_Interact", menuName = "CoD/Objectives/Interact", order = 7)]
     public sealed class Obj_Interact : MissionObjective
     {
+        // APPEND ONLY to InteractKind. THIS is the field that makes that rule
+        // load-bearing: Unity serializes the enum into the .asset as a raw int,
+        // so reordering its members re-points every authored objective in the
+        // repo at a different kind, with no error and no diff to notice.
         [Tooltip("Which kind of thing has to be used.")]
-        public InteractionKind kind = InteractionKind.Terminal;
+        public InteractKind kind = InteractKind.Terminal;
 
         [Tooltip("How many, FROM HERE. Anything used in an earlier step does not count.")]
         [Range(1, 20)] public int count = 1;

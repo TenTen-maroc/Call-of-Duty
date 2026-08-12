@@ -54,7 +54,33 @@ namespace CoD.UI
             RunState state = _run.State;
             SaveData save = _run.Save;
 
-            if (_titleLabel != null) _titleLabel.text = "YOU DIED";
+            // WHICH ending this is. FinishRun sets RunPhase.GameOver for every
+            // outcome, including MissionComplete -- so a finished mission used to
+            // print YOU DIED, with the mission banner painted on top of it,
+            // because this panel read the phase and never the outcome.
+            RunOutcome outcome = _runner != null ? _runner.Outcome : RunOutcome.Died;
+            if (_titleLabel != null)
+            {
+                _titleLabel.text = outcome switch
+                {
+                    RunOutcome.MissionComplete => "MISSION COMPLETE",
+                    RunOutcome.MissionFailed => "MISSION FAILED",
+                    RunOutcome.Abandoned => "MISSION ABORTED",
+                    _ => "YOU DIED",
+                };
+            }
+
+            if (outcome != RunOutcome.Died)
+            {
+                // A mission ending has nothing to say about rounds, kills or the
+                // permadeath record -- none of which it touched.
+                if (_detailLabel != null)
+                {
+                    _detailLabel.text = "KILLS " + state.Kills + "\n\nR)  again        ESC)  menu";
+                }
+                return;
+            }
+
             if (_detailLabel != null)
             {
                 // Asked, not re-derived. Comparing RoundReached against bestRound

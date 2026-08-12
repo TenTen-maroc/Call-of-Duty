@@ -97,7 +97,7 @@ a scene.
 | [MissionObjective.cs](../../Assets/_Project/Scripts/Waves/MissionObjective.cs) | The abstract SO + `ObjectiveContext`. Modelled on `EffectModule`. |
 | [ObjectiveState.cs](../../Assets/_Project/Scripts/Waves/ObjectiveState.cs) | `ObjectiveStatus` + the per-instance `ObjectiveState` struct. |
 | [ObjectiveMath.cs](../../Assets/_Project/Scripts/Waves/ObjectiveMath.cs) | Pure helpers: floor-plane containment, `PickDifferent`, `Progress01`, allocation-free int/seconds append. |
-| [MissionProgress.cs](../../Assets/_Project/Scripts/Waves/MissionProgress.cs) | The polled record + `InteractionKind`. Plain C# class, director-owned. |
+| [MissionProgress.cs](../../Assets/_Project/Scripts/Waves/MissionProgress.cs) | The polled record. Plain C# class, director-owned. Counts interactions by Core's `InteractKind` — see below. |
 | [MissionConfig.cs](../../Assets/_Project/Scripts/Waves/MissionConfig.cs) | The mission asset: steps, waves, arena, money, `OnValidate`. |
 | [Objectives/](../../Assets/_Project/Scripts/Waves/Objectives/) | The eight concrete types, one file each. |
 
@@ -147,13 +147,56 @@ in existence, which is what the tests do.
 | `Obj_DestroyTargets` | `count` | `TargetsDestroyed` reaches baseline + N. |
 | `Obj_Extract` | `zoneId`, `dwellSeconds` | Dwell completes **while standing on the pad**. Always resets on leave. |
 | `Obj_NoAlarm` | — | **Never on its own.** Fails when the alarm is raised; `CompletesWithMission`. |
-| `Obj_Interact` | `kind`, `count` | Interactions of that `InteractionKind` reach baseline + N. |
+| `Obj_Interact` | `kind`, `count` | Interactions of that `InteractKind` reach baseline + N. |
 
 **`Obj_Escort` and `Obj_RepairBeacon` are deliberately absent.** Both need scene
 actors that do not exist — an escortee with pathing and its own health, and a
 beacon wired as a mission target. A stub objective that silently never completes
 is strictly worse than a missing one: it authors, it validates, it ships, and the
 mission it is in can never be finished.
+
+### One interaction enum, and it lives in Core
+
+There is exactly **one** enum describing what an interaction is:
+`CoD.Core.InteractKind` in
+[Interaction.cs](../../Assets/_Project/Scripts/Core/Interaction.cs), with six
+members — `Generic`, `Terminal`, `Charge`, `Intel`, `Extract`, `Door`.
+
+It lives in Core because three layers need the same word and none of them may
+reference each other. The **player** raises the kind (`PlayerInteractor`), the
+**arena** authors it (`InteractPoint`), and the **mission layer** counts it
+(`MissionProgress`, `Obj_Interact`). `CoD.Waves` references `CoD.Core` and never
+the reverse, so Core is the only assembly all three can see — the enum has
+nowhere else it could go without one of them reaching across a boundary.
+
+`CoD.Waves` briefly had a second, four-member `InteractionKind` of its own, with
+`MissionDirector.RecordInteraction` translating between them in a hand-written
+switch. Its own comment called that "a seam, not a feature", and it was: one
+concept written down twice, correct only for as long as somebody kept both
+copies in step. It also had a live bug — `Generic` and `Extract` had no case, so
+they fell out of the switch and were counted **nowhere**, not even in the running
+total that documents itself as "interactions of every kind". The mission layer
+now takes Core's enum straight through, so nothing between the thing the player
+used and the counter can disagree.
+
+Two consequences worth knowing:
+
+- **`InteractKind` is APPEND ONLY.** `Obj_Interact.kind` is a serialized field,
+  so Unity writes the enum into every objective `.asset` as a raw int. Appending
+  a member is safe; reordering silently re-points every authored objective at a
+  different kind, with no error and no diff anyone would notice. Same trap as
+  `RunOutcome` and `GameMode`.
+- **The counter array is sized from the enum, not from a constant.**
+  `MissionProgress` derives its slot count as *highest member value + 1*, once
+  per domain in a `static readonly`. A hand-kept `Count` is two copies of one
+  fact, and when it drifts the range guard in `RecordInteraction` quietly drops
+  every interaction of the new kind — an objective that can never complete and
+  nothing anywhere saying why. Highest-value-plus-one rather than
+  `GetValues().Length` because the two agree only while the enum is contiguous
+  from zero, and an appended `Sabotage = 10` would reintroduce exactly the same
+  silent drop.
+  `MissionProgress_HasASlotForEveryInteractKind_AndDropsValuesThatAreNotMembers`
+  asserts both the sizing and the guard.
 
 ### Why "Timed" is not an objective type
 
@@ -234,7 +277,7 @@ number, and the game has exactly one countdown implementation.
 ## Tests
 
 [MissionObjectiveTests.cs](../../Assets/_Project/Tests/EditMode/MissionObjectiveTests.cs)
-— 43 EditMode tests, and the file exists to prove a claim as much as to use it:
+— 44 EditMode tests, and the file exists to prove a claim as much as to use it:
 a hand-built `MissionProgress` plus `ScriptableObject.CreateInstance` is a
 **complete** environment for this layer. No arena, no navmesh, no runner, no
 frame. `EveryObjective_RunsWithNoSceneAndNoRunner` reflects over the family and
@@ -255,6 +298,66 @@ leave-reset were one condition.
 - [save.md](save.md) — schema 4 carries the campaign block.
 - [menus.md](menus.md) — the campaign row and mission select.
 - [drones.md](drones.md) — the enemy layer both families share.
+
+## Four ways a mission can be uncompletable, all of which happened
+
+Every one of these compiled, passed all eight guards, validated clean in
+`OnValidate`, and shipped in the catalog. None was caught by a test; all four
+were caught by reading. They are written down because each is a *class* of
+failure this layer invites, not a one-off.
+
+**1. A zone nobody registered.** `MissionProgress.RegisterZone` had no caller
+anywhere in the game, so `IsInsideZone` answered false forever — correctly, by
+its own design. Every `ReachZone`, `HoldZone` and `Extract` objective was
+therefore uncompletable, and mission 1 stalled on its *first* step with the
+runner suspended and the arena empty. The tests passed because they registered a
+zone under the player's feet themselves.
+*Fixed:* `MissionDirector` carries serialized `MissionZone[]` markers and calls
+`RegisterZone` on mission start **and after every checkpoint rewind**, because
+`Progress.Reset()` clears them.
+
+**2. An objective that needs enemies but does not say so.**
+`MissionObjective.RequiresWaves` defaults to false and only `Obj_SurviveWaves`
+overrode it. `MissionDirector` gates the wave loop on that flag, so mission 2 —
+kill quota, then hold, then extract — left the runner suspended from `Awake`
+and never spawned a single drone. Five authored waves, dead weight.
+*Fixed:* `Obj_KillQuota` returns true; `Obj_HoldZone` returns `requireWavePhase`,
+because a hold that does not need a live wave must not drag one in behind it.
+
+**3. A rewind that never revived the player.** `OnPlayerDown` rebuilt the step
+machine and never touched `Health`. `RunContext.BeginRun` ends in `ApplyStats`,
+which uses `AdjustMax` and **not** `ConfigureMax` — deliberately, so buying a
+passive at 8 HP does not heal you — so with an unchanged max the delta is zero
+and current health stays at zero. A dead player takes no damage, can never raise
+`Died` again, and `WeaponController` refuses to fire, so waves respawned around
+an invincible corpse that could not shoot and the mission wedged forever.
+*Fixed:* the rewind calls `ResetHealth()`. **The test that covered this path
+asserted the phase, the death count and the save file, and never once asserted
+the player was alive** — which is why it certified the bug green.
+
+**4. A result nobody wrote.** `SettingsHub.RecordMissionResult` had no caller, so
+no mission was ever marked complete and mission select never unlocked anything
+past mission one.
+*Fixed:* `FinishMission` writes it — and deliberately **not** through
+`RecordRunEnded`, which writes `bestRound`. A campaign mission must never touch
+the permadeath record.
+
+### And one that only shows up in a stopwatch
+
+`ApplyWaveGate` called `StartFrom` then `Resume`. `StartFrom` sets a fresh
+countdown; `Resume` then *adds back* the whole interval the runner spent
+suspended — which began at scene load. A player who took 25 s to reach the first
+objective got a 29-second empty arena instead of a 4-second countdown. Both
+comments were individually correct and wrong together. The order is now `Resume`
+then `StartFrom`, so the stale value is overwritten rather than added to.
+
+### The ownership flag, and why `Suspended` was not enough
+
+`WaveRunner.Start` guarded on `Suspended`. A director that suspends in `Awake`
+and *resumes* in its own `Start` can leave that false before `WaveRunner.Start`
+runs — and the runner would then begin its own run underneath a mission that had
+already started one. The guard is now a one-way `_directorOwned` flag set inside
+`Suspend`, which outlives any particular suspend.
 
 ## Gotchas
 
@@ -280,9 +383,13 @@ leave-reset were one condition.
   keyword and every read through an `in` parameter silently copies the whole
   struct first — the cheap thing quietly becomes the expensive thing in a
   per-frame path.
-- **`InteractionKind` order is not serialized today.** If it ever reaches the
-  save file, adding a member is safe and reordering one is a silent corruption —
-  the same trap `RunOutcome` and `GameMode` carry.
+- **`InteractKind` order IS serialized — it is APPEND ONLY.** `Obj_Interact.kind`
+  writes it into every objective `.asset` as a raw int, so adding a member is
+  safe and reordering one silently re-points authored objectives at a different
+  kind. The same trap `RunOutcome` and `GameMode` carry, except this one is
+  already sprung: the assets exist the moment anyone authors a mission. There is
+  exactly one such enum and it lives in `CoD.Core` — see
+  [One interaction enum, and it lives in Core](#one-interaction-enum-and-it-lives-in-core).
 - **`MissionProgress` capacities are buffer sizes, not tuning numbers**
   (`KILL_TYPE_CAPACITY`, `ZONE_CAPACITY`), which is why they are `const` in code
   rather than fields on an asset. Exceeding either warns once and degrades:

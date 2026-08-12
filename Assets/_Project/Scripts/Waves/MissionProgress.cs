@@ -1,41 +1,11 @@
 #nullable enable
+using System;
 using CoD.Core;
 using CoD.Enemies;
 using UnityEngine;
 
 namespace CoD.Waves
 {
-    /// <summary>
-    /// The kinds of thing a player can walk up to and use. An enum rather than a
-    /// string id because it indexes an array — a string key would mean a hash and
-    /// a dictionary lookup per interaction, and there is no version of this game
-    /// with fifty kinds.
-    ///
-    /// Order is not serialized anywhere today. If it ever is, adding a member is
-    /// safe and reordering one is a silent corruption — the same trap
-    /// <see cref="RunOutcome"/> documents.
-    /// </summary>
-    public enum InteractionKind
-    {
-        /// <summary>A console the player holds to hack. The default kind.</summary>
-        Terminal = 0,
-
-        /// <summary>A demolition charge placed on something.</summary>
-        Charge = 1,
-
-        /// <summary>A pickup that carries story rather than power.</summary>
-        Intel = 2,
-
-        /// <summary>A door, hatch or lift the player opens.</summary>
-        Door = 3,
-    }
-
-    public static class InteractionKindExtensions
-    {
-        /// <summary>How many slots the counter array needs. One place to change when a kind is added.</summary>
-        public const int Count = 4;
-    }
-
     /// <summary>
     /// Everything that has happened in this mission so far, as plain counters.
     ///
@@ -69,12 +39,56 @@ namespace CoD.Waves
         /// <summary>Buffer size, not a tuning number: the most zones one mission can register.</summary>
         public const int ZONE_CAPACITY = 16;
 
+        /// <summary>
+        /// How many slots the interaction counter array needs — DERIVED from
+        /// <see cref="InteractKind"/>, never typed out.
+        ///
+        /// THE DISASTER THIS PREVENTS
+        /// A hand-kept `Count` constant and the enum are two copies of one fact,
+        /// and they drift the first time someone appends a kind without
+        /// scrolling up. The drift is silent in the worst way: the range guard in
+        /// <see cref="RecordInteraction"/> would quietly DROP every interaction
+        /// of the new kind, so the objective counting it can never complete and
+        /// nothing anywhere says why. Derived from the enum, that cannot happen —
+        /// there is only one list.
+        ///
+        /// HIGHEST VALUE + 1, not `GetValues().Length`. Those two agree only
+        /// while the enum runs contiguously from zero, and InteractKind is
+        /// APPEND ONLY precisely because mission assets serialize it as an int.
+        /// The day someone appends `Sabotage = 10` to leave room for a family of
+        /// kinds, Length would size this array at 7 and index 10 would fall off
+        /// the end — the same silent drop, from the cleverer version.
+        ///
+        /// Costs one small array ONCE per domain, at type init, never per call.
+        /// `static readonly` satisfies the no-mutable-statics guard, and Domain
+        /// Reload being off costs nothing here: the value comes from a
+        /// compile-time enum, and changing that enum forces a recompile, which
+        /// resets the domain anyway.
+        /// </summary>
+        private static readonly int InteractSlotCount = HighestInteractKind() + 1;
+
+        private static int HighestInteractKind()
+        {
+            var kinds = (InteractKind[])Enum.GetValues(typeof(InteractKind));
+            int highest = 0;
+            for (int i = 0; i < kinds.Length; i++)
+            {
+                int value = (int)kinds[i];
+                if (value > highest) highest = value;
+            }
+            return highest;
+        }
+
         private readonly DroneConfig?[] _killTypes = new DroneConfig?[KILL_TYPE_CAPACITY];
         private readonly int[] _killCounts = new int[KILL_TYPE_CAPACITY];
         private int _killTypeCount;
         private bool _killTypeOverflowReported;
 
-        private readonly int[] _interactions = new int[InteractionKindExtensions.Count];
+        // One slot per kind, indexed by the enum. An array rather than a
+        // Dictionary<InteractKind, int> for the reason everything else in this
+        // class is an array: a hash and a bucket walk per interaction buys
+        // nothing over six contiguous ints, and the dictionary allocates.
+        private readonly int[] _interactions = new int[InteractSlotCount];
 
         private readonly int[] _zoneIds = new int[ZONE_CAPACITY];
         private readonly Vector3[] _zoneCenters = new Vector3[ZONE_CAPACITY];
@@ -150,16 +164,25 @@ namespace CoD.Waves
 
         public void RecordTargetDestroyed() => TargetsDestroyed++;
 
-        public void RecordInteraction(InteractionKind kind)
+        /// <summary>
+        /// One thing was used. The kind is Core's <see cref="InteractKind"/> —
+        /// the SAME enum the player raises and an <c>Obj_Interact</c> asset is
+        /// authored with, so nothing between the trigger and the tally has to be
+        /// translated. APPEND ONLY: mission assets serialize it as an int.
+        /// </summary>
+        public void RecordInteraction(InteractKind kind)
         {
             Interactions++;
             int index = (int)kind;
             // Casting an out-of-range int to an enum is legal C#, so a mis-authored
-            // asset can hand us a value that is not a member at all.
+            // asset can hand us a value that is not a member at all. This matters
+            // MORE now that the enum is serialized into mission assets: the bad
+            // value arrives from a file on disk, not from a typo in code the
+            // compiler could have caught.
             if (index >= 0 && index < _interactions.Length) _interactions[index]++;
         }
 
-        public int InteractionsOf(InteractionKind kind)
+        public int InteractionsOf(InteractKind kind)
         {
             int index = (int)kind;
             return index >= 0 && index < _interactions.Length ? _interactions[index] : 0;

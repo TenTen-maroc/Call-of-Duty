@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Reflection;
 using System.Text;
 using System.Text.RegularExpressions;
+using CoD.Core;
 using CoD.Enemies;
 using CoD.Waves;
 using NUnit.Framework;
@@ -566,23 +567,61 @@ namespace CoD.Tests
         {
             var progress = new MissionProgress();
             Obj_Interact objective = Make<Obj_Interact>();
-            objective.kind = InteractionKind.Charge;
+            objective.kind = InteractKind.Charge;
             objective.count = 2;
 
             ObjectiveContext context = Context(progress);
             var state = default(ObjectiveState);
             objective.BeginStep(in context, ref state, 0f, 0f);
 
-            progress.RecordInteraction(InteractionKind.Terminal);
-            progress.RecordInteraction(InteractionKind.Intel);
-            progress.RecordInteraction(InteractionKind.Charge);
+            progress.RecordInteraction(InteractKind.Terminal);
+            progress.RecordInteraction(InteractKind.Intel);
+            progress.RecordInteraction(InteractKind.Charge);
             Tick(objective, in context, ref state, 1f);
             Assert.AreEqual(1, state.Counter);
 
-            progress.RecordInteraction(InteractionKind.Charge);
+            progress.RecordInteraction(InteractKind.Charge);
             Tick(objective, in context, ref state, 1f);
             Assert.AreEqual(ObjectiveStatus.Complete, state.Status);
             Assert.AreEqual(4, progress.Interactions, "the total counts every kind");
+        }
+
+        /// <summary>
+        /// The counter array is sized FROM InteractKind rather than from a
+        /// hand-kept constant, and this is what proves it stayed that way.
+        ///
+        /// Both halves are silent failures, which is why they need a test at all.
+        /// A slot the array is too short for is DROPPED, so an objective counting
+        /// that kind can never complete and nothing logs. And an out-of-range
+        /// value now arrives from a mission ASSET — a serialized int the compiler
+        /// never saw — so the range guard is the only thing between a
+        /// mis-authored file and an IndexOutOfRangeException mid-mission.
+        /// </summary>
+        [Test]
+        public void MissionProgress_HasASlotForEveryInteractKind_AndDropsValuesThatAreNotMembers()
+        {
+            var progress = new MissionProgress();
+            var kinds = (InteractKind[])Enum.GetValues(typeof(InteractKind));
+            Assert.Greater(kinds.Length, 0, "the enum cannot be empty");
+
+            foreach (InteractKind kind in kinds) progress.RecordInteraction(kind);
+
+            foreach (InteractKind kind in kinds)
+            {
+                Assert.AreEqual(1, progress.InteractionsOf(kind),
+                    $"{kind} has no counter slot — the array is sized from the enum, so this means it drifted");
+            }
+            Assert.AreEqual(kinds.Length, progress.Interactions, "every kind counts towards the total");
+
+            // Casting an out-of-range int to an enum is legal C#. A mis-authored
+            // asset can therefore hand over a value that is not a member at all.
+            var bogus = (InteractKind)9999;
+            progress.RecordInteraction(bogus);
+            Assert.AreEqual(kinds.Length + 1, progress.Interactions,
+                "an unknown kind still counts as an interaction");
+            Assert.AreEqual(0, progress.InteractionsOf(bogus), "but it owns no slot");
+            Assert.AreEqual(0, progress.InteractionsOf((InteractKind)(-1)),
+                "and a negative cast must never read backwards off the front of the array");
         }
 
         // ---------- the step's deadline ----------
@@ -790,7 +829,7 @@ namespace CoD.Tests
             progress.RecordWaveCleared();
             progress.RecordKill(drone);
             progress.RecordTargetDestroyed();
-            progress.RecordInteraction(InteractionKind.Door);
+            progress.RecordInteraction(InteractKind.Door);
             progress.RaiseAlarm();
             progress.RegisterZone(1, Vector3.zero, 5f);
 
@@ -801,7 +840,7 @@ namespace CoD.Tests
             Assert.AreEqual(0, progress.KillsOf(drone));
             Assert.AreEqual(0, progress.TargetsDestroyed);
             Assert.AreEqual(0, progress.Interactions);
-            Assert.AreEqual(0, progress.InteractionsOf(InteractionKind.Door));
+            Assert.AreEqual(0, progress.InteractionsOf(InteractKind.Door));
             Assert.IsFalse(progress.AlarmRaised);
             Assert.IsFalse(progress.TryGetZone(1, out _, out _), "a rewind re-registers zones; it does not keep them");
         }

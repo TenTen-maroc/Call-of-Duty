@@ -1,0 +1,432 @@
+#nullable enable
+using CoD.Waves;
+using UnityEditor;
+using UnityEngine;
+
+namespace CoD.EditorTools
+{
+    /// <summary>
+    /// Authors the campaign: the objective assets, the two missions built out of
+    /// them, and the catalog entry that makes each one reachable from the menu.
+    /// Run it from the CoD menu, or headlessly with
+    ///   Unity.exe -batchmode -quit -projectPath . -executeMethod CoD.EditorTools.MissionBuilder.BuildMissionsHeadless
+    ///
+    /// A SEPARATE FILE FROM GreyBoxBuilder, deliberately. The grey box builds the
+    /// arena — scenes, prefabs, materials, the navmesh, the wave assets — and it
+    /// is already three thousand lines. A mission is none of those things: it is
+    /// pure data, it references assets the grey box already made, and it is the
+    /// part of the project that will grow by a file every time someone designs a
+    /// mission. Two builders means the campaign can be re-authored without
+    /// re-baking a navmesh, and it means a mistake in here cannot cost the arena.
+    ///
+    /// RUN ORDER. Grey box FIRST, then this. Every wave this file references and
+    /// the catalog it fills are the grey box's assets; the errors below say so by
+    /// name rather than leaving a mission quietly pointing at nothing.
+    ///
+    /// IDEMPOTENT, with the same discipline GreyBoxBuilder.LoadOrCreate has: the
+    /// configure callback runs ON CREATE ONLY, so a number a human moved in the
+    /// Inspector survives a re-run. What is re-asserted on every run is
+    /// REFERENCES — the objective a step points at, the waves a mission fights —
+    /// because a broken reference is not a tuning difference, it is a mission
+    /// that skips a step or a fight that spawns the endless ramp instead of the
+    /// wave someone designed. That is WriteWave's rule, applied to missions.
+    /// </summary>
+    public static class MissionBuilder
+    {
+        private const string DataMissions = "Assets/_Project/Data/Missions";
+        private const string DataWaves = "Assets/_Project/Data/Waves";
+        private const string CatalogPath = DataMissions + "/Missions.asset";
+
+        /// <summary>Scene NAME, not a path — the same string Build Settings knows the arena by.</summary>
+        private const string ArenaScene = "10_GreyBox";
+
+        /// <summary>
+        /// Zone ids, and they are IDS rather than tuning numbers — the contract
+        /// between an objective asset and whatever registers a marker in the
+        /// arena at runtime. An objective cannot hold a scene Transform, so it
+        /// holds one of these and <see cref="MissionProgress.RegisterZone"/>
+        /// gives it a position; an id nobody registered answers "not inside",
+        /// which is why a mismatch here reads as an objective that never
+        /// completes rather than one that completes instantly.
+        ///
+        /// Shared across missions on purpose. The objective assets are shared
+        /// too — one "extract" file, not one per mission — so the ids have to
+        /// mean the same thing in every arena or the sharing is a lie.
+        /// </summary>
+        private const int ZONE_CONTROL_POINT = 0;
+
+        /// <summary>The extraction pad. See <see cref="ZONE_CONTROL_POINT"/> for why these are ids and not tuning.</summary>
+        private const int ZONE_EXTRACT = 1;
+
+        /// <summary>
+        /// Save keys. NEVER renamed once shipped: a mission record is keyed by
+        /// this string, so changing one does not rename a record, it orphans it
+        /// and silently reports the mission as never played.
+        /// </summary>
+        private const string Mission01Id = "mission_01_shakedown";
+
+        /// <summary>The second mission's save key. Never renamed — see <see cref="Mission01Id"/>.</summary>
+        private const string Mission02Id = "mission_02_hard_contact";
+
+        [MenuItem("CoD/Build Missions", false, 2)]
+        public static void Build()
+        {
+            EnsureFolder(DataMissions);
+
+            // The grey box creates this deliberately empty, so the menu has
+            // something to read before any mission exists. Created here too, so
+            // this builder is runnable on its own.
+            MissionCatalog catalog = LoadOrCreate<MissionCatalog>(CatalogPath, _ => { });
+
+            // ---- the objective assets ------------------------------------
+            // One file per objective, shared by every mission that wants it —
+            // objectives are stateless by rule, so two missions running the same
+            // asset cannot see each other's progress. The title is the HUD line
+            // and is read mid-fight in peripheral vision; the description is the
+            // briefing line and is read before the shooting starts.
+
+            Obj_ReachZone reachControlPoint = LoadOrCreate<Obj_ReachZone>(
+                DataMissions + "/Objective_Reach_ControlPoint.asset", objective =>
+                {
+                    objective.stableId = "obj_reach_control_point";
+                    objective.title = "REACH THE CONTROL POINT";
+                    objective.description =
+                        "The facility's local control point is marked on your display. Walk to it.";
+                    objective.zoneId = ZONE_CONTROL_POINT;
+                });
+
+            Obj_SurviveWaves surviveTwo = LoadOrCreate<Obj_SurviveWaves>(
+                DataMissions + "/Objective_Survive_Two.asset", objective =>
+                {
+                    objective.stableId = "obj_survive_two";
+                    objective.title = "HOLD OUT";
+                    objective.description =
+                        "Taking the control point wakes the drones on this floor. Clear two waves.";
+                    objective.waves = 2;
+                });
+
+            Obj_KillQuota killsTwelve = LoadOrCreate<Obj_KillQuota>(
+                DataMissions + "/Objective_Kills_Twelve.asset", objective =>
+                {
+                    objective.stableId = "obj_kills_twelve";
+                    objective.title = "DESTROY DRONES";
+                    objective.description =
+                        "Thin them out before you commit to the floor. Twelve drones, any type.";
+                    objective.quota = 12;
+                    // Left null on purpose: every drone counts. A filter here
+                    // would make the mission's difficulty depend on the wave mix
+                    // rather than on the player.
+                    objective.droneFilter = null;
+                });
+
+            Obj_HoldZone holdControlPoint = LoadOrCreate<Obj_HoldZone>(
+                DataMissions + "/Objective_Hold_ControlPoint.asset", objective =>
+                {
+                    objective.stableId = "obj_hold_control_point";
+                    objective.title = "HOLD THE CONTROL POINT";
+                    objective.description =
+                        "Stand on the control point while the override runs. Step off and it restarts.";
+                    objective.zoneId = ZONE_CONTROL_POINT;
+                    objective.holdSeconds = 45f;
+                    objective.resetOnLeave = true;
+                    // The hold is meant to happen UNDER FIRE — that is the whole
+                    // point of putting it on a pad in an arena with three lanes.
+                    // Off, the player could bank the whole 45 s during a shop
+                    // break, which is a walk rather than a decision.
+                    objective.requireWavePhase = true;
+                });
+
+            Obj_Extract extractPad = LoadOrCreate<Obj_Extract>(
+                DataMissions + "/Objective_Extract_Pad.asset", objective =>
+                {
+                    objective.stableId = "obj_extract_pad";
+                    objective.title = "EXTRACT";
+                    objective.description =
+                        "The bird is on the pad. Stand on it until it lifts — leaving restarts the count.";
+                    objective.zoneId = ZONE_EXTRACT;
+                    objective.dwellSeconds = 5f;
+                });
+
+            // ---- mission 1: SHAKEDOWN ------------------------------------
+            // The tutorial, and the first thing anyone will ever play of this
+            // campaign. It teaches the three verbs in the order that costs the
+            // least: walk somewhere, then fight, then walk somewhere under
+            // pressure. Rushers only — both waves it fights are rusher-only
+            // assets — so nothing shoots back before the player has fired.
+            //
+            // Nothing here is timed. A deadline on a step is a good tool and a
+            // terrible first impression: a tutorial that can be FAILED teaches
+            // the menu, not the game.
+            MissionConfig shakedown = LoadOrCreate<MissionConfig>(
+                DataMissions + "/Mission_01_Shakedown.asset", mission =>
+                {
+                    mission.stableId = Mission01Id;
+                    mission.displayName = "SHAKEDOWN";
+                    mission.briefing =
+                        "Facility C-9 went dark eleven hours ago and its drone bay is still answering.\n\n" +
+                        "Walk to the local control point, hold the floor while the bay empties itself at you, " +
+                        "and take the pad out.\n\n" +
+                        "Two waves. Rushers only. Nothing here shoots back.";
+                    mission.arenaScene = ArenaScene;
+                    mission.startingMoney = 300;
+                });
+
+            WriteMission(shakedown,
+                new[]
+                {
+                    new StepPlan(reachControlPoint),
+                    new StepPlan(surviveTwo),
+                    new StepPlan(extractPad),
+                },
+                LoadWaves(1, 2));
+
+            // ---- mission 2: HARD CONTACT ---------------------------------
+            // The same three verbs with the training wheels off: a quota the
+            // player has to go and earn, then the hold that makes a corner with
+            // good sightlines the wrong answer, then the way out. More starting
+            // money, because by now the shop is part of the answer.
+            MissionConfig hardContact = LoadOrCreate<MissionConfig>(
+                DataMissions + "/Mission_02_HardContact.asset", mission =>
+                {
+                    mission.stableId = Mission02Id;
+                    mission.displayName = "HARD CONTACT";
+                    mission.briefing =
+                        "The bay is awake, and it has stopped sending rushers on their own.\n\n" +
+                        "Break twelve of them, then run the override from the control point — " +
+                        "forty-five seconds standing still, in the open, while the rest of the floor comes to you.\n\n" +
+                        "Then take the pad out.";
+                    mission.arenaScene = ArenaScene;
+                    mission.startingMoney = 450;
+                });
+
+            WriteMission(hardContact,
+                new[]
+                {
+                    new StepPlan(killsTwelve),
+                    new StepPlan(holdControlPoint),
+                    new StepPlan(extractPad),
+                },
+                LoadWaves(1, 5));
+
+            EnsureInCatalog(catalog, shakedown, hardContact);
+
+            AssetDatabase.SaveAssets();
+            AssetDatabase.Refresh();
+
+            Debug.Log($"Missions built: {catalog.Count} in the catalog, under {DataMissions}.");
+        }
+
+        /// <summary>Entry point for -executeMethod. Same work, non-zero exit on failure.</summary>
+        public static void BuildMissionsHeadless()
+        {
+            try
+            {
+                Build();
+                EditorApplication.Exit(0);
+            }
+            catch (System.Exception exception)
+            {
+                Debug.LogError("Mission build failed: " + exception);
+                EditorApplication.Exit(1);
+            }
+        }
+
+        // ---------- the plan ----------
+
+        /// <summary>
+        /// One authored step, before it becomes a <see cref="MissionConfig.Step"/>.
+        ///
+        /// A readonly struct with a constructor rather than an object
+        /// initializer, for the reason GreyBoxBuilder's RunAssets gives: under
+        /// `#nullable enable` an initializer leaves the fields provably
+        /// unassigned, and the quality gate fails on warnings, not just errors.
+        /// </summary>
+        private readonly struct StepPlan
+        {
+            public readonly MissionObjective Objective;
+
+            /// <summary>Runs alongside the step BEFORE it. Never true on step 0 — there is nothing there to join.</summary>
+            public readonly bool Parallel;
+
+            /// <summary>Seconds before the step fails. 0 = untimed, which is every step in both missions today.</summary>
+            public readonly float TimeLimitSeconds;
+
+            public StepPlan(MissionObjective objective, bool parallel = false, float timeLimitSeconds = 0f)
+            {
+                Objective = objective;
+                Parallel = parallel;
+                TimeLimitSeconds = timeLimitSeconds;
+            }
+        }
+
+        /// <summary>
+        /// Writes a mission's steps and wave list: references always, everything
+        /// else only when the mission was re-shaped.
+        ///
+        /// The rule is lifted from GreyBoxBuilder.WriteWave because it is the
+        /// same problem. Object references are ALWAYS re-asserted, because a step
+        /// whose objective came back null is a step the director skips — and a
+        /// skipped step means every step after it happens in the wrong order, or
+        /// the mission simply ends early with nothing anywhere saying why.
+        /// Everything else — the parallel flag, the deadline — is written only
+        /// when the step COUNT has moved, which is the signal that the mission
+        /// was re-shaped in this file rather than retuned in the Inspector.
+        ///
+        /// The wave list is assigned outright, and that is not an oversight: a
+        /// wave list is a list of references and NOTHING else, so there is no
+        /// authored value in it to protect. Where a mission's fight is designed
+        /// is the call site in this file.
+        /// </summary>
+        private static void WriteMission(MissionConfig mission, StepPlan[] plan, WaveConfig[] waves)
+        {
+            bool rebuild = mission.steps.Length != plan.Length;
+            if (rebuild) mission.steps = new MissionConfig.Step[plan.Length];
+
+            for (int i = 0; i < plan.Length; i++)
+            {
+                mission.steps[i].objective = plan[i].Objective;
+
+                if (rebuild)
+                {
+                    mission.steps[i].parallel = plan[i].Parallel;
+                    mission.steps[i].timeLimitSeconds = plan[i].TimeLimitSeconds;
+                }
+
+                // THE ONE VALUE THAT IS DERIVED RATHER THAN AUTHORED.
+                //
+                // An objective that reports CompletesWithMission never completes
+                // under its own power — Obj_NoAlarm is the archetype — so a step
+                // holding one must be parallel, or the director waits at it
+                // forever and MissionConfig.OnValidate errors on exactly that.
+                // Asking a plan table to remember which objectives are in that
+                // family is asking it to hold a second copy of a fact the
+                // objective already knows, and the copies drift the first time an
+                // objective changes its answer. Read it from the objective and
+                // there is only one list.
+                //
+                // ANNOUNCED, never silent. MissionConfig normalises a negative
+                // deadline and logs it in the same breath for this reason: a
+                // value that quietly disagrees with what an author typed is how
+                // the mission in the repo and the mission being played drift
+                // apart with nothing in between to notice.
+                if (plan[i].Objective.CompletesWithMission && !mission.steps[i].parallel)
+                {
+                    mission.steps[i].parallel = true;
+                    Debug.LogWarning(
+                        $"[{mission.name}] step {i} is '{plan[i].Objective.name}', which by design can only " +
+                        "complete when the mission does. Marked parallel — a step like that authored on its own " +
+                        "would hold the mission at it forever.", mission);
+                }
+            }
+
+            mission.waves = waves;
+            EditorUtility.SetDirty(mission);
+        }
+
+        /// <summary>
+        /// The catalog entry: appended if the mission is not already listed, and
+        /// left exactly where it is if it is.
+        ///
+        /// Order in this array IS mission number, so re-sorting on every build
+        /// would renumber a campaign a player is halfway through. Appending is
+        /// therefore the only structural write; the one thing re-asserted in
+        /// place is the reference itself, for a slot whose asset was deleted and
+        /// re-created and now points at nothing.
+        /// </summary>
+        private static void EnsureInCatalog(MissionCatalog catalog, params MissionConfig[] missions)
+        {
+            bool changed = false;
+
+            for (int i = 0; i < missions.Length; i++)
+            {
+                MissionConfig mission = missions[i];
+                int index = catalog.IndexOf(mission.stableId);
+
+                if (index >= 0)
+                {
+                    if (catalog.missions[index] == mission) continue;
+                    catalog.missions[index] = mission;
+                    changed = true;
+                    continue;
+                }
+
+                var grown = new MissionConfig[catalog.missions.Length + 1];
+                System.Array.Copy(catalog.missions, grown, catalog.missions.Length);
+                grown[^1] = mission;
+                catalog.missions = grown;
+                changed = true;
+            }
+
+            if (changed) EditorUtility.SetDirty(catalog);
+        }
+
+        // ---------- helpers ----------
+
+        /// <summary>
+        /// The mission's fight, by wave number.
+        ///
+        /// THE TRAP THIS COMMENT EXISTS FOR. WaveRunner resolves a wave by
+        /// matching <see cref="WaveConfig.waveNumber"/> against its own counter,
+        /// and that counter starts at 1 — so a mission whose list does not
+        /// CONTAIN a wave numbered 1 fights the endless ramp for its opening
+        /// wave instead of the asset someone designed, silently, with no error
+        /// anywhere. Both missions therefore start their list at Wave_01. A
+        /// mission that wants to open on a harder fight needs a wave asset
+        /// NUMBERED 1 that holds that fight, not a later asset in slot zero.
+        /// </summary>
+        private static WaveConfig[] LoadWaves(int first, int last)
+        {
+            var waves = new WaveConfig[last - first + 1];
+            for (int i = 0; i < waves.Length; i++)
+            {
+                int number = first + i;
+                string path = DataWaves + "/Wave_" + number.ToString("00") + ".asset";
+                WaveConfig? wave = AssetDatabase.LoadAssetAtPath<WaveConfig>(path);
+                if (wave == null)
+                {
+                    throw new System.InvalidOperationException(
+                        $"Mission authoring needs '{path}' and it is not there. Run CoD -> Build Grey Box first: " +
+                        "the waves are its assets, and a mission that references none of them quietly fights the " +
+                        "endless ramp instead of a designed wave.");
+                }
+                waves[i] = wave;
+            }
+            return waves;
+        }
+
+        /// <summary>
+        /// Loads an asset, or creates and configures one if it is not there.
+        ///
+        /// A second copy of GreyBoxBuilder.LoadOrCreate, and the duplication is
+        /// the point: that method is private, and this file exists precisely so
+        /// that authoring a mission never edits the three-thousand-line builder
+        /// that owns the scenes. Widening it there would couple the two builders
+        /// for the sake of four lines.
+        ///
+        /// CONFIGURE RUNS ON CREATE ONLY. An asset that already exists comes back
+        /// untouched, which is what lets a human retune a hold time or a quota in
+        /// the Inspector and keep it across a re-run — and it is also the trap:
+        /// RENAMING a path here does not rename the asset. It creates a fresh
+        /// default one, discards every tuned value in the old file, and reports
+        /// success.
+        /// </summary>
+        private static T LoadOrCreate<T>(string path, System.Action<T> configure) where T : ScriptableObject
+        {
+            T? asset = AssetDatabase.LoadAssetAtPath<T>(path);
+            if (asset == null)
+            {
+                asset = ScriptableObject.CreateInstance<T>();
+                configure(asset);
+                AssetDatabase.CreateAsset(asset, path);
+            }
+            return asset;
+        }
+
+        private static void EnsureFolder(string folder)
+        {
+            if (AssetDatabase.IsValidFolder(folder)) return;
+            int split = folder.LastIndexOf('/');
+            AssetDatabase.CreateFolder(folder[..split], folder[(split + 1)..]);
+        }
+    }
+}

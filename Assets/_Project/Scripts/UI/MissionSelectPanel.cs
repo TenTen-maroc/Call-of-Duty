@@ -117,6 +117,12 @@ namespace CoD.UI
             // and the mission id is what the director resolves on the other side.
             // GameMode stays Run, because a campaign mission still plays by Run
             // rules -- Sandbox is the orthogonal choice and this does not touch it.
+            // BOTH axes, every launch. Campaign says WHICH CONTENT; the mode
+            // says which RULES, and a mission plays by Run rules. Writing only
+            // the content axis meant a mission launched straight after a Sandbox
+            // session inherited lastMode: Sandbox -- infinite money and the cheat
+            // console, in the campaign, silently.
+            _settings.SetLastMode(GameMode.Run);
             _settings.SetCampaign(true, mission.stableId);
 
             string scene = string.IsNullOrEmpty(mission.arenaScene) ? _defaultSceneName : mission.arenaScene;

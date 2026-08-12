@@ -1,0 +1,40 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 8c7093eab5a79be41b10a0583948744d, type: 3}
+  m_Name: Mission_01_Shakedown
+  m_EditorClassIdentifier: 
+  stableId: mission_01_shakedown
+  displayName: SHAKEDOWN
+  briefing: 'Facility C-9 went dark eleven hours ago and its drone bay is still answering.
+
+
+    Walk
+    to the local control point, hold the floor while the bay empties itself at you,
+    and take the pad out.
+
+
+    Two waves. Rushers only. Nothing here shoots back.'
+  arenaScene: 10_GreyBox
+  startingMoney: 300
+  steps:
+  - objective: {fileID: 11400000, guid: 48dfba8834fa5d14ca56bc8b532a9d8a, type: 2}
+    parallel: 0
+    timeLimitSeconds: 0
+  - objective: {fileID: 11400000, guid: b66326fedec055b41ab9fdb87051a788, type: 2}
+    parallel: 0
+    timeLimitSeconds: 0
+  - objective: {fileID: 11400000, guid: e2c08668a50685e45bcbfe0daac04577, type: 2}
+    parallel: 0
+    timeLimitSeconds: 0
+  waves:
+  - {fileID: 11400000, guid: 087b864a27832944d8a7164b8e246802, type: 2}
+  - {fileID: 11400000, guid: a8e51294eb9843f4bb2f2850e9e34fde, type: 2}

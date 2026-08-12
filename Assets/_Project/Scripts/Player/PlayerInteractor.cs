@@ -112,6 +112,9 @@ namespace CoD.Player
 
             target.Interact();
             Interacted?.Invoke(target.Kind);
+            // Also through the registry, which is how anything in another
+            // assembly hears about it. See InteractableRegistry.Interacted.
+            _registry?.RaiseInteracted(target.Kind);
         }
 
         private void Drop()

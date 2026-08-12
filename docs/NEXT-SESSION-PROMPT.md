@@ -74,7 +74,7 @@ in the project and the most likely to need moving.
 | C8 | **The repair beacon.** Moves lane every wave, 6 HP/s up to 35 for the wave. Does it pull you out of a good corner, or is walking to it just a way to die? | `Objective_Beacon.radius` (2.5) · `.healPerSecond` (6) · `.healBudgetPerWave` (35) |
 | C9 | **Sandbox module depth.** Explosive + Chain in Sandbox now resolves one level deeper than in a Run. Absurd in the good way, or a frame-rate event? | `GameConfig.sandboxExtraEffectDepth` (1) |
 
-**Nine, A1-A6, C1-C9 and D1-D9 — not "a vibe check".** Report per number. Anything you
+**Nine, A1-A6, C1-C9, D1-D9 and E1-E7 — not "a vibe check".** Report per number. Anything you
 cannot reach (a wave you never survived to, a module you never afforded) says so —
 "couldn't get there" is itself a finding about pacing.
 
@@ -107,6 +107,31 @@ review rather than by play. The current rule — one click per target, a kill
 always confirms — is the second attempt, and it has never been heard by a human.
 
 ---
+
+## Part E — the campaign, and it has never been played by anyone
+
+Two missions exist. They are the least proven thing in the project: authored,
+wired, covered by a suite that drives them without fighting them, and **never
+experienced by a human being**. The review that preceded them found FOUR
+separate ways a mission could be uncompletable — see
+[docs/systems/campaign.md](systems/campaign.md) — so treat "it worked" as the
+finding, not the assumption.
+
+**How to reach it:** main menu → CAMPAIGN → mission 1.
+
+| # | What to feel | If it is wrong, move this |
+| --- | --- | --- |
+| E1 | **Does the objective line tell you what to do?** Top-left, updated as steps complete. If you ever stand still not knowing where to go, that is the finding — say where you were. | `Objective_*.asset` → `title` / `description` |
+| E2 | **SHAKEDOWN, mission 1.** Walk to the control point → survive 2 waves → walk back out to extract. Is the walk-out a fighting retreat or a boring stroll through an empty room? | `Mission_01_Shakedown.asset` → its wave list |
+| E3 | **The zones.** Both pads are 3 m. Standing "on it" should be obvious without looking down. Do you ever think you are on it and not be? | `MissionZones` in the scene → the `_zones` radii on `MissionDirector` |
+| E4 | **Dying mid-mission.** THE one to try deliberately. You should restart at the checkpoint, alive, with the wave loop resuming — not at the menu, and not stuck. Do it twice in a row. | `MissionDirector.OnPlayerDown` — and if you end up alive-but-invincible, stop and tell me: that was a real bug and this is the test of its fix |
+| E5 | **HARD CONTACT, mission 2.** Kill 12 → hold the control point 45 s → extract. Does the hold feel like a siege, or like standing in a circle? | `Objective_Hold_ControlPoint.asset` → `holdSeconds` (45) · the mission's wave list |
+| E6 | **The ending screen.** Finishing should say MISSION COMPLETE, not YOU DIED. If it says the wrong thing, that is a bug I thought I fixed. | `GameOverPanel.Redraw` |
+| E7 | **Does the campaign leave the endless game alone?** Play a normal Run after a mission. Your best round must be untouched, and no mission should start. | if a mission starts, `MainMenuPanel.StartGame` lost its `SetCampaign(false, ...)` |
+
+**E4 and E7 are the two that matter.** E4 because the rewind is the mechanic the
+whole campaign rests on, and E7 because the campaign must never be able to
+damage the record the endless game is played for.
 
 ## What is already true, so you can skip re-checking it
 

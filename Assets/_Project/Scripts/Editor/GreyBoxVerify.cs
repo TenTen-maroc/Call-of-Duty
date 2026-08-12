@@ -13,6 +13,7 @@ using UnityEditor.SceneManagement;
 using UnityEngine;
 using UnityEngine.AI;
 using UnityEngine.SceneManagement;
+using UnityEngine.UI;
 
 namespace CoD.EditorTools
 {
@@ -32,6 +33,9 @@ namespace CoD.EditorTools
     {
         private const string GreyBoxScenePath = "Assets/_Project/Scenes/10_GreyBox.unity";
         private const string MainMenuScenePath = "Assets/_Project/Scenes/20_MainMenu.unity";
+
+        /// <summary>Read by both scenes — the menu picks a mission, the arena resolves the saved id.</summary>
+        private const string MissionCatalogPath = "Assets/_Project/Data/Missions/Missions.asset";
 
         [MenuItem("CoD/Verify and Repair Grey Box", false, 1)]
         public static void VerifyAndRepair() => VerifyAndReport();
@@ -68,6 +72,9 @@ namespace CoD.EditorTools
             Explosive? explosive = Load<Explosive>("Assets/_Project/Data/Effects/Effect_Explosive.asset");
             WeaponConfig? rifle = Load<WeaponConfig>("Assets/_Project/Data/Weapons/AR_Standard.asset");
             WeaponConfig? smg = Load<WeaponConfig>("Assets/_Project/Data/Weapons/SMG_Rapid.asset");
+            InteractionConfig? interaction = Load<InteractionConfig>(
+                "Assets/_Project/Data/Game/Interaction_Default.asset");
+            MissionCatalog? missionCatalog = Load<MissionCatalog>(MissionCatalogPath);
 
             foreach (GameObject root in scene.GetRootGameObjects())
             {
@@ -126,6 +133,15 @@ namespace CoD.EditorTools
                     repaired += Ensure(waveRunner, "_difficulty", difficulty, report, ref missing);
                     repaired += Ensure(waveRunner, "_shopConfig", shop, report, ref missing);
                 }
+                // The mission layer's two ASSET references in this scene, and
+                // therefore the two that can silently fail to persist. A null
+                // catalog means every campaign save resolves to no mission, which
+                // MissionDirector correctly reports and then falls back to the
+                // endless loop — a campaign that quietly is not one.
+                foreach (MissionDirector director in root.GetComponentsInChildren<MissionDirector>(true))
+                    repaired += Ensure(director, "_catalog", missionCatalog, report, ref missing);
+                foreach (PlayerInteractor playerInteractor in root.GetComponentsInChildren<PlayerInteractor>(true))
+                    repaired += Ensure(playerInteractor, "_config", interaction, report, ref missing);
                 // SettingsPanel._settings points at a SCENE object, not an asset.
                 // Scene-object references are the ones that survive a save; the
                 // asset ones are what Ensure exists to repair. It is checked
@@ -325,6 +341,67 @@ namespace CoD.EditorTools
                     // SPACE is "next wave" here and "confirm" in the pause menu.
                     Check(shopPanel, "_pause", stillNull);
                 }
+                // ---- the mission layer ----
+                // Every one of these is null-checked and early-returned somewhere
+                // in the runtime code, which is the pattern that produced this
+                // whole file: a director wired to nothing does not throw, it
+                // simply never starts a mission, and the arena that comes up
+                // looks exactly like endless mode working correctly.
+                //
+                // The catalog's OWN mission list is deliberately NOT run through
+                // CheckArray. CheckArray fails an empty array, and an empty
+                // catalog is the legitimate state of this project until the
+                // missions are authored.
+                foreach (MissionDirector director in root.GetComponentsInChildren<MissionDirector>(true))
+                {
+                    Check(director, "_run", stillNull);
+                    // Without the runner the director disables itself in Awake and
+                    // campaign mode silently becomes endless mode.
+                    Check(director, "_runner", stillNull);
+                    Check(director, "_catalog", stillNull);
+                    // The kill counter. Null here and every "destroy N drones"
+                    // objective sits at zero forever while the drones die.
+                    Check(director, "_registry", stillNull);
+                    // Every zone objective measures from this transform. Null and
+                    // they all measure from the world origin, which is inside the
+                    // centre bunker.
+                    Check(director, "_player", stillNull);
+                    // A campaign death is a REWIND, and a rewind that cannot
+                    // find the players Health leaves them permanently dead:
+                    // immune to damage, unable to fire, with waves respawning
+                    // around a corpse and the mission wedged forever.
+                    Check(director, "_playerHealth", stillNull);
+                    // Where the mission RESULT is written. Null here means no
+                    // mission is ever marked complete and nothing past mission
+                    // one ever unlocks.
+                    Check(director, "_settings", stillNull);
+                    // The route every Interact objective counts through. Null
+                    // here and interactions happen but nothing hears them.
+                    Check(director, "_interactables", stillNull);
+                }
+                foreach (PlayerInteractor playerInteractor in root.GetComponentsInChildren<PlayerInteractor>(true))
+                {
+                    Check(playerInteractor, "_config", stillNull);
+                    Check(playerInteractor, "_registry", stillNull);
+                    Check(playerInteractor, "_input", stillNull);
+                    // Facing decides which of two nearby things the player means,
+                    // and it comes from the look, not the body.
+                    Check(playerInteractor, "_look", stillNull);
+                    Check(playerInteractor, "_health", stillNull);
+                }
+                foreach (ObjectiveHud objectiveHud in root.GetComponentsInChildren<ObjectiveHud>(true))
+                {
+                    Check(objectiveHud, "_director", stillNull);
+                    Check(objectiveHud, "_objectiveLabel", stillNull);
+                    Check(objectiveHud, "_bannerLabel", stillNull);
+                }
+                foreach (InteractPrompt prompt in root.GetComponentsInChildren<InteractPrompt>(true))
+                {
+                    Check(prompt, "_interactor", stillNull);
+                    Check(prompt, "_promptLabel", stillNull);
+                    Check(prompt, "_holdBar", stillNull);
+                    CheckFilledImage(prompt, "_holdBar", stillNull);
+                }
             }
 
             // The drone assets themselves. A DroneConfig with no prefab is the
@@ -352,6 +429,14 @@ namespace CoD.EditorTools
             CheckAssetRef(rifle, "shellCasingPrefab", stillNull);
             CheckAssetRef(smg, "muzzleFlashPrefab", stillNull);
             CheckAssetRef(smg, "shellCasingPrefab", stillNull);
+
+            // The pooled interact point. Only the references that live INSIDE the
+            // prefab are listed: _registry points at a scene object, and a prefab
+            // asset cannot hold one, so whatever spawns these has to supply it.
+            // A null _visual is the quiet one — a spent charge site stays lit and
+            // keeps advertising an interaction the player can no longer have.
+            CheckPrefab<InteractPoint>("Assets/_Project/Prefabs/Interact_Point.prefab", stillNull,
+                "_audio", "_visual", "_useClip");
 
             // The menu scene gets the same save/reload treatment, and only NOW.
             // It opens other scenes, and opening a near-empty one lets Unity
@@ -394,6 +479,7 @@ namespace CoD.EditorTools
             // nothing. This cost one build round to find.
             SettingsConfig? settings = Load<SettingsConfig>("Assets/_Project/Data/Game/Settings.asset");
             GameConfig? game = Load<GameConfig>("Assets/_Project/Data/Game/GameConfig.asset");
+            MissionCatalog? missionCatalog = Load<MissionCatalog>(MissionCatalogPath);
 
             var report = new StringBuilder();
             int repaired = 0;
@@ -405,6 +491,10 @@ namespace CoD.EditorTools
                     repaired += Ensure(hub, "_bounds", settings, report, ref missing);
                     repaired += Ensure(hub, "_defaults", game, report, ref missing);
                 }
+                // The menu's one asset reference, and the one that decides whether
+                // CAMPAIGN lists anything at all.
+                foreach (MissionSelectPanel panel in root.GetComponentsInChildren<MissionSelectPanel>(true))
+                    repaired += Ensure(panel, "_catalog", missionCatalog, report, ref missing);
             }
             if (repaired > 0)
             {
@@ -431,6 +521,10 @@ namespace CoD.EditorTools
                     Check(panel, "_bodyLabel", stillNull);
                     Check(panel, "_footerLabel", stillNull);
                     Check(panel, "_settingsPanel", stillNull);
+                    // Unwired, the CAMPAIGN row hides the main menu and opens
+                    // nothing: a black screen that answers no key, because the
+                    // panel that would handle ESC is the one that never opened.
+                    Check(panel, "_missionPanel", stillNull);
                     CheckString(panel, "_gameSceneName", stillNull);
                 }
                 foreach (SettingsPanel panel in root.GetComponentsInChildren<SettingsPanel>(true))
@@ -439,6 +533,21 @@ namespace CoD.EditorTools
                     Check(panel, "_root", stillNull);
                     Check(panel, "_bodyLabel", stillNull);
                     Check(panel, "_footerLabel", stillNull);
+                }
+                foreach (MissionSelectPanel panel in root.GetComponentsInChildren<MissionSelectPanel>(true))
+                {
+                    // _settings is how a mission gets STARTED — the campaign flag
+                    // and the chosen id are written through it, and Launch
+                    // early-returns without it, so ENTER would do nothing at all.
+                    Check(panel, "_settings", stillNull);
+                    Check(panel, "_catalog", stillNull);
+                    Check(panel, "_root", stillNull);
+                    Check(panel, "_titleLabel", stillNull);
+                    Check(panel, "_bodyLabel", stillNull);
+                    Check(panel, "_footerLabel", stillNull);
+                    // An empty fallback scene name loads nothing for any mission
+                    // that does not name its own arena.
+                    CheckString(panel, "_defaultSceneName", stillNull);
                 }
             }
 
@@ -537,6 +646,68 @@ namespace CoD.EditorTools
                 {
                     stillNull.Add($"{target.GetType().Name}.{field}[{i}]");
                 }
+            }
+        }
+
+        /// <summary>
+        /// A component on a PREFAB rather than in a scene.
+        ///
+        /// Prefab references get no exemption from the failure this file exists
+        /// for: the builder writes them through SerializedObject exactly like
+        /// scene ones, and a renamed field fails the same silent way — with the
+        /// extra twist that nobody opens a pooled prefab to look at it. Called
+        /// while the grey box scene is still the open one, for the load-order
+        /// reason documented above VerifyMenuScene.
+        /// </summary>
+        private static void CheckPrefab<T>(string path, List<string> stillNull, params string[] fields)
+            where T : Component
+        {
+            GameObject? prefab = AssetDatabase.LoadAssetAtPath<GameObject>(path);
+            if (prefab == null)
+            {
+                stillNull.Add($"{path} (no such prefab)");
+                return;
+            }
+
+            T? component = prefab.GetComponent<T>();
+            if (component == null)
+            {
+                stillNull.Add($"{path} (no {typeof(T).Name} component)");
+                return;
+            }
+
+            for (int i = 0; i < fields.Length; i++) Check(component, fields[i], stillNull);
+        }
+
+        /// <summary>
+        /// A progress bar that cannot show progress.
+        ///
+        /// UnityEngine.UI.Image falls straight through to a plain quad when its
+        /// sprite is null — the filled path is never reached and fillAmount is
+        /// never read — so a hold bar built without a sprite renders FULL on the
+        /// first frame and stays full through every hold. Nothing is null,
+        /// nothing errors, and the symptom is a bar that is always finished,
+        /// which reads as a broken hold rather than a broken Image.
+        ///
+        /// The type check is the same failure from the other side: an Image left
+        /// on Simple ignores fillAmount just as completely.
+        ///
+        /// Silent when the reference itself is missing — Check has already
+        /// reported that, and two lines for one fault is noise.
+        /// </summary>
+        private static void CheckFilledImage(Object owner, string field, List<string> stillNull)
+        {
+            var serialized = new SerializedObject(owner);
+            SerializedProperty property = serialized.FindProperty(field);
+            if (property == null || property.objectReferenceValue is not Image image) return;
+
+            if (image.type != Image.Type.Filled)
+            {
+                stillNull.Add($"{owner.GetType().Name}.{field} (Image.type is {image.type}, not Filled)");
+            }
+            if (image.sprite == null)
+            {
+                stillNull.Add($"{owner.GetType().Name}.{field} (no sprite — fillAmount is ignored without one)");
             }
         }
 
