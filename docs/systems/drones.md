@@ -1,6 +1,6 @@
 # Drones
 
-> Last verified: 2026-08-11 — every assembly compiles clean, the grey box builds
+> Last verified: 2026-08-12 — every assembly compiles clean, the grey box builds
 > headlessly and GreyBoxVerify proves the references survive a save/reload round
 > trip. **Not yet verified in play:** the chase, the fuse window, blast damage on
 > the player, and pool reuse across many waves.
@@ -179,6 +179,66 @@ the player's speed and this one has to move with it.
   dense pack the player could be outside the truncated result and the detonation
   did nothing at all. Buffer 16 to 64, and a full buffer is now reported.
 
+
+## The animation seam — the only new code a human soldier needs
+
+[EnemyAnimator.cs](../../Assets/_Project/Scripts/Enemies/EnemyAnimator.cs) is an
+**optional** component on an enemy prefab. `DroneController` holds it as a
+serialized `_animator` and null-checks all four call sites, so a cube pays
+nothing for a component it does not have.
+
+That is the whole cost of human enemies. A soldier is a `DroneConfig` + an
+`AttackModule` + a rigged prefab — the *same data type* a drone is. Pathing,
+attack tokens, pooling, damage, weakpoints and the registry are untouched and
+identical for both families, which is why the drone layer was kept rather than
+renamed. (A rename would also have broken `GreyBoxVerify`'s six hardcoded asset
+paths and every `SetRef`, while `LoadOrCreate` silently created fresh default
+assets at the new paths and reported success.)
+
+| Call | Where | What it drives |
+| --- | --- | --- |
+| `ResetForReuse()` | `Initialize` | Pooled objects are REUSED — a soldier respawning part-way through its own death animation is the class of bug the pool's generation counter prevents elsewhere. |
+| `SetSpeed(planarSpeed)` | `Steer` | The locomotion blend. |
+| `SetTelegraph(0..1)` | `SetTelegraph` | The windup pose. |
+| `PlayAttack()` | all three attack modules, at the moment they act | So the pose and the damage are one beat, not two that drift. |
+| `PlayDeath()` | `OnHealthDied` | Before the death VFX and the retire. |
+
+### The telegraph changes CHANNEL, it does not go away
+
+`SetTelegraph` is the fairness contract of the entire enemy design — the
+difference between "I died from nowhere" and "I got caught out". A drone
+expresses it as an emission ramp on its glowing core. **A human has no glowing
+core**, so it expresses the same 0..1 value as a *pose*, blended in across the
+windup rather than fired as a trigger, because a telegraph that snaps on at the
+last frame is not a telegraph.
+
+**The animator call sits BEFORE the core-renderer early return.** A humanoid
+prefab has no core renderer at all, so putting it after would leave exactly the
+new case silently un-telegraphed — the fairness contract failing in the one
+situation it was extended for.
+
+### Three things that are bugs if you get them backwards
+
+- **Root motion is forced OFF** in `Awake`. The `NavMeshAgent` owns movement,
+  and an imported humanoid clip that also drives position fights it — producing
+  the classic Unity soldier that slides, moonwalks, or drifts off the navmesh.
+  That reads as broken AI rather than as a broken import setting.
+- **Culling is `CullUpdateTransforms`, never `CullCompletely`.** The latter
+  freezes the Animator outright, so a soldier who walked out of view would stop
+  moving and still be standing exactly where you left him.
+- **The locomotion blend is fed from the agent's REALISED velocity**, not from
+  `config.moveSpeed`. A soldier stopped dead against a wall — or zeroed by an
+  attack module for a stop-to-shoot — must read as standing still, not running
+  on the spot.
+
+Animator parameter ids are `static readonly int` from `Animator.StringToHash`,
+the one form of static the mutable-statics guard allows and the established
+idiom in this assembly. `Animator.SetFloat(string)` hashes on every call, and
+this runs per enemy per frame.
+
+**No rigged prefab exists yet**, so every call site is currently a null check
+that does nothing. That is deliberate: the seam lands before the art, so the art
+drops into a slot instead of causing a refactor.
 
 ## Related Systems
 
