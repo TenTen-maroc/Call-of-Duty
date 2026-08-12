@@ -1,0 +1,39 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 756507115cd36f3221ef8bbb094065f7, type: 3}
+  m_Name: Palette_GreyBox
+  m_EditorClassIdentifier: 
+  floor: {r: 0.17, g: 0.18, b: 0.2, a: 1}
+  wall: {r: 0.28, g: 0.29, b: 0.32, a: 1}
+  trim: {r: 0.3, g: 0.62, b: 0.92, a: 1}
+  trimEmission: 1.2
+  practiceTarget: {r: 0.62, g: 0.13, b: 0.11, a: 1}
+  weaponBody: {r: 0.1, g: 0.105, b: 0.115, a: 1}
+  weaponAccent: {r: 0.055, g: 0.06, b: 0.065, a: 1}
+  droneHull: {r: 0.13, g: 0.14, b: 0.17, a: 1}
+  rusherCore: {r: 0.75, g: 0.12, b: 0.1, a: 1}
+  rusherEmission: 1.6
+  shooterCore: {r: 0.95, g: 0.55, b: 0.1, a: 1}
+  shooterEmission: 1.8
+  tankCore: {r: 0.85, g: 0.06, b: 0.22, a: 1}
+  tankEmission: 1.4
+  objectiveBeacon: {r: 0.2, g: 0.9, b: 0.55, a: 1}
+  objectiveEmission: 1.8
+  sparkHot: {r: 1, g: 0.82, b: 0.45, a: 1}
+  fire: {r: 1, g: 0.55, b: 0.2, a: 1}
+  ambientSky: {r: 0.22, g: 0.25, b: 0.31, a: 1}
+  ambientEquator: {r: 0.15, g: 0.16, b: 0.18, a: 1}
+  ambientGround: {r: 0.07, g: 0.07, b: 0.08, a: 1}
+  fogColor: {r: 0.12, g: 0.13, b: 0.16, a: 1}
+  fogStart: 14
+  fogEnd: 55
+  indoorReflection: {r: 0.1, g: 0.11, b: 0.13, a: 1}

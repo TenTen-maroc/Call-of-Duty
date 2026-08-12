@@ -48,23 +48,46 @@ renderer, and two of its settings are load-bearing:
   (full resolution), `AfterOpaque: 0`, `Source: 1` (**DepthNormals**). The
   DepthNormals source is the expensive half of the choice — it makes URP produce
   a full-resolution `_CameraNormalsTexture` in the prepass. `Samples: 1` and a
-  0.3 m radius keep it to contact shadows in corners rather than a general
+  0.5 m radius keeps it to contact shadows in corners rather than a general
   dimming; on a grey box with almost no albedo variation it is doing a large
   share of the work that makes a wall meet a floor.
 
-**Known defect — a second, unmanaged volume stack.** `PC_RPAsset.m_VolumeProfile`
-still points at Unity's template `Assets/Settings/SampleSceneProfile.asset`
-(guid `10fc4df2…`), not at
-[PostFx_Arena](../../Assets/_Project/Data/Game/PostFx_Arena.asset)
-(guid `2412ce7c…`). The pipeline asset's profile is the *default* volume — it sits
-underneath every scene's `Volume` at the lowest priority, and everything it
-overrides is in force everywhere unless the scene volume overrides the same
-parameter. So the values in the table below are being blended over a stack nobody
-in this project tunes or reviews. Someone else is fixing it; do not fix it here.
-Until then, treat any post-processing behaviour that the table cannot explain as
-suspect rather than as a mystery.
+**Fixed — the second, unmanaged volume stack.** `PC_RPAsset.m_VolumeProfile` used
+to point at Unity's template `SampleSceneProfile.asset`. The pipeline asset's
+profile is the *default* volume: it sits underneath every scene's `Volume` at the
+lowest priority, so everything it overrode was in force everywhere unless the
+scene volume happened to override the same parameter. That template carried an
+active `Bloom` (with its own iteration-count override), an active `Vignette`, an
+active `Tonemapping` and a **dormant `MotionBlur`** — one Inspector click from
+live, in a file nobody thought of as game content.
+
+Both pipeline assets now point at
+[PostFx_QualityBase](../../Assets/Settings/PostFx_QualityBase.asset), which is
+deliberately empty: the quality tier contributes nothing, and
+[PostFx_Arena](../../Assets/_Project/Data/Game/PostFx_Arena.asset) is the only
+place post-processing is authored. `SampleSceneProfile.asset` is deleted.
+
+Bloom's `maxIterations` is now pinned explicitly rather than inherited, so no
+future base profile can move it without somebody noticing. (`skipIterations` was
+the URP 16 spelling and is obsolete in 17 — the compiler catches it.)
 
 ## Data Assets
+
+- **Palette_GreyBox.asset** (`Assets/_Project/Data/Game/`, a `PaletteConfig`) —
+  every colour the arena is built from, and the fix for a whole bug CLASS.
+  `LoadOrCreateMaterial` returns an existing `.mat` untouched — right for a value
+  a human tuned, wrong for a shipped default — so the colour literals that used
+  to live in the builder were read exactly once, on the day each material was
+  created. The "tactical palette" commit later changed them and **nothing
+  happened**: `GreyBox_Floor` shipped at 0.32 grey against an intended 0.17,
+  ~1.9× too bright, for the life of the project, with every gate green.
+  `ApplyPalette`/`ApplyEmission` now re-assert from this asset on every build,
+  the same way `ApplySurface` already re-asserted smoothness and metallic.
+  **Tune this asset, not the `.mat`** — the next build overwrites the material,
+  which is the right way round.
+
+- **PostFx_QualityBase.asset** (`Assets/Settings/`) — deliberately empty. See
+  the fixed second-stack note below.
 
 - **PostFx_Arena.asset** (`Assets/_Project/Data/Game/`, a `VolumeProfile`) — the
   whole stack, shared by the arena **and** the menu. One place to tune, and a menu
@@ -78,6 +101,24 @@ suspect rather than as a mystery.
   | `Vignette` | 0.28, smoothness 0.35 | Pulls the eye to the crosshair. |
   | `ColorAdjustments` | contrast +8, saturation −6 | The grey/red tactical palette. |
   | `FilmGrain` | Thin1, 0.15 | Nearly free, and it breaks up surfaces carrying little texture. |
+  | `ShadowsMidtonesHighlights` | shadows cool, highlights warm | The single biggest "modern shooter" move, and it reinforces the palette rule — cool is architecture, warm is a threat — in every pixel rather than only the emissive ones. |
+  | `WhiteBalance` | temperature −6 | Cools the image toward the tactical palette. |
+  | `LiftGammaGain` | small lift | Stops the corners crushing to nothing under the vignette **and** `PlayerDamageFeedback`'s low-health tint, which stack in the same place. Crushed corners hide drones. |
+  | `ChromaticAberration` | 0.06 | Reads as a lens. Identity at screen centre, so it never smears the crosshair or the point of impact. |
+
+  Everything from `ShadowsMidtonesHighlights` down folds into the 32³ HDR grading
+  LUT the pipeline already builds every frame, so the whole grade costs **no
+  additional milliseconds**. That is also why a missing one is invisible, and why
+  `RenderingTests` asserts each survived the save.
+
+  **Refused deliberately, and asserted absent:** `MotionBlur` (URP's is
+  camera-only — a fast mouse turn smears the whole screen and hides the drone
+  about to reach you), `DepthOfField` (1.5–3 ms and it fights target
+  readability; ADS-only is defensible later, always-on never is), and
+  `PaniniProjection` (62° vertical is not wide enough to need a fullscreen
+  distortion pass). `ColorLookup` is *wanted* but absent: it needs a strip graded
+  from a real screenshot, which means grading it from the game rather than from
+  imagination.
 
 - **Objective_Beacon.mat / Trim_Emissive.mat** — see the colour rule below.
 - **Surface_Detail_N.png** (`Assets/_Project/Art/Textures/`) — one shared 1024
@@ -283,8 +324,10 @@ The tools that can answer it, and what each one is for:
 - A `-batchmode` test run does almost no GPU work, so **no automated gate can
   measure what any of this costs in frame time.** The manual tools that can are
   named under [Budget](#nothing-here-can-measure-frame-time).
-- `PC_RPAsset.m_VolumeProfile` points at Unity's `SampleSceneProfile`, so a second
-  volume stack blends underneath every scene. See [The renderer](#the-renderer).
+- The pipeline asset carries its own **default** volume profile that blends
+  UNDERNEATH every scene volume. It is deliberately empty here; if post-processing
+  ever behaves in a way `PostFx_Arena` does not explain, that asset is the first
+  place to look. See [The renderer](#the-renderer).
 
 ## Related Systems
 
