@@ -1,6 +1,6 @@
 # Performance — the two caps, and what a machine can prove
 
-> Last verified: 2026-08-11
+> Last verified: 2026-08-12
 > **Verified:** the caps hold and the arena allocates ~450 B/frame at 40 alive,
 > asserted by 4 PlayMode tests. **Frame time on the actual RTX 3050 is NOT
 > verified** and cannot be from a headless run — see below.
@@ -68,6 +68,26 @@ open. That is item 9 on the tuning card.
   ScriptableObject fields. They are harness thresholds, not game tuning — no
   balance decision reads them, and a CI budget living beside drone health would
   make that asset harder to reason about.
+
+## One gate is timing-flaky, and it is worth knowing which
+
+`GreyBoxLoopTests.TheBeacon_MovesAndHealsWithinItsBudget` failed once and passed
+on the immediately following run, **with no code or scene change between them**.
+
+Its `WaitUntil` helper budgets **real** seconds (`Time.realtimeSinceStartup`),
+and 20 s of real time in a `-batchmode` run is not a fixed amount of simulated
+time: the run competes with asset importing, shader compilation and whatever
+else the machine is doing. The same helper is used by several PlayMode tests and
+the beacon one is the slowest, so it is the first to run out.
+
+**This matters more than one red test.** A suite that fails at random teaches
+you to re-run it rather than read it, and the next real failure gets re-run too.
+If it recurs, raise that one budget or drive the beacon in simulated time —
+do not "fix" it by re-running until it is green.
+
+Not a bug in the beacon: the behaviour under test passed on both a prior and a
+subsequent run, and `ArenaObjective` allocates nothing and does no work outside
+`RunPhase.Wave`.
 
 ## Related Systems
 

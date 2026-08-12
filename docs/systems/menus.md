@@ -1,6 +1,6 @@
 # Menus — main menu, pause, settings page
 
-> Last verified: 2026-08-11
+> Last verified: 2026-08-12
 > **Verified in play:** no. Compiled, gated, and covered by 7 PlayMode tests
 > (scene loads, panels present, timeScale, input blocking, settings reaching the
 > camera). Whether the screens *read* well is a play question.
@@ -109,6 +109,50 @@ development build, `Awake` additionally disables it unless the mode is Sandbox.
 how this project is tuned, and gating on whichever mode was last picked would
 break that workflow for no safety gain, since an editor session can already edit
 every asset in the game.
+
+## Campaign row and mission select
+
+`MainMenuPanel` has five rows now, campaign first, because row order is the
+order of the pitch:
+
+| Row | Const | What it does |
+| --- | --- | --- |
+| 0 | `RowCampaign` | Hides itself and opens `MissionSelectPanel` |
+| 1 | `RowRun` | `StartGame(GameMode.Run)` |
+| 2 | `RowSandbox` | `StartGame(GameMode.Sandbox)` |
+| 3 | `RowSettings` | Opens the shared settings page |
+| 4 | `RowQuit` | `Application.Quit()` |
+
+Adding a row is still four edits: a new `const`, a bumped `RowCount` (it feeds
+`new MenuCursor(RowCount)`), a `case` in `Activate`, and an `AppendRow` in
+`Redraw`.
+
+**`MissionSelectPanel` mirrors `SettingsPanel`'s contract exactly** — `Open()`,
+`Close()`, `IsOpen`, a `Closed` event, and a `Tick()` the HOST calls. It never
+polls the keyboard from its own `Update`: two components reading the same key in
+one frame is a race, because MonoBehaviour execution order is undefined, and the
+menu already learned that once.
+
+**Missions unlock in order.** The first mission with no completed record is
+playable and everything past it is locked — a locked row shows its number and
+`[LOCKED]` but not its name, because knowing a mission exists is part of the
+pull and knowing what happens in it is not.
+
+### The one line in this file that is load-bearing
+
+`StartGame` calls `SetCampaign(false, string.Empty)` as well as `SetLastMode`.
+
+Without it, playing a mission and then choosing START RUN would leave
+`campaignSelected` true in the save, the director in the next scene would
+resolve the same mission again, and the player would get a mission they did not
+ask for with nothing on screen explaining why. The campaign flag is a **second
+axis** and both axes have to be written on every launch — `GameMode` means
+*rules*, `campaignSelected` means *content*, and a campaign mission still plays
+by Run rules, which is why `lastMode` says Run for both.
+
+For the same reason the cursor's opening position reads `campaignSelected`
+rather than `lastMode`: campaign is the mode you come back to, and `lastMode`
+cannot tell you that you were in it.
 
 ## Quitting to the menu records the run
 

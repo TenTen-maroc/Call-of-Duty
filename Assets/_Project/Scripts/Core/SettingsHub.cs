@@ -133,5 +133,89 @@ namespace CoD.Core
             save.lastMode = mode;
             SaveSystem.Save(save);
         }
+
+        /// <summary>
+        /// Records WHICH CONTENT the menu is launching: a campaign mission, or
+        /// the endless loop.
+        ///
+        /// The save file is the only sanctioned channel between a menu and the
+        /// scene it loads. A static carrier is banned outright — Domain Reload is
+        /// off, so it would survive into the next Play session and start a
+        /// campaign mission in what the player asked to be an endless run.
+        ///
+        /// This is a SECOND AXIS, never a third GameMode value: GameMode is
+        /// serialised as a raw int and C# enums are not range-checked, so a
+        /// shipped build reading an unknown value would treat it as a Run and
+        /// write a mission's wave number into bestRound, permanently. Mode means
+        /// rules; this means content.
+        ///
+        /// Written through the shared SaveData, like everything else here. Two
+        /// independently loaded copies each rewrite the whole file, so the last
+        /// writer silently reverts the other half — the bug that used to zero the
+        /// settings block every time the player died.
+        /// </summary>
+        public void SetCampaign(bool selected, string missionId)
+        {
+            SaveData save = Save;
+            string id = missionId ?? string.Empty;
+            if (save.campaignSelected == selected && save.selectedMissionId == id) return;
+
+            save.campaignSelected = selected;
+            save.selectedMissionId = id;
+            SaveSystem.Save(save);
+        }
+
+        /// <summary>
+        /// The stored result for one mission, or null if it has never been
+        /// finished. A pure lookup: the mission-select screen asks about every
+        /// mission in the catalog every time it redraws, and a query that
+        /// created a row would rewrite the save file just for being looked at.
+        /// </summary>
+        public MissionRecord? FindRecord(string missionId)
+        {
+            SaveData save = Save;
+            for (int i = 0; i < save.missionRecords.Length; i++)
+            {
+                if (save.missionRecords[i].missionId == missionId) return save.missionRecords[i];
+            }
+            return null;
+        }
+
+        /// <summary>
+        /// Writes the result of a finished mission, keeping the BEST of each
+        /// value rather than the latest.
+        ///
+        /// Best-not-latest is the whole point of a record: replaying a mission
+        /// you already three-starred, and dying twice doing it, must not delete
+        /// the three stars. Deaths accumulate for the same reason from the other
+        /// direction — they are a count of what the mission has cost you, not of
+        /// the last attempt.
+        /// </summary>
+        public void RecordMissionResult(string missionId, bool completed, int rating, float timeSeconds, int deaths)
+        {
+            SaveData save = Save;
+            MissionRecord? existing = FindRecord(missionId);
+
+            if (existing == null)
+            {
+                existing = new MissionRecord { missionId = missionId };
+                var grown = new MissionRecord[save.missionRecords.Length + 1];
+                System.Array.Copy(save.missionRecords, grown, save.missionRecords.Length);
+                grown[^1] = existing;
+                save.missionRecords = grown;
+            }
+
+            existing.completed |= completed;
+            existing.deaths += deaths;
+            if (rating > existing.bestRating) existing.bestRating = rating;
+            // A zero time means "not timed", so it must never win the comparison.
+            if (completed && timeSeconds > 0f &&
+                (existing.bestTimeSeconds <= 0f || timeSeconds < existing.bestTimeSeconds))
+            {
+                existing.bestTimeSeconds = timeSeconds;
+            }
+
+            SaveSystem.Save(save);
+        }
     }
 }

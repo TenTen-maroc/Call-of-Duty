@@ -74,7 +74,7 @@ in the project and the most likely to need moving.
 | C8 | **The repair beacon.** Moves lane every wave, 6 HP/s up to 35 for the wave. Does it pull you out of a good corner, or is walking to it just a way to die? | `Objective_Beacon.radius` (2.5) · `.healPerSecond` (6) · `.healBudgetPerWave` (35) |
 | C9 | **Sandbox module depth.** Explosive + Chain in Sandbox now resolves one level deeper than in a Run. Absurd in the good way, or a frame-rate event? | `GameConfig.sandboxExtraEffectDepth` (1) |
 
-**Nine, A1-A6, C1-C9 and D1-D6 — not "a vibe check".** Report per number. Anything you
+**Nine, A1-A6, C1-C9 and D1-D9 — not "a vibe check".** Report per number. Anything you
 cannot reach (a wave you never survived to, a module you never afforded) says so —
 "couldn't get there" is itself a finding about pacing.
 
@@ -95,6 +95,10 @@ shotgun that does not exist yet.
 | D4 | **Frame time with the additive/soft particles at 40 alive.** Soft particles sample the depth texture, which SSAO already pays for — but this is still the one question no headless run answers. | `Difficulty.maxAliveDrones` is still not the knob |
 | D5 | **The hitmarker, with Pierce or Chain bought.** THE feel item of this pass. One trigger pull now raises **one click per target**, and a kill **always** confirms. Kill two drones with one chained shot: do you hear two kill confirms? Put twelve pellets into one drone (Sandbox, spawn a shotgun config): is it one click, not twelve? | `WeaponController.RegisterHit` — and say which of the two cases feels wrong before anything is changed |
 | D6 | **Explosive rounds.** Explosive is now `OncePerPull`: one blast per trigger pull however many rays it casts. On the single-pellet rifle nothing should have changed at all — confirm that first. Then confirm a multi-pellet weapon does not stack twelve booms. | `EffectModule.OncePerPull` · `Effect_Explosive.asset` radius / damageFraction |
+
+| D7 | **The gun stops clipping through walls.** It renders on its own overlay camera now, so walk into every wall you can find and put the muzzle inside one. Also sprint, and ADS: the world FOV moves and the viewmodel's should NOT, which is the bug that made the gun stretch on every sprint. | `GameConfig.viewmodelFovVertical` · `.viewmodelAdsFovDelta` |
+| D8 | **The muzzle flash lights the gun AND the room.** There are two lights now, on one clock, because a camera culls lights by layer and neither could reach both. Fire the SMG in a long burst in a dark corner: the gun should strobe, not sit under a continuous glow. Then check the flash is not blowing the viewmodel out. | `AR_Standard.viewmodelMuzzleLightIntensity` (2.2) · `.muzzleLightDuration` (0.03) — the ROOM intensity is 12 and must stay far higher |
+| D9 | **Post-processing off still turns post-processing off.** URP resolves stack post at the last camera in the stack, so the overlay had to be told too. Settings → post-processing OFF, then fire: bloom must be gone from the muzzle flash as well as from the room. | nothing — if this is wrong it is a bug, not a tuning value |
 
 **D5 is the one to be suspicious of.** Before this pass a shot that killed two
 drones through a chain raised two kill confirms; the first version of this fix

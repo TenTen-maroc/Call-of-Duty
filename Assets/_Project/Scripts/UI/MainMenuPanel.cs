@@ -19,11 +19,14 @@ namespace CoD.UI
     [DisallowMultipleComponent]
     public sealed class MainMenuPanel : MonoBehaviour
     {
-        private const int RowRun = 0;
-        private const int RowSandbox = 1;
-        private const int RowSettings = 2;
-        private const int RowQuit = 3;
-        private const int RowCount = 4;
+        // Campaign first: it is the headline mode, and row order is the order
+        // of the pitch.
+        private const int RowCampaign = 0;
+        private const int RowRun = 1;
+        private const int RowSandbox = 2;
+        private const int RowSettings = 3;
+        private const int RowQuit = 4;
+        private const int RowCount = 5;
 
         [SerializeField] private SettingsHub? _settings = null;
         [SerializeField] private GameObject? _root = null;
@@ -32,6 +35,7 @@ namespace CoD.UI
         [SerializeField] private Text? _bodyLabel = null;
         [SerializeField] private Text? _footerLabel = null;
         [SerializeField] private SettingsPanel? _settingsPanel = null;
+        [SerializeField] private MissionSelectPanel? _missionPanel = null;
         [Tooltip("The scene both modes load. Same scene, different starting money and rules.")]
         [SerializeField] private string _gameSceneName = "10_GreyBox";
 
@@ -41,11 +45,13 @@ namespace CoD.UI
         private void OnEnable()
         {
             if (_settingsPanel != null) _settingsPanel.Closed += OnSettingsClosed;
+            if (_missionPanel != null) _missionPanel.Closed += OnSettingsClosed;
         }
 
         private void OnDisable()
         {
             if (_settingsPanel != null) _settingsPanel.Closed -= OnSettingsClosed;
+            if (_missionPanel != null) _missionPanel.Closed -= OnSettingsClosed;
         }
 
         private void OnSettingsClosed()
@@ -67,7 +73,14 @@ namespace CoD.UI
             // people take ninety-nine times out of a hundred.
             if (_settings != null)
             {
-                _cursor.SetIndex(_settings.Save.lastMode == GameMode.Sandbox ? RowSandbox : RowRun);
+                // Campaign wins when it was the last thing played, because the
+                // campaign is the mode you come back TO. It is read from the
+                // content axis, not from lastMode -- a campaign mission still
+                // plays by Run rules, so lastMode says Run for both.
+                SaveData save = _settings.Save;
+                _cursor.SetIndex(save.campaignSelected
+                    ? RowCampaign
+                    : save.lastMode == GameMode.Sandbox ? RowSandbox : RowRun);
             }
 
             Show(true);
@@ -79,6 +92,12 @@ namespace CoD.UI
             if (_settingsPanel != null && _settingsPanel.IsOpen)
             {
                 _settingsPanel.HandleInput();
+                return;
+            }
+
+            if (_missionPanel != null && _missionPanel.IsOpen)
+            {
+                _missionPanel.Tick();
                 return;
             }
 
@@ -96,6 +115,10 @@ namespace CoD.UI
         {
             switch (row)
             {
+                case RowCampaign:
+                    Show(false);
+                    _missionPanel?.Open();
+                    break;
                 case RowRun: StartGame(GameMode.Run); break;
                 case RowSandbox: StartGame(GameMode.Sandbox); break;
                 case RowSettings:
@@ -116,6 +139,12 @@ namespace CoD.UI
             // exactly what this project bans: Domain Reload is off, so it would
             // survive into the following Play session and start a Run in Sandbox.
             _settings?.SetLastMode(mode);
+            // CLEARS the campaign axis, and this line is load-bearing. Without
+            // it, playing a mission and then choosing START RUN would leave
+            // campaignSelected true in the save, the director would resolve the
+            // same mission again, and the player would get a mission they did
+            // not ask for with nothing on screen explaining why.
+            _settings?.SetCampaign(false, string.Empty);
             GameLog.Info("Starting a " + mode + " in " + _gameSceneName, this);
             SceneManager.LoadScene(_gameSceneName);
         }
@@ -142,6 +171,7 @@ namespace CoD.UI
             if (_bodyLabel != null)
             {
                 _builder.Clear();
+                AppendRow(RowCampaign, "CAMPAIGN", "missions, checkpoints, the story");
                 AppendRow(RowRun, "START RUN", "earned power, permadeath, sets the record");
                 AppendRow(RowSandbox, "SANDBOX", "everything affordable, cheat console, no record");
                 AppendRow(RowSettings, "SETTINGS", "sensitivity, field of view, volume");

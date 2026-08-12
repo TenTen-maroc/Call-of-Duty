@@ -1,6 +1,6 @@
 # UI
 
-> Last verified: 2026-08-11 (runs; crosshair, HUD and hitmarker confirmed in play)
+> Last verified: 2026-08-12 (runs; crosshair, HUD and hitmarker confirmed in play)
 
 ## Overview
 
@@ -69,6 +69,40 @@ raises events; the UI decides what to draw.
 - **Transparent overlays are disabled, not just faded to zero.** Four idle
   full-screen quads still cost fill rate on a laptop GPU, so `PlayerDamageFeedback`
   toggles `Image.enabled` as alpha crosses zero.
+
+## Mission HUD (campaign only)
+
+- [ObjectiveHud.cs](../../Assets/_Project/Scripts/UI/ObjectiveHud.cs) — the
+  objective list and the MISSION COMPLETE / FAILED banner. Reads
+  `MissionDirector`; never drives it. In endless mode the director disables
+  itself, so this simply has nothing to show.
+
+  Redrawn on the director's `ObjectivesChanged` **plus** a 0.1 s tick. Both are
+  needed and neither is enough: without the event a completed objective would
+  linger for up to a tenth of a second, and without the tick a hold timer would
+  never appear to count down.
+
+  It compares the rebuilt text against the last one with a **hand-written loop**,
+  not `StringBuilder.Equals(string)`. That call is a trap — depending on which
+  overload the compiler picks it is either a span comparison or `object.Equals`,
+  and `object.Equals` compares references, so it would be false every time and
+  quietly rebuild the string on every tick, which is the exact cost the
+  comparison exists to avoid, with nothing on screen to show it is happening.
+
+- [InteractPrompt.cs](../../Assets/_Project/Scripts/UI/InteractPrompt.cs) — the
+  "HOLD F" line and its fill bar, from `PlayerInteractor`. The prompt string is
+  built by the interactable and stored once, so the label is assigned only when
+  the TARGET changes — the bar is what moves while the hold advances.
+
+  The bar is a filled `Image` rather than a number: a number counting up reads
+  as data and a bar filling reads as a thing you are doing. It is also the only
+  feedback that a released hold is **draining** rather than cancelled, which is
+  the one behaviour of the interaction system a player has to learn by seeing.
+
+- [MissionSelectPanel.cs](../../Assets/_Project/Scripts/UI/MissionSelectPanel.cs)
+  — see [menus.md](menus.md). Mirrors `SettingsPanel`'s host-driven contract
+  exactly, for the same reason: two components polling one key in one frame is
+  a race, because MonoBehaviour execution order is undefined.
 
 ## Related Systems
 
