@@ -38,6 +38,25 @@ namespace CoD.Weapons
         public virtual float PierceDamageFalloff => 1f;
 
         /// <summary>True when this module is allowed to fire at the given resolution depth.</summary>
+        /// <summary>
+        /// True for a module whose effect is ONE EVENT per trigger pull, however
+        /// many rays that pull casts.
+        ///
+        /// A pellet is a hit, and for Pierce, Ricochet and Chain running per
+        /// pellet is the point — stacking is the product. An explosion is not
+        /// like that. Resolve spawns the blast prefab (which carries its own
+        /// sound) before any dedup, so a twelve-pellet weapon produced twelve
+        /// stacked explosions and twelve stacked booms delivering ONE
+        /// explosion's damage, because the damage was already deduped by the
+        /// per-pull already-hit set and the presentation was not.
+        ///
+        /// Declaring it here rather than fixing it inside Explosive keeps
+        /// modules stateless: the controller owns the per-pull set, exactly as
+        /// it owns every other per-pull buffer, and any future module that is
+        /// an event rather than a per-impact effect just returns true.
+        /// </summary>
+        public virtual bool OncePerPull => false;
+
         public bool RunsAtDepth(int depth) => depth <= maxDepth;
 
         /// <summary>

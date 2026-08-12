@@ -52,11 +52,6 @@ namespace CoD.Weapons
         private float _statDamageMultiplier = 1f;
         private float _statReloadSpeed = 1f;
 
-        // Accumulated over the whole trigger pull and raised once at the end of
-        // it. See RegisterHit for why the event is not raised where the damage is.
-        private bool _pullDamagedSomething;
-        private bool _pullKilledSomething;
-
         // Pre-sized buffer: RaycastNonAlloc never allocates, which matters once
         // hundreds of shots per minute are flying.
         //
@@ -102,6 +97,27 @@ namespace CoD.Weapons
         /// deal one pellet of damage.
         /// </summary>
         private readonly List<Health> _piercedThisRay = new(12);
+
+        /// <summary>
+        /// Targets whose FIRST contact this pull has already been announced.
+        ///
+        /// Not the same question as _alreadyHit, which is about PAYMENT and gets
+        /// marked speculatively by Explosive and Chain at queue time. This one is
+        /// about the hitmarker, and the difference is audible: one pull that puts
+        /// twelve pellets into one drone is one hit, but a pull that kills a drone
+        /// directly and a second one through a chain is TWO kills and must sound
+        /// like two. Collapsing to a single event per pull got the first case
+        /// right and silently broke the second on the shipped rifle, where
+        /// pierce, chain, ricochet and explosive are all live shop items today.
+        /// </summary>
+        private readonly List<Health> _announcedThisPull = new(24);
+
+        /// <summary>
+        /// Modules that declare OncePerPull and have already had their turn.
+        /// A List rather than a set because a weapon carries at most a handful of
+        /// modules and Contains over four references costs nothing.
+        /// </summary>
+        private readonly List<EffectModule> _oncePerPullSpent = new(4);
 
         // 24 covered about twelve drones: every drone puts TWO colliders in an
         // overlap (hull and weakpoint Core) and only the hull carries Health.
@@ -413,8 +429,8 @@ namespace CoD.Weapons
             // return anywhere below cannot leak marks into the next one.
             _followUps.Clear();
             _alreadyHit.Clear();
-            _pullDamagedSomething = false;
-            _pullKilledSomething = false;
+            _announcedThisPull.Clear();
+            _oncePerPullSpent.Clear();
 
             float spread = CurrentSpreadDegrees();
             int pellets = Mathf.Max(1, config.pelletsPerShot);
@@ -424,7 +440,7 @@ namespace CoD.Weapons
             // its own ray and its own damage above; what happens once is the
             // aftermath.
             DrainFollowUps(config);
-            if (_pullDamagedSomething) Hit?.Invoke(_pullKilledSomething);
+
 
             ApplyRecoil(config, shotIndex);
             SpawnMuzzleEffects(config, now);
@@ -606,7 +622,7 @@ namespace CoD.Weapons
             }
 
             SpawnImpact(hit, onBody: target != null);
-            if (damaged) RegisterHit(killed);
+            if (damaged) RegisterHit(target as Health, killed);
 
             RunEffectModules(new HitContext(this, config, hit.point, hit.normal, direction,
                 target as Health, damage, depth));
@@ -633,6 +649,15 @@ namespace CoD.Weapons
                 // asset, and Domain Reload is off, so writing to it would rewrite
                 // the shipped balance for every future Play session.
                 if (!module.RunsAtDepth(context.Depth - _extraEffectDepth)) continue;
+                // An explosion is one event per pull, not one per pellet. See
+                // EffectModule.OncePerPull for the twelve stacked booms this
+                // stops. Claimed here, in the controller, so modules stay
+                // stateless ScriptableObjects shared by every weapon.
+                if (module.OncePerPull)
+                {
+                    if (_oncePerPullSpent.Contains(module)) continue;
+                    _oncePerPullSpent.Add(module);
+                }
                 module.Resolve(in context, _followUps);
             }
         }
@@ -659,19 +684,41 @@ namespace CoD.Weapons
         }
 
         /// <summary>
-        /// One trigger pull raises exactly one Hit, and the kill flag is sticky.
+        /// One hit confirm per TARGET per trigger pull.
         ///
-        /// Every path that lands damage funnels through here instead of raising
-        /// the event itself. Hitmarker does a PlayOneShot per event, so a
-        /// twelve-pellet pull was twelve clicks in one frame over one punch
-        /// animation — it already carried a workaround for a plain pellet
-        /// overwriting a sibling pellet's kill confirmation. If ANY part of the
-        /// pull killed, the pull killed: that is what the player actually did.
+        /// Every path that lands damage funnels through here rather than raising
+        /// the event itself, so there is one place the rule lives. Hitmarker does
+        /// a PlayOneShot per event, and the rule has to satisfy two cases that
+        /// pull in opposite directions: twelve pellets into one drone is ONE hit
+        /// and must not be twelve stacked clicks, while a shot that kills a drone
+        /// directly and a second one through a chain is TWO kills and must sound
+        /// like two. Per-target is the answer to both; per-pull only answered the
+        /// first, and quietly broke the second on the rifle that ships today.
         /// </summary>
-        private void RegisterHit(bool killed)
+        private void RegisterHit(Health? target, bool killed)
         {
-            _pullDamagedSomething = true;
-            _pullKilledSomething |= killed;
+            // A KILL always confirms. A body can only die once, so there is no
+            // duplicate to suppress, and suppressing it would be the worst
+            // outcome of the lot: twelve pellets where the first one connects
+            // and the ninth one kills would play a hit click and then nothing at
+            // all, so the shot that actually killed the drone would be the
+            // silent one.
+            if (killed)
+            {
+                Hit?.Invoke(true);
+                return;
+            }
+
+            // A plain hit dedupes per target. A null target is an IDamageable
+            // that is not a Health; nothing in the game is one yet, and it
+            // announces every time rather than never, because a missing
+            // hitmarker reads as a missed shot.
+            if (target != null)
+            {
+                if (_announcedThisPull.Contains(target)) return;
+                _announcedThisPull.Add(target);
+            }
+            Hit?.Invoke(false);
         }
 
         private void ApplyFollowUpDamage(WeaponConfig config, in FollowUp followUp)
@@ -687,7 +734,7 @@ namespace CoD.Weapons
                 followUp.Direction, false);
             target.ApplyDamage(in info);
             MarkHit(target);
-            RegisterHit(!target.IsAlive);
+            RegisterHit(target, !target.IsAlive);
 
             RunEffectModules(new HitContext(this, config, target.transform.position, -followUp.Direction,
                 followUp.Direction, target, followUp.Damage, followUp.Depth));
@@ -731,7 +778,7 @@ namespace CoD.Weapons
             var info = new DamageInfo(followUp.Damage, hit.point, hit.normal, followUp.Direction, false);
             target.ApplyDamage(in info);
             MarkHit(target);
-            RegisterHit(!target.IsAlive);
+            RegisterHit(target, !target.IsAlive);
 
             RunEffectModules(new HitContext(this, config, hit.point, hit.normal, followUp.Direction,
                 target, followUp.Damage, followUp.Depth));

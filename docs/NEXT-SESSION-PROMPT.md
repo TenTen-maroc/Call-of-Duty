@@ -74,9 +74,33 @@ in the project and the most likely to need moving.
 | C8 | **The repair beacon.** Moves lane every wave, 6 HP/s up to 35 for the wave. Does it pull you out of a good corner, or is walking to it just a way to die? | `Objective_Beacon.radius` (2.5) · `.healPerSecond` (6) · `.healBudgetPerWave` (35) |
 | C9 | **Sandbox module depth.** Explosive + Chain in Sandbox now resolves one level deeper than in a Run. Absurd in the good way, or a frame-rate event? | `GameConfig.sandboxExtraEffectDepth` (1) |
 
-**Nine, A1-A6, and C1-C9 — not "a vibe check".** Report per number. Anything you
+**Nine, A1-A6, C1-C9 and D1-D6 — not "a vibe check".** Report per number. Anything you
 cannot reach (a wave you never survived to, a module you never afforded) says so —
 "couldn't get there" is itself a finding about pacing.
+
+---
+
+## Part D — the 2026-08-12 pass, also never played
+
+The image work (D1-D4) is presentation on a core still awaiting Part B. The
+feel items (D5-D6) are the ones that matter most here, because both changed
+behaviour that is reachable **on the rifle that ships today** — not only on the
+shotgun that does not exist yet.
+
+| # | What to feel | If it is wrong, move this |
+| --- | --- | --- |
+| D1 | **The arena got darker and the metal got duller.** The floor was shipping ~1.9x brighter than intended for the life of the project, and the gun was reflecting a blue sky inside a sealed bunker. Is the box now readable, or is it too dark to fight in? | `Palette_GreyBox.asset` → `floor` (0.17) · `wall` (0.28) · `indoorReflection` |
+| D2 | **The grade.** Cool shadows, warm highlights, −6 white balance, light chromatic aberration. Does it read as a military shooter, or as a filter? Turn post-processing off in Settings and back on — that comparison is the whole question. | `PostFx_Arena.asset` → `ShadowsMidtonesHighlights` · `WhiteBalance` · `ChromaticAberration.intensity` (0.06) |
+| D3 | **Impacts.** Sparks rendered as Unity magenta error particles until now, and the bullet hole was a bright orange dot. Both are new. Do impacts read at 25 m? | `Fx_Spark.mat` / `Fx_ImpactMark.mat` · `Impact_Default.asset` lifetimes |
+| D4 | **Frame time with the additive/soft particles at 40 alive.** Soft particles sample the depth texture, which SSAO already pays for — but this is still the one question no headless run answers. | `Difficulty.maxAliveDrones` is still not the knob |
+| D5 | **The hitmarker, with Pierce or Chain bought.** THE feel item of this pass. One trigger pull now raises **one click per target**, and a kill **always** confirms. Kill two drones with one chained shot: do you hear two kill confirms? Put twelve pellets into one drone (Sandbox, spawn a shotgun config): is it one click, not twelve? | `WeaponController.RegisterHit` — and say which of the two cases feels wrong before anything is changed |
+| D6 | **Explosive rounds.** Explosive is now `OncePerPull`: one blast per trigger pull however many rays it casts. On the single-pellet rifle nothing should have changed at all — confirm that first. Then confirm a multi-pellet weapon does not stack twelve booms. | `EffectModule.OncePerPull` · `Effect_Explosive.asset` radius / damageFraction |
+
+**D5 is the one to be suspicious of.** Before this pass a shot that killed two
+drones through a chain raised two kill confirms; the first version of this fix
+collapsed that to one, which was a regression on the shipped rifle discovered by
+review rather than by play. The current rule — one click per target, a kill
+always confirms — is the second attempt, and it has never been heard by a human.
 
 ---
 

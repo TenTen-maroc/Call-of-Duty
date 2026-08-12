@@ -197,15 +197,25 @@ namespace CoD.Tests
                 weapon.Hit -= Count;
             }
 
-            Assert.AreEqual(1, events, $"one trigger pull, one hitmarker — this was {PELLETS}");
+            Assert.AreEqual(1, events, $"one target, one hit click — this was {PELLETS}");
             Assert.IsFalse(killed, "nothing died, so the pull must not report a kill");
             yield return null;
         }
 
         /// <summary>
-        /// One event per pull only helps if it carries the right news: a pull that
-        /// killed on pellet three is a kill, and the kill confirmation is the most
-        /// legible piece of feedback in the game.
+        /// The kill confirm must SURVIVE the deduplication.
+        ///
+        /// This is the case that decides the whole rule. Suppressing repeat
+        /// events per target is right for the twelve-clicks problem, but applied
+        /// naively it eats the one event that matters: the first pellet connects
+        /// and announces a plain hit, the ninth pellet kills, and — having
+        /// already announced this target — says nothing. The shot that actually
+        /// killed the drone would be the silent one, in a game whose own UI notes
+        /// call the kill confirm the thing that makes clearing a wave legible
+        /// without a single number on screen.
+        ///
+        /// So a kill always confirms. A body dies once, so there is no duplicate
+        /// to suppress in the first place.
         /// </summary>
         [UnityTest]
         public IEnumerator AKillOnAnyPelletMakesTheWholePullAKill()
@@ -224,10 +234,12 @@ namespace CoD.Tests
 
             weapon.EquipWeapon(_shotgun!);
             int events = 0;
+            int kills = 0;
             bool killed = false;
             void Count(bool k)
             {
                 events++;
+                if (k) kills++;
                 killed |= k;
             }
 
@@ -242,8 +254,79 @@ namespace CoD.Tests
             }
 
             Assert.IsFalse(target.IsAlive, "three pellets of damage into two and a half pellets of health");
-            Assert.AreEqual(1, events, "still one event");
-            Assert.IsTrue(killed, "the kill flag is sticky: any pellet killing makes the whole pull a kill");
+            Assert.IsTrue(killed, "the pellet that killed the target raised no kill confirm");
+            Assert.AreEqual(1, kills, "a body dies once, so it must confirm exactly once");
+            // One plain click for the pellet that connected first, one kill
+            // confirm for the pellet that finished it. Never one per pellet.
+            Assert.LessOrEqual(events, 2, $"at most one click plus one kill confirm — this was {PELLETS} pellets");
+            Assert.GreaterOrEqual(events, 1, "the pull landed damage and said nothing at all");
+            yield return null;
+        }
+
+        /// <summary>
+        /// A module that declares OncePerPull is INVOKED once per pull, not once
+        /// per pellet.
+        ///
+        /// Deduplicating the damage was never enough for Explosive. Its Resolve
+        /// spawns the blast prefab — which carries its own sound — before any
+        /// already-hit check, so a twelve-pellet weapon produced twelve stacked
+        /// explosions and twelve stacked booms delivering exactly one
+        /// explosion's worth of damage. Silent, invisible to every gate, and the
+        /// loudest possible version of the bug the per-pull scoping was supposed
+        /// to have fixed.
+        ///
+        /// The dedup lives in the controller rather than inside Explosive
+        /// because modules are stateless ScriptableObjects shared by every
+        /// weapon: a module cannot remember anything between two pellets.
+        /// </summary>
+        [UnityTest]
+        public IEnumerator AOncePerPullModule_IsInvokedOncePerPull_NotOncePerPellet()
+        {
+            WeaponController weapon = _weapon!;
+            Health bystander = BystanderHealth();
+
+            BystanderStrike module = ScriptableObject.CreateInstance<BystanderStrike>();
+            module.bystander = bystander;
+            module.oncePerPull = true;
+            Assert.IsTrue(weapon.AddEffectModule(module), "the module did not install");
+
+            weapon.EquipWeapon(_shotgun!);
+            PullTheTrigger(weapon);
+
+            Assert.AreEqual(1, module.resolveCalls,
+                $"a once-per-pull module ran {module.resolveCalls} times for {PELLETS} pellets — " +
+                "this is twelve explosion VFX and twelve booms for one blast");
+            Assert.AreEqual(1, module.queued, "and it must still do its job exactly once");
+
+            // The claim is once per PULL, not once ever.
+            PullTheTrigger(weapon);
+            Assert.AreEqual(2, module.resolveCalls, "the next pull must be allowed to detonate again");
+            yield return null;
+        }
+
+        /// <summary>
+        /// And the default is unchanged: Pierce, Ricochet and Chain run per
+        /// pellet on purpose. Stacking is the product, and a shotgun that chains
+        /// from every pellet is the fantasy, not a bug — the damage is already
+        /// deduplicated by the per-pull already-hit set.
+        /// </summary>
+        [UnityTest]
+        public IEnumerator AnOrdinaryModule_StillRunsPerPellet()
+        {
+            WeaponController weapon = _weapon!;
+            Health bystander = BystanderHealth();
+
+            BystanderStrike module = ScriptableObject.CreateInstance<BystanderStrike>();
+            module.bystander = bystander;
+            module.oncePerPull = false;
+            Assert.IsTrue(weapon.AddEffectModule(module), "the module did not install");
+
+            weapon.EquipWeapon(_shotgun!);
+            PullTheTrigger(weapon);
+
+            Assert.GreaterOrEqual(module.resolveCalls, PELLETS,
+                "the default contract is per hit, and a pellet is a hit");
+            Assert.AreEqual(1, module.queued, "but it still only PAYS once");
             yield return null;
         }
 
@@ -377,6 +460,9 @@ namespace CoD.Tests
             public float damage = 7f;
             public int resolveCalls;
             public int queued;
+            public bool oncePerPull;
+
+            public override bool OncePerPull => oncePerPull;
 
             public override void Resolve(in HitContext context, FollowUpBuffer followUps)
             {

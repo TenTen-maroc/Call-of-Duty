@@ -25,6 +25,9 @@ namespace CoD.Weapons
         public GameObject? explosionVfx;
         [Range(0.1f, 4f)] public float explosionLifetime = 1f;
 
+        /// <summary>One trigger pull is one blast, whatever the pellet count. See EffectModule.OncePerPull.</summary>
+        public override bool OncePerPull => true;
+
         public override void Resolve(in HitContext context, FollowUpBuffer followUps)
         {
             WeaponController shooter = context.Shooter;
