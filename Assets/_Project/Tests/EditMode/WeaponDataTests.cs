@@ -1,4 +1,5 @@
 #nullable enable
+using System.Collections.Generic;
 using CoD.Core;
 using CoD.Weapons;
 using NUnit.Framework;
@@ -13,14 +14,174 @@ namespace CoD.Tests
     /// by adding a class, these tests keep passing and the claim quietly becomes
     /// false — so the second half of the check is that both weapons are the SAME
     /// type driving the same controller.
+    ///
+    /// The balance gate here USED to be a hardcoded array of two asset paths
+    /// asserting a single universal 200-400 ms TTK window. It was wrong twice
+    /// over: the list made weapon number three a test edit, and the window is not
+    /// a universal law. A sniper and a launcher are one-shot BY DESIGN, report a
+    /// TTK of zero, and are structurally incapable of passing a 200 ms floor —
+    /// so the only way to make one "pass" is to author a 99-damage rifle that
+    /// does not one-shot, which is worse than either honest answer and breaks
+    /// anyway once DifficultyConfig.healthMultiplierByWave (3.5x) means nothing
+    /// one-shots. The window is now the law for the classes it describes, and the
+    /// one-shot classes are held to their re-engagement cost instead. The laws
+    /// themselves live on WeaponConfig so this file and OnValidate cannot drift.
+    ///
+    /// That split then shipped with two holes of its own, both fixed 2026-08-12
+    /// and both of the same shape — a gate that trusts a claim instead of checking
+    /// it:
+    ///
+    /// - The one-shot exemption asserted the PRICE of one-shotting and never that
+    ///   the weapon one-shots, so `weaponClass = Sniper` was a blanket exemption
+    ///   from every TTK bound in the project. It is now earned by the asset.
+    /// - AllWeapons preferred the registry over the folder scan, so the moment the
+    ///   builder emits Weapons.asset a weapon in the folder but missing from the
+    ///   list would drop out of every law here in silence. The two sources are now
+    ///   asserted to AGREE rather than one being chosen over the other.
+    ///
+    /// Both new checks are watched failing by their own tests. A gate nobody has
+    /// seen bite is a gate nobody knows is connected.
     /// </summary>
     public sealed class WeaponDataTests
     {
+        /// <summary>Where the builder writes the registry. Absent today — see AllWeapons.</summary>
+        private const string REGISTRY_PATH = "Assets/_Project/Data/Weapons/Weapons.asset";
+        private const string WEAPON_FOLDER = "Assets/_Project/Data/Weapons";
+
         private static WeaponConfig Load(string path)
         {
             WeaponConfig? config = AssetDatabase.LoadAssetAtPath<WeaponConfig>(path);
             Assert.IsNotNull(config, $"missing weapon asset: {path}");
             return config!;
+        }
+
+        /// <summary>
+        /// The whole arsenal — scanned from disk EVERY time, and cross-checked
+        /// against the registry whenever one exists.
+        ///
+        /// This used to prefer the registry and fall back to the folder scan only
+        /// when the registry was missing or empty, which quietly re-opened the
+        /// exact hole the registry exists to close. The moment the builder writes
+        /// Weapons.asset, weapon number three added to the folder but FORGOTTEN in
+        /// the registry drops straight out of EveryWeapon_ObeysTheLawOfItsClass —
+        /// and TheArsenalGate_ActuallyFindsTheShippedWeapons cannot see it either,
+        /// because `Length >= 2` and the two known stableIds all stay true. That
+        /// is "weapon seven quietly escapes the balance gate", which is the
+        /// failure WeaponRegistry's own header cites as its reason to exist.
+        ///
+        /// So neither source is trusted over the other. The SCAN is the coverage —
+        /// a weapon is inside the gate the moment its asset exists, whether or not
+        /// anyone remembered to list it. The REGISTRY is the ordering and the
+        /// save-key lookup. And the two are asserted to describe the same arsenal,
+        /// so a weapon can only escape the balance laws by not existing.
+        /// </summary>
+        private static WeaponConfig[] AllWeapons()
+        {
+            WeaponConfig[] onDisk = ScanWeaponFolder();
+
+            WeaponRegistry? registry = AssetDatabase.LoadAssetAtPath<WeaponRegistry>(REGISTRY_PATH);
+            // The builder does not emit the registry yet. The scan alone is the
+            // gate until it does — a graceful absence, never a PREFERENCE for the
+            // registry over the scan.
+            if (registry == null) return onDisk;
+
+            AssertRegistryAndFolderDescribeTheSameArsenal(registry, onDisk);
+
+            // Registry order, because order is presentation and the registry owns
+            // it. Anything the scan found that the registry does not list is
+            // appended rather than dropped: coverage must never depend on the
+            // assertion above having been reached.
+            var arsenal = new List<WeaponConfig>(onDisk.Length + registry.allWeapons.Length);
+            foreach (WeaponConfig listed in registry.allWeapons)
+            {
+                if (listed != null) arsenal.Add(listed);
+            }
+            foreach (WeaponConfig found in onDisk)
+            {
+                if (!arsenal.Contains(found)) arsenal.Add(found);
+            }
+            return arsenal.ToArray();
+        }
+
+        /// <summary>
+        /// Every WeaponConfig asset that actually exists. This is the coverage
+        /// half: an asset on disk is inside every balance law below the moment it
+        /// is created, with nothing to remember and nothing to opt into.
+        /// </summary>
+        private static WeaponConfig[] ScanWeaponFolder()
+        {
+            string[] guids = AssetDatabase.FindAssets("t:WeaponConfig", new[] { WEAPON_FOLDER });
+            var found = new List<WeaponConfig>(guids.Length);
+            foreach (string guid in guids)
+            {
+                string path = AssetDatabase.GUIDToAssetPath(guid);
+                WeaponConfig? config = AssetDatabase.LoadAssetAtPath<WeaponConfig>(path);
+                // Skipping an unloadable match silently is how a corrupt asset
+                // leaves the gate: it is a weapon in the folder that no law sees.
+                Assert.IsTrue(config != null, $"{path} matched t:WeaponConfig but would not load");
+                found.Add(config!);
+            }
+            return found.ToArray();
+        }
+
+        /// <summary>
+        /// The registry and the weapons folder must describe the SAME arsenal, in
+        /// both directions, because each direction breaks the game silently.
+        ///
+        /// On disk but not in the registry: that weapon is outside every balance
+        /// law in this file the moment the registry becomes the source of truth,
+        /// and nothing at runtime reports it. In the registry but not on disk: a
+        /// save key that resolves to nothing, while the list still looks the right
+        /// length — the same shape of failure as a null slot.
+        ///
+        /// Written as a static helper rather than inline so a test can prove it
+        /// bites (see TheRegistryAndTheFolder_MustDescribeTheSameArsenal): a
+        /// cross-check nobody has watched fail is not a cross-check.
+        /// </summary>
+        private static void AssertRegistryAndFolderDescribeTheSameArsenal(
+            WeaponRegistry registry, WeaponConfig[] onDisk)
+        {
+            var byId = new Dictionary<string, WeaponConfig>();
+            foreach (WeaponConfig config in onDisk)
+            {
+                Assert.IsFalse(string.IsNullOrWhiteSpace(config.stableId),
+                    $"{config.name} in {WEAPON_FOLDER} has no stableId — it can match no registry entry, " +
+                    "and a save references weapons by that key rather than by asset name");
+
+                if (byId.TryGetValue(config.stableId, out WeaponConfig first))
+                {
+                    // Two assets sharing an id would collapse to one set entry and
+                    // make the comparison below agree about an arsenal that does
+                    // not exist.
+                    Assert.Fail(
+                        $"'{config.stableId}' is on both {first.name} and {config.name} in {WEAPON_FOLDER} — " +
+                        "two weapons are one weapon for every save that names it, and the registry can only list one");
+                }
+                byId.Add(config.stableId, config);
+            }
+
+            var listedIds = new HashSet<string>();
+            for (int i = 0; i < registry.allWeapons.Length; i++)
+            {
+                WeaponConfig? listed = registry.allWeapons[i];
+                Assert.IsTrue(listed != null,
+                    $"{REGISTRY_PATH} entry {i} is empty — a slot pointing at an asset that no longer exists " +
+                    "still counts toward Length, so the list looks complete while a weapon has vanished from it");
+                Assert.IsTrue(byId.ContainsKey(listed!.stableId),
+                    $"{REGISTRY_PATH} lists '{listed.stableId}' ({listed.name}) but no asset with that stableId " +
+                    $"is in {WEAPON_FOLDER} — the registry names a weapon the arsenal does not contain, and every " +
+                    "save that resolves that key gets nothing back");
+                listedIds.Add(listed.stableId);
+            }
+
+            foreach (KeyValuePair<string, WeaponConfig> entry in byId)
+            {
+                Assert.IsTrue(listedIds.Contains(entry.Key),
+                    $"{entry.Value.name} ('{entry.Key}') is in {WEAPON_FOLDER} but missing from {REGISTRY_PATH}. " +
+                    "The moment the registry is the source of truth that asset sits outside every balance law in " +
+                    "this file, with nothing at runtime to report it — the exact failure the registry exists to " +
+                    "prevent. Add it to the registry, or delete the asset.");
+            }
         }
 
         [Test]
@@ -34,22 +195,380 @@ namespace CoD.Tests
             Assert.AreNotEqual(rifle.stableId, smg.stableId);
         }
 
+        /// <summary>
+        /// A gate that enumerates itself can also enumerate NOTHING and stay
+        /// green, which is a worse failure than the hardcoded list it replaced —
+        /// the list at least named what it was checking. So the enumeration is
+        /// itself asserted against the weapons we know ship.
+        /// </summary>
         [Test]
-        public void EveryWeapon_LandsInsideTheArcadeTtkWindow()
+        public void TheArsenalGate_ActuallyFindsTheShippedWeapons()
         {
-            foreach (string path in new[]
-                     {
-                         "Assets/_Project/Data/Weapons/AR_Standard.asset",
-                         "Assets/_Project/Data/Weapons/SMG_Rapid.asset",
-                     })
+            WeaponConfig[] arsenal = AllWeapons();
+            Assert.GreaterOrEqual(arsenal.Length, 2,
+                "the balance gate found fewer than the two shipped weapons — it is checking nothing");
+
+            bool foundRifle = false;
+            bool foundSmg = false;
+            foreach (WeaponConfig config in arsenal)
             {
-                WeaponConfig config = Load(path);
-                float ttk = config.TimeToKill() * 1000f;
-                // 200-400 ms is the defining choice of the whole game. A weapon
-                // outside it is not a variant, it is a different game.
-                Assert.GreaterOrEqual(ttk, 200f, $"{config.displayName} kills too fast ({ttk:F0} ms)");
-                Assert.LessOrEqual(ttk, 400f, $"{config.displayName} kills too slowly ({ttk:F0} ms)");
+                Assert.IsNotNull(config, "a null entry in the arsenal — that weapon is outside every gate below");
+                if (config.stableId == "wpn_ar_standard") foundRifle = true;
+                if (config.stableId == "wpn_smg_rapid") foundSmg = true;
             }
+
+            Assert.IsTrue(foundRifle, "AR_Standard is not in the enumerated arsenal");
+            Assert.IsTrue(foundSmg, "SMG_Rapid is not in the enumerated arsenal");
+        }
+
+        /// <summary>
+        /// The balance law, split by class. Every weapon answers to exactly one,
+        /// and no class is exempt — WeaponConfig.LawFor defaults an unlisted class
+        /// to the arcade window, so a new class cannot escape by being new.
+        /// </summary>
+        [Test]
+        public void EveryWeapon_ObeysTheLawOfItsClass()
+        {
+            foreach (WeaponConfig config in AllWeapons()) AssertObeysTheLawOfItsClass(config);
+        }
+
+        /// <summary>
+        /// One weapon against its own law. Split out of the loop above so that
+        /// TheOneShotExemption_IsEarnedByTheAsset_NotGrantedByTheEnum can watch it
+        /// FAIL on a mis-authored asset — a gate nobody has seen bite is a gate
+        /// nobody knows is connected.
+        /// </summary>
+        private static void AssertObeysTheLawOfItsClass(WeaponConfig config)
+        {
+            string who = $"{config.displayName} ({config.weaponClass})";
+
+            switch (config.Law)
+            {
+                case BalanceLaw.ArcadeTtkWindow:
+                {
+                    // 200-400 ms is the defining choice of the whole game. A
+                    // weapon outside it is not a variant, it is a different game.
+                    float ttk = config.TimeToKill() * 1000f;
+                    Assert.GreaterOrEqual(ttk, WeaponConfig.ARCADE_TTK_MIN_MS,
+                        $"{who} kills too fast ({ttk:F0} ms)");
+                    Assert.LessOrEqual(ttk, WeaponConfig.ARCADE_TTK_MAX_MS,
+                        $"{who} kills too slowly ({ttk:F0} ms)");
+                    break;
+                }
+
+                case BalanceLaw.ContactBurst:
+                {
+                    // A shotgun is the GAP between contact and ten metres. Both
+                    // halves are load-bearing: one pull everywhere is a sniper
+                    // without a scope, two pulls at contact is a bad rifle.
+                    Assert.LessOrEqual(config.ShotsToKill(), 1,
+                        $"{who} does not one-pull at contact ({config.DamagePerShot:F0} damage per pull)");
+                    Assert.AreEqual(0f, config.TimeToKillAtRange(100f, 0f), 0.0001f,
+                        $"{who} needs a second pull at contact");
+                    Assert.GreaterOrEqual(
+                        config.ShotsToKillAtRange(100f, WeaponConfig.SHOTGUN_TWO_PULL_METRES), 2,
+                        $"{who} still one-pulls at {WeaponConfig.SHOTGUN_TWO_PULL_METRES:F0} m — it is the best rifle in the game");
+                    Assert.Greater(
+                        config.TimeToKillAtRange(100f, WeaponConfig.SHOTGUN_TWO_PULL_METRES), 0f,
+                        $"{who} costs no time at all at {WeaponConfig.SHOTGUN_TWO_PULL_METRES:F0} m");
+                    break;
+                }
+
+                case BalanceLaw.ReEngagementCost:
+                {
+                    // THE PREMISE FIRST. This law exempts the weapon from the
+                    // 200-400 ms window on the stated grounds that it one-shots,
+                    // and until this assertion existed nothing anywhere checked
+                    // that it does. `weaponClass = Sniper` was therefore a blanket
+                    // exemption from every TTK bound in the project: 25 damage at
+                    // 60 RPM is four pulls and three full seconds against a 100 HP
+                    // drone, and it passed both floors below in silence. The
+                    // ContactBurst case above has always asserted its own premise;
+                    // this one merely forgot to.
+                    Assert.AreEqual(1, config.ShotsToKill(),
+                        $"{who} needs {config.ShotsToKill()} pulls to kill ({config.DamagePerShot:F0} damage per pull, " +
+                        $"{config.TimeToKill() * 1000f:F0} ms) — it is exempt from the " +
+                        $"{WeaponConfig.ARCADE_TTK_MIN_MS:F0}-{WeaponConfig.ARCADE_TTK_MAX_MS:F0} ms window on a one-shot " +
+                        "premise it does not meet, so it answers to no time-to-kill bound at all");
+
+                    // One shot, one kill. TTK is not the axis; the cost of
+                    // lining up the NEXT shot is the only thing that stops
+                    // this being strictly better than the rifle everywhere.
+                    Assert.GreaterOrEqual(config.adsTime, WeaponConfig.ONE_SHOT_MIN_ADS_SECONDS,
+                        $"{who} aims in {config.adsTime:F2}s — a one-shot weapon that snaps to target has no downside");
+                    Assert.GreaterOrEqual(config.SecondsPerShot, WeaponConfig.ONE_SHOT_MIN_CYCLE_SECONDS,
+                        $"{who} cycles in {config.SecondsPerShot:F2}s — that is an assault rifle that one-shots");
+                    break;
+                }
+
+                default:
+                    Assert.Fail($"{who} answers to no balance law at all");
+                    break;
+            }
+        }
+
+        /// <summary>
+        /// The registry does not exist yet — the builder owns creating it. When it
+        /// does, these are the two ways it silently breaks the game: a null entry
+        /// drops a weapon out of every gate above while the list still looks the
+        /// right length, and a duplicate stableId aliases two weapons into one for
+        /// every save that names either.
+        /// </summary>
+        [Test]
+        public void TheRegistry_IfItExists_HasNoHolesAndNoAliasedIds()
+        {
+            WeaponRegistry? registry = AssetDatabase.LoadAssetAtPath<WeaponRegistry>(REGISTRY_PATH);
+            if (registry == null) Assert.Ignore($"no registry asset at {REGISTRY_PATH} yet — the folder scan is the gate");
+
+            var seen = new HashSet<string>();
+            foreach (WeaponConfig config in registry!.allWeapons)
+            {
+                Assert.IsNotNull(config, "the registry has an empty slot");
+                Assert.IsFalse(string.IsNullOrWhiteSpace(config.stableId),
+                    $"{config.name} has no stableId — saves reference weapons by that key, not by asset name");
+                Assert.IsTrue(seen.Add(config.stableId),
+                    $"'{config.stableId}' appears twice — two weapons are now one weapon for every save");
+                Assert.AreSame(config, registry.ByStableId(config.stableId),
+                    $"ByStableId did not return {config.name} for its own id");
+            }
+
+            Assert.AreEqual(registry.allWeapons.Length, registry.Count);
+        }
+
+        /// <summary>
+        /// The cross-check itself, watched failing.
+        ///
+        /// AllWeapons used to PREFER the registry over the folder scan, so weapon
+        /// number three added to Assets/_Project/Data/Weapons and forgotten in
+        /// Weapons.asset would have dropped out of every balance law above without
+        /// a single test going red — TheArsenalGate_ActuallyFindsTheShippedWeapons
+        /// keeps passing, because `Length >= 2` and both known stableIds are still
+        /// there. The registry does not exist on disk yet, so the only way to know
+        /// the replacement cross-check is connected is to hand it a disagreement
+        /// and watch it throw.
+        /// </summary>
+        [Test]
+        public void TheRegistryAndTheFolder_MustDescribeTheSameArsenal()
+        {
+            WeaponConfig rifle = Load("Assets/_Project/Data/Weapons/AR_Standard.asset");
+            WeaponConfig smg = Load("Assets/_Project/Data/Weapons/SMG_Rapid.asset");
+            WeaponConfig[] folder = { rifle, smg };
+
+            var complete = ScriptableObject.CreateInstance<WeaponRegistry>();
+            complete.allWeapons = new[] { rifle, smg };
+            Assert.DoesNotThrow(() => AssertRegistryAndFolderDescribeTheSameArsenal(complete, folder),
+                "an agreeing registry and folder must pass, or the check is simply always red");
+
+            // The failure the registry exists to prevent: an asset on disk that
+            // nobody added to the list, and therefore outside every law above.
+            var forgotten = ScriptableObject.CreateInstance<WeaponRegistry>();
+            forgotten.allWeapons = new[] { rifle };
+            Assert.Throws<AssertionException>(
+                () => AssertRegistryAndFolderDescribeTheSameArsenal(forgotten, folder),
+                "a weapon in the folder but missing from the registry escaped the cross-check");
+
+            // And the reverse: the registry names a weapon the arsenal no longer
+            // contains, so every save resolving that key gets nothing back.
+            var stale = ScriptableObject.CreateInstance<WeaponRegistry>();
+            stale.allWeapons = new[] { rifle, smg };
+            Assert.Throws<AssertionException>(
+                () => AssertRegistryAndFolderDescribeTheSameArsenal(stale, new[] { rifle }),
+                "a registry entry with no asset behind it escaped the cross-check");
+
+            // A hole where a deleted asset used to be still counts toward Length.
+            var holed = ScriptableObject.CreateInstance<WeaponRegistry>();
+            // Explicit element type: `new[] { rifle, null! }` infers a nullable
+            // array and assigning it to WeaponConfig[] is a CS8619 warning, and
+            // this project's gate is zero warnings, not zero errors.
+            holed.allWeapons = new WeaponConfig[] { rifle, null! };
+            Assert.Throws<AssertionException>(
+                () => AssertRegistryAndFolderDescribeTheSameArsenal(holed, new[] { rifle }),
+                "an empty registry slot escaped the cross-check");
+        }
+
+        /// <summary>
+        /// The one-shot exemption is EARNED BY THE ASSET, not granted by the enum.
+        ///
+        /// ReEngagementCost exempts a weapon from the 200-400 ms window on the
+        /// stated premise that it one-shots — and nothing checked the premise. So
+        /// `weaponClass = Sniper` was a blanket exemption from every TTK bound in
+        /// the project: the impostor below takes four pulls and three full seconds
+        /// to kill a 100 HP drone, clears both re-engagement floors, and used to
+        /// pass the gate in silence. That is the "99-damage sniper that does not
+        /// one-shot" the split was written to prevent, arriving through the door
+        /// the split opened.
+        /// </summary>
+        [Test]
+        public void TheOneShotExemption_IsEarnedByTheAsset_NotGrantedByTheEnum()
+        {
+            WeaponConfig impostor = ScriptableObject.CreateInstance<WeaponConfig>();
+            impostor.weaponClass = WeaponClass.Sniper;
+            impostor.bodyDamage = 25f;
+            impostor.roundsPerMinute = 60f;   // 1.00 s between rounds
+            impostor.adsTime = 0.40f;
+
+            // Everything the old gate looked at, and it passes all of it.
+            Assert.AreEqual(BalanceLaw.ReEngagementCost, impostor.Law);
+            Assert.GreaterOrEqual(impostor.adsTime, WeaponConfig.ONE_SHOT_MIN_ADS_SECONDS);
+            Assert.GreaterOrEqual(impostor.SecondsPerShot, WeaponConfig.ONE_SHOT_MIN_CYCLE_SECONDS);
+
+            // What nobody was looking at: it is not a one-shot weapon at all, and
+            // 3000 ms is seven times the slowest TTK the game permits anywhere.
+            Assert.AreEqual(4, impostor.ShotsToKill(100f));
+            Assert.AreEqual(3.0f, impostor.TimeToKill(100f), 0.002f);
+            Assert.Greater(impostor.TimeToKill(100f) * 1000f, WeaponConfig.ARCADE_TTK_MAX_MS);
+
+            Assert.Throws<AssertionException>(
+                () => AssertObeysTheLawOfItsClass(impostor),
+                "weaponClass = Sniper is still a blanket exemption from every TTK bound in the project");
+
+            // The positive control, so the assertion above cannot be passing
+            // because the gate rejects every sniper ever authored: 100 damage in
+            // one pull, and the same two floors, and it goes through.
+            WeaponConfig honest = ScriptableObject.CreateInstance<WeaponConfig>();
+            honest.weaponClass = WeaponClass.Sniper;
+            honest.bodyDamage = 100f;
+            honest.roundsPerMinute = 60f;
+            honest.adsTime = 0.40f;
+
+            Assert.AreEqual(1, honest.ShotsToKill(100f));
+            Assert.DoesNotThrow(() => AssertObeysTheLawOfItsClass(honest),
+                "a sniper that genuinely one-shots must still clear its own law");
+        }
+
+        // ---------- the model itself ----------
+        //
+        // Synthetic configs, not shipped assets: the point is the arithmetic, and
+        // authoring a real sniper to prove the sniper law would be exactly the
+        // backwards move this whole change exists to stop.
+
+        /// <summary>
+        /// The failure that forced the split. A one-shot weapon reports a TTK of
+        /// zero, so under a universal 200 ms floor it is not merely unbalanced —
+        /// it cannot be authored at all.
+        /// </summary>
+        [Test]
+        public void AOneShotWeapon_ReportsOneShot_AndIsJudgedOnReEngagementInstead()
+        {
+            WeaponConfig sniper = ScriptableObject.CreateInstance<WeaponConfig>();
+            sniper.weaponClass = WeaponClass.Sniper;
+            sniper.bodyDamage = 100f;
+            sniper.roundsPerMinute = 60f;   // 1.00 s between rounds
+            sniper.adsTime = 0.40f;
+
+            // One shot, not zero. The old model floored nothing and a one-shot
+            // weapon's "shots to kill" was still 1, but its TTK was 0 — and 0 is
+            // below every floor, forever.
+            Assert.AreEqual(1, sniper.ShotsToKill(100f));
+            Assert.AreEqual(0f, sniper.TimeToKill(100f), 0.0001f);
+            Assert.Less(sniper.TimeToKill(100f) * 1000f, WeaponConfig.ARCADE_TTK_MIN_MS,
+                "if this ever passes the arcade floor, the split is no longer needed");
+
+            // So it answers to a different law, and it passes that one.
+            Assert.AreEqual(BalanceLaw.ReEngagementCost, sniper.Law);
+            Assert.AreEqual(BalanceLaw.ReEngagementCost, WeaponConfig.LawFor(WeaponClass.Launcher));
+            Assert.GreaterOrEqual(sniper.adsTime, WeaponConfig.ONE_SHOT_MIN_ADS_SECONDS);
+            Assert.GreaterOrEqual(sniper.SecondsPerShot, WeaponConfig.ONE_SHOT_MIN_CYCLE_SECONDS);
+
+            // And that law is worth more than the window it replaces: 1.4 s to
+            // re-engage against the AR's 0.257 s is the actual trade being sold.
+            Assert.Greater(sniper.adsTime + sniper.SecondsPerShot, 1.0f);
+        }
+
+        /// <summary>The core automatics keep the window, unchanged. This is the control.</summary>
+        [Test]
+        public void TheCoreAutomatics_StillAnswerToTheArcadeWindow()
+        {
+            Assert.AreEqual(BalanceLaw.ArcadeTtkWindow, WeaponConfig.LawFor(WeaponClass.AssaultRifle));
+            Assert.AreEqual(BalanceLaw.ArcadeTtkWindow, WeaponConfig.LawFor(WeaponClass.SMG));
+            Assert.AreEqual(BalanceLaw.ArcadeTtkWindow, WeaponConfig.LawFor(WeaponClass.LMG));
+            Assert.AreEqual(BalanceLaw.ArcadeTtkWindow, WeaponConfig.LawFor(WeaponClass.Pistol));
+            Assert.AreEqual(BalanceLaw.ArcadeTtkWindow, WeaponConfig.LawFor(WeaponClass.Marksman));
+            Assert.AreEqual(BalanceLaw.ContactBurst, WeaponConfig.LawFor(WeaponClass.Shotgun));
+        }
+
+        /// <summary>
+        /// One trigger pull is every pellet it throws. Reading bodyDamage alone
+        /// scored a 12x11 shotgun as an 11-damage gun needing NINE pulls to kill a
+        /// 100 HP drone, when it in fact kills in one.
+        /// </summary>
+        [Test]
+        public void AShotgunPull_IsAllOfItsPellets()
+        {
+            WeaponConfig shotgun = ScriptableObject.CreateInstance<WeaponConfig>();
+            shotgun.weaponClass = WeaponClass.Shotgun;
+            shotgun.bodyDamage = 11f;
+            shotgun.pelletsPerShot = 12;
+            shotgun.roundsPerMinute = 70f;
+            shotgun.falloffRange = new Vector2(2f, 14f);
+            shotgun.minDamageMultiplier = 0.35f;
+
+            Assert.AreEqual(132f, shotgun.DamagePerShot, 0.001f);
+            Assert.AreEqual(1, shotgun.ShotsToKill(100f), "a 132-damage pull is one pull, not nine");
+            Assert.AreEqual(0f, shotgun.TimeToKill(100f), 0.0001f);
+
+            // And the other half of the law: it must stop being that gun at range.
+            Assert.GreaterOrEqual(shotgun.ShotsToKillAtRange(100f, WeaponConfig.SHOTGUN_TWO_PULL_METRES), 2);
+            Assert.Greater(shotgun.TimeToKillAtRange(100f, WeaponConfig.SHOTGUN_TWO_PULL_METRES), 0f);
+        }
+
+        /// <summary>
+        /// A burst weapon does not fire its bursts for free. WeaponController adds
+        /// burstPause on top of the cadence after the last round of a burst, so a
+        /// kill that crosses a burst boundary pays it — 257 ms became 377 ms, and
+        /// the difference is 30% of the whole window.
+        /// </summary>
+        [Test]
+        public void BurstPause_IsChargedToTimeToKill()
+        {
+            WeaponConfig burst = ScriptableObject.CreateInstance<WeaponConfig>();
+            burst.bodyDamage = 25f;
+            burst.roundsPerMinute = 700f;
+            burst.fireMode = FireMode.Burst;
+            burst.burstCount = 3;
+            burst.burstPause = 0.12f;
+
+            WeaponConfig auto = ScriptableObject.CreateInstance<WeaponConfig>();
+            auto.bodyDamage = 25f;
+            auto.roundsPerMinute = 700f;
+            auto.fireMode = FireMode.FullAuto;
+
+            // Four rounds, three cadence gaps, and exactly ONE burst boundary
+            // crossed (after round three) — not two, and not zero.
+            Assert.AreEqual(4, burst.ShotsToKill(100f));
+            Assert.AreEqual(0.377f, burst.TimeToKill(100f), 0.002f);
+            Assert.AreEqual(0.257f, auto.TimeToKill(100f), 0.002f);
+            Assert.Greater(burst.TimeToKill(100f), auto.TimeToKill(100f));
+
+            // Three rounds never cross a boundary; seven cross two.
+            Assert.AreEqual(auto.TimeForShots(3), burst.TimeForShots(3), 0.0001f);
+            Assert.AreEqual(auto.TimeForShots(7) + 2f * burst.burstPause, burst.TimeForShots(7), 0.0001f);
+
+            // Still inside the window, which is the point: the model got harsher
+            // and the shipped law did not have to move.
+            Assert.LessOrEqual(burst.TimeToKill(100f) * 1000f, WeaponConfig.ARCADE_TTK_MAX_MS);
+        }
+
+        /// <summary>
+        /// TTK is a point-blank number. The same rifle at the end of its falloff
+        /// needs seven rounds instead of four, and no gate saw that before.
+        /// </summary>
+        [Test]
+        public void TimeToKillAtRange_ChargesForFalloff()
+        {
+            WeaponConfig rifle = ScriptableObject.CreateInstance<WeaponConfig>();
+            rifle.bodyDamage = 25f;
+            rifle.roundsPerMinute = 700f;
+            rifle.falloffRange = new Vector2(25f, 60f);
+            rifle.minDamageMultiplier = 0.6f;
+
+            // Inside the falloff start, range costs nothing.
+            Assert.AreEqual(rifle.TimeToKill(100f), rifle.TimeToKillAtRange(100f, 10f), 0.0001f);
+
+            // Past the end: 15 damage a round, so seven rounds and six gaps.
+            Assert.AreEqual(7, rifle.ShotsToKillAtRange(100f, 60f));
+            Assert.AreEqual(0.514f, rifle.TimeToKillAtRange(100f, 60f), 0.002f);
+            Assert.Greater(rifle.TimeToKillAtRange(100f, 60f), rifle.TimeToKillAtRange(100f, 10f));
         }
 
         [Test]
@@ -66,6 +585,9 @@ namespace CoD.Tests
             Assert.Less(smg.DamageAtDistance(40f) * smg.roundsPerMinute / 60f,
                 rifle.DamageAtDistance(40f) * rifle.roundsPerMinute / 60f,
                 "the rifle must out-damage the SMG at 40 m");
+            // The same trade, now readable straight off the model.
+            Assert.Greater(smg.TimeToKillAtRange(100f, 40f), rifle.TimeToKillAtRange(100f, 40f),
+                "the SMG must take longer to kill at 40 m than the rifle does");
         }
 
         [Test]
