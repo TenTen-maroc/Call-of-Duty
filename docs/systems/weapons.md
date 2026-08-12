@@ -1,6 +1,8 @@
 # Weapons
 
-> Last verified: 2026-08-11 (runs; firing, ammo, HUD and audio confirmed in play)
+> Last verified: 2026-08-12 (runs; firing, ammo, HUD and audio confirmed in play.
+> The pellet-scoping fix below is covered by tests and has never been *felt* —
+> no shotgun is authored yet.)
 
 ## Overview
 
@@ -51,7 +53,9 @@ around that number — change it deliberately.
   identical on every machine and every run.
 - **[WeaponController.cs](../../Assets/_Project/Scripts/Weapons/WeaponController.cs)** —
   the MonoBehaviour. Exposes `Hit(bool killed)` and `Fired` events; the UI
-  subscribes and the weapon never learns the UI exists.
+  subscribes and the weapon never learns the UI exists. `Hit` fires **once per
+  trigger pull** that landed damage, with a sticky kill flag — not once per
+  pellet and not once per follow-up.
 
 ## Audio
 
@@ -95,7 +99,11 @@ gunshots are the top reason a shooter sounds cheap. See the folder README.
   kick and spin are `WeaponConfig` numbers. Casings live on the Ignore Raycast
   layer so a tumbling casing never eats a bullet, and `_hitMask` defaults to
   `Physics.DefaultRaycastLayers` to match.
-- `Physics.RaycastNonAlloc` into a pre-sized `RaycastHit[16]`, sorted in place by
+- **One trigger pull is one shot, however many pellets it throws.** Each pellet
+  gets its own ray, its own `ResolveHit` and its own damage; the follow-up drain,
+  the already-hit set, the follow-up hang guard and the hitmarker are all scoped
+  to the *pull*. See "Pellet scoping" below — this was per-pellet until 2026-08-12.
+- `Physics.RaycastNonAlloc` into a pre-sized `RaycastHit[32]`, sorted in place by
   an insertion sort — no allocation in the firing path, and the sort only matters
   once Pierce lets one ray resolve several targets in order.
 - Damage goes through `IDamageable`, so the weapon has no enemy-specific code.
@@ -141,8 +149,9 @@ same cast.
 
 Two independent bounds stop a mis-authored module from freezing a frame: the
 `FollowUpBuffer` has a fixed capacity (dropped work is a missing spark), and
-`DrainFollowUps` caps iterations per shot. The depth rules are the real limit;
-those are the seatbelt.
+`DrainFollowUps` caps iterations at `MAX_FOLLOW_UPS_PER_PULL` (96) **per trigger
+pull** — not per pellet, which is what it used to be. The depth rules are the
+real limit; those are the seatbelt.
 
 ## Targets
 
@@ -197,6 +206,57 @@ of them.
 `WeaponController` onto `WeaponConfig`, where every other number on that path
 already lived.
 
+## Pellet scoping: the pull and the pellet (2026-08-12)
+
+**A latent bug, fixed before the weapon that would have triggered it exists.**
+Every buffer in the fire path whose comment said "per shot" was in fact scoped
+**per pellet**: `CastOneRay` ended by calling `DrainFollowUps`, and
+`DrainFollowUps` ended by clearing both the follow-up queue and the already-hit
+set. At `pelletsPerShot: 1` — both shipped weapons — the two scopes are the same
+object, which is why nothing ever surfaced. At 12 they diverge badly:
+
+- **One pull paid twelve times for one effect module.** Explosive and Chain both
+  work by asking the weapon "have you already hit this one?"; the set was wiped
+  between pellets, so all twelve got a fresh "no". Twelve detonations, twelve
+  chains, each free to re-hit what the pellet before had claimed.
+- **The hang guard multiplied by the pellet count.** `guard` is a local inside
+  `DrainFollowUps`, so a 96-follow-up ceiling became 1152 per pull — precisely
+  the frame freeze the constant exists to prevent.
+- **Twelve `Hit` events.** `Hitmarker` does a `PlayOneShot` per event: twelve
+  clicks stacked in one frame under one punch animation. It already carried a
+  workaround for a plain pellet overwriting a sibling pellet's kill confirmation.
+- **A follow-up could cancel a later pellet's damage.** Follow-ups drained
+  between pellets and marked their victims, and `ResolveHit` read the same set to
+  skip a body's second collider — so a blast from pellet 1 made pellet 2's direct
+  hit on that drone deal nothing at all.
+
+The drain, both clears and the follow-up budget now live in `FireOneShot`, one
+level up, so their scope is **one trigger pull**. The clears happen at the START
+of the pull rather than the end, so an early return cannot leak marks into the
+next one.
+
+**Two sets, not one.** The hull/Core de-duplication (every drone puts two
+colliders on the line, and only the hull carries `Health`) is a genuinely
+per-*ray* concern and moved to its own `_piercedThisRay`, cleared at the top of
+`CastOneRay`. Point `ResolveHit` at the per-pull set instead and a twelve-pellet
+shotgun deals one pellet of damage, because pellet 2 reads pellet 1's mark and
+passes straight through. `HitOutcome.AlreadyPierced` still means exactly what it
+meant: *this ray* already went through this body.
+
+**`Hit` is raised once per pull**, by an accumulator (`RegisterHit`) that every
+damage path funnels through — primary, follow-up damage, follow-up ray. The kill
+flag is sticky: if any pellet or any follow-up killed, the pull killed, which is
+what the player actually did. `Hitmarker` and `Crosshair` needed no change;
+`Crosshair` never subscribed to `Hit` at all.
+
+Covered by
+[PelletScopingTests.cs](../../Assets/_Project/Tests/PlayMode/PelletScopingTests.cs)
+(PlayMode — the fire path needs a physics scene, a real aim ray and a live
+`Health`, none of which EditMode can reach). It equips a synthetic 12-pellet
+`WeaponConfig` with a zeroed cone, installs a stand-in module targeting a
+collider-less bystander, and asserts one payment, one hitmarker, a sticky kill
+flag, and twelve pellets' worth of damage on the primary target. It drives
+`FireOneShot` by reflection because a headless run has no input device to press.
 
 ## Related Systems
 
@@ -210,17 +270,24 @@ already lived.
 - `CoD.Weapons` **must** reference `CoD.Player` in its asmdef. It did not, and it
   would have failed on first open; the type-check now catches this class of error.
 - `pelletsPerShot > 1` fires N rays from one bloom value — correct for a shotgun,
-  but each pellet re-rolls the cone.
+  but each pellet re-rolls the cone. Nothing else in the fire path is per pellet:
+  read "Pellet scoping" before adding anything to `CastOneRay`.
 - Feedback prefabs on `WeaponConfig` must be registered in the pool prewarm list
   or the first shot allocates.
-- **The already-hit set is cleared per shot, not per frame.** Leaving it would
-  make chains stop working after the first magazine; clearing it too early lets a
-  chain bounce between two drones forever.
+- **The already-hit set is cleared per trigger pull, not per pellet and not per
+  frame.** Leaving it would make chains stop working after the first shot;
+  clearing it too early lets one pull pay for the same target once per pellet.
+  There are now TWO sets and they are not interchangeable: `_alreadyHit` is the
+  per-pull one modules read through `HasHit`/`MarkHit`, and `_piercedThisRay` is
+  the per-ray one that skips a body's second collider.
 - A pierce budget is spent on **bodies only**. `ResolveHit` returns whether it
   damaged something, and the cast stops at the first thing that is not
   damageable — otherwise a piercing round shoots through the arena wall.
-- `_hitBuffer` is 16 entries because a piercing round has to find several bodies
-  *and* the wall behind them in one cast.
+- `_hitBuffer` is **32** entries because a piercing round has to find several
+  bodies *and* the wall behind them in one cast: a full Pierce budget is 9 bodies
+  x 2 colliders each, plus the wall. `RaycastNonAlloc` returns an arbitrary
+  subset when the buffer fills and reports no overflow, so a short buffer does
+  not clip the far end of the line — it silently drops the wall.
 - Verified in play: firing, ammo, HUD and audio. NOT yet verified: damage
   falloff at range, shotgun pellet spread, reload cancelling, burst mode,
   headshots on the dummy's head, casing ejection arcs, and target respawn —

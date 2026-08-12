@@ -52,6 +52,11 @@ namespace CoD.Weapons
         private float _statDamageMultiplier = 1f;
         private float _statReloadSpeed = 1f;
 
+        // Accumulated over the whole trigger pull and raised once at the end of
+        // it. See RegisterHit for why the event is not raised where the damage is.
+        private bool _pullDamagedSomething;
+        private bool _pullKilledSomething;
+
         // Pre-sized buffer: RaycastNonAlloc never allocates, which matters once
         // hundreds of shots per minute are flying.
         //
@@ -72,13 +77,32 @@ namespace CoD.Weapons
         /// <summary>
         /// Extra resolution depth granted in Sandbox. Zero in a Run, always.
         ///
-        /// MAX_FOLLOW_UPS_PER_SHOT and the fixed-capacity buffer above are
+        /// MAX_FOLLOW_UPS_PER_PULL and the fixed-capacity buffer above are
         /// untouched on purpose: they are the hard backstop that makes deeper
         /// recursion a bigger effect rather than a frame-rate event, and the whole
         /// reason it is safe to let Sandbox off the leash at all.
         /// </summary>
         private int _extraEffectDepth;
+
+        /// <summary>
+        /// Every body this TRIGGER PULL has already paid for — the set modules
+        /// read through HasHit/MarkHit. One pull, one payment per target, however
+        /// many pellets and follow-ups reach it.
+        /// </summary>
         private readonly List<Health> _alreadyHit = new(24);
+
+        /// <summary>
+        /// Bodies THIS ONE RAY has already resolved. Deliberately not the set
+        /// above, and the distinction is what keeps a shotgun a shotgun: this one
+        /// exists only to skip the SECOND collider of a body the same ray already
+        /// went through (every drone puts two on the line — the hull, which
+        /// carries the Health, and the small `Core` child whose Weakpoint relays
+        /// to it). Read the per-pull set here instead and pellet two would find
+        /// pellet one's mark and pass straight through, so twelve pellets would
+        /// deal one pellet of damage.
+        /// </summary>
+        private readonly List<Health> _piercedThisRay = new(12);
+
         // 24 covered about twelve drones: every drone puts TWO colliders in an
         // overlap (hull and weakpoint Core) and only the hull carries Health.
         // OverlapSphere fills a full buffer with an arbitrary subset and reports
@@ -87,13 +111,18 @@ namespace CoD.Weapons
         private readonly Collider[] _effectOverlap = new Collider[64];
 
         /// <summary>
-        /// Hard stop on follow-up work per shot. Not a tuning value — a hang guard.
-        /// The depth rules are the real limit; this is what catches a mis-authored
-        /// module before it freezes a frame.
+        /// Hard stop on follow-up work per TRIGGER PULL. Not a tuning value — a
+        /// hang guard. The depth rules are the real limit; this is what catches a
+        /// mis-authored module before it freezes a frame.
+        ///
+        /// Named for the pull rather than the shot because it used to be neither:
+        /// the drain lived inside CastOneRay, so the guard was per PELLET and a
+        /// twelve-pellet weapon raised the real ceiling to 1152 — the exact frame
+        /// freeze the number exists to prevent.
         /// </summary>
-        private const int MAX_FOLLOW_UPS_PER_SHOT = 96;
+        private const int MAX_FOLLOW_UPS_PER_PULL = 96;
 
-        /// <summary>Fired for every confirmed hit; the bool is true when it killed. The UI listens, and the weapon never learns the UI exists.</summary>
+        /// <summary>Fired once per trigger pull that landed damage; the bool is true when any of it killed. The UI listens, and the weapon never learns the UI exists.</summary>
         public event Action<bool>? Hit;
         public event Action? Fired;
 
@@ -121,7 +150,7 @@ namespace CoD.Weapons
         /// <summary>The shooter's own Health, so modules never damage the player who fired.</summary>
         public Health? OwnerHealth => _ownerHealth;
 
-        /// <summary>True when this shot has already damaged that target. The reason a chain cannot bounce between two drones forever.</summary>
+        /// <summary>True when this TRIGGER PULL has already damaged that target. The reason a chain cannot bounce between two drones forever.</summary>
         public bool HasHit(Health health) => _alreadyHit.Contains(health);
 
         public void MarkHit(Health health)
@@ -368,9 +397,34 @@ namespace CoD.Weapons
                 }
             }
 
+            // ONE TRIGGER PULL IS ONE SHOT, even when the shot is twelve pellets.
+            //
+            // Everything in this block used to live at the bottom of CastOneRay,
+            // which made every buffer whose comment said "per shot" actually per
+            // PELLET. With pelletsPerShot 1 — both shipped weapons — the two
+            // scopes are the same object and nothing ever surfaced. Author a
+            // twelve-pellet shotgun and one pull paid twelve times for one effect
+            // module: twelve detonations from one Explosive, twelve chains each
+            // free to re-hit what the pellet before had already claimed because
+            // the set was wiped in between, twelve hitmarker clicks stacked in one
+            // frame, and a 96-follow-up hang guard quietly raised to 1152.
+            //
+            // Cleared at the START of the pull rather than the end, so an early
+            // return anywhere below cannot leak marks into the next one.
+            _followUps.Clear();
+            _alreadyHit.Clear();
+            _pullDamagedSomething = false;
+            _pullKilledSomething = false;
+
             float spread = CurrentSpreadDegrees();
             int pellets = Mathf.Max(1, config.pelletsPerShot);
             for (int pellet = 0; pellet < pellets; pellet++) CastOneRay(config, spread);
+
+            // After every pellet, never between them. Each pellet still resolved
+            // its own ray and its own damage above; what happens once is the
+            // aftermath.
+            DrainFollowUps(config);
+            if (_pullDamagedSomething) Hit?.Invoke(_pullKilledSomething);
 
             ApplyRecoil(config, shotIndex);
             SpawnMuzzleEffects(config, now);
@@ -400,16 +454,18 @@ namespace CoD.Weapons
         {
             if (_look == null || _runtime == null) return;
 
+            // The one thing that IS per pellet: a ray may not resolve the same
+            // body twice, and the next pellet is a new ray with a clean slate.
+            // Everything else the shot accumulates lives one level up, in
+            // FireOneShot.
+            _piercedThisRay.Clear();
+
             Ray aim = _look.AimRay;
             Vector3 direction = spreadDegrees <= 0f ? aim.direction : ApplyCone(aim.direction, spreadDegrees);
 
             int count = Physics.RaycastNonAlloc(aim.origin, direction, _hitBuffer, config.maxRange,
                 _hitMask, QueryTriggerInteraction.Ignore);
-            if (count <= 0)
-            {
-                DrainFollowUps(config);
-                return;
-            }
+            if (count <= 0) return;
 
             // Pierce is resolved BEFORE the cast, not after: it changes how many
             // targets this one ray is allowed to find. Everything else works
@@ -448,8 +504,6 @@ namespace CoD.Weapons
                 if (outcome != HitOutcome.Damaged) break;
                 multiplier *= pierceFalloff;
             }
-
-            DrainFollowUps(config);
         }
 
         /// <summary>Insertion sort over the live part of the buffer. In-place, so it never allocates, and n is at most the buffer length.</summary>
@@ -530,7 +584,12 @@ namespace CoD.Weapons
             // Everything below (damage, impact spark, effect modules, hitmarker)
             // is skipped for the second, which is what stops one bullet paying
             // twice on one drone.
-            if (target is Health owner && HasHit(owner)) return HitOutcome.AlreadyPierced;
+            //
+            // Read from the per-RAY set. The per-pull set would answer yes for
+            // every pellet after the first, which is a shotgun that fires one
+            // pellet of damage — and for a body a follow-up had already claimed,
+            // a bullet that does nothing at all.
+            if (target is Health owner && _piercedThisRay.Contains(owner)) return HitOutcome.AlreadyPierced;
 
             bool damaged = false;
             if (target != null && target.IsAlive)
@@ -539,11 +598,15 @@ namespace CoD.Weapons
                 target.ApplyDamage(in info);
                 damaged = true;
                 killed = !target.IsAlive;
-                if (target is Health health) MarkHit(health);
+                if (target is Health health)
+                {
+                    _piercedThisRay.Add(health);
+                    MarkHit(health);
+                }
             }
 
             SpawnImpact(hit, onBody: target != null);
-            if (damaged) Hit?.Invoke(killed);
+            if (damaged) RegisterHit(killed);
 
             RunEffectModules(new HitContext(this, config, hit.point, hit.normal, direction,
                 target as Health, damage, depth));
@@ -576,23 +639,39 @@ namespace CoD.Weapons
 
         /// <summary>
         /// Applies everything the modules queued, then lets modules react to those
-        /// hits one depth further down. Bounded twice — by the buffer's capacity
-        /// and by this loop's iteration cap — because a hang is a worse bug than a
-        /// missing spark.
+        /// hits one depth further down. Called exactly ONCE per trigger pull, from
+        /// FireOneShot — which is the whole point of the iteration cap below, and
+        /// what it was not while this ran at the bottom of every pellet's ray.
+        ///
+        /// Bounded twice — by the buffer's capacity and by this loop's iteration
+        /// cap — because a hang is a worse bug than a missing spark. Whatever the
+        /// cap leaves in the queue is dropped by the next pull's clear, so a
+        /// module that overruns its budget cannot bleed work into the shot after.
         /// </summary>
         private void DrainFollowUps(WeaponConfig config)
         {
             int guard = 0;
-            while (guard++ < MAX_FOLLOW_UPS_PER_SHOT && _followUps.TryDequeue(out FollowUp followUp))
+            while (guard++ < MAX_FOLLOW_UPS_PER_PULL && _followUps.TryDequeue(out FollowUp followUp))
             {
                 if (followUp.Kind == FollowUpKind.Damage) ApplyFollowUpDamage(config, in followUp);
                 else ApplyFollowUpRay(config, in followUp);
             }
+        }
 
-            // Per-shot state, cleared per shot: the already-hit set must not leak
-            // into the next trigger pull or chains stop working after a magazine.
-            _followUps.Clear();
-            _alreadyHit.Clear();
+        /// <summary>
+        /// One trigger pull raises exactly one Hit, and the kill flag is sticky.
+        ///
+        /// Every path that lands damage funnels through here instead of raising
+        /// the event itself. Hitmarker does a PlayOneShot per event, so a
+        /// twelve-pellet pull was twelve clicks in one frame over one punch
+        /// animation — it already carried a workaround for a plain pellet
+        /// overwriting a sibling pellet's kill confirmation. If ANY part of the
+        /// pull killed, the pull killed: that is what the player actually did.
+        /// </summary>
+        private void RegisterHit(bool killed)
+        {
+            _pullDamagedSomething = true;
+            _pullKilledSomething |= killed;
         }
 
         private void ApplyFollowUpDamage(WeaponConfig config, in FollowUp followUp)
@@ -608,7 +687,7 @@ namespace CoD.Weapons
                 followUp.Direction, false);
             target.ApplyDamage(in info);
             MarkHit(target);
-            Hit?.Invoke(!target.IsAlive);
+            RegisterHit(!target.IsAlive);
 
             RunEffectModules(new HitContext(this, config, target.transform.position, -followUp.Direction,
                 followUp.Direction, target, followUp.Damage, followUp.Depth));
@@ -652,7 +731,7 @@ namespace CoD.Weapons
             var info = new DamageInfo(followUp.Damage, hit.point, hit.normal, followUp.Direction, false);
             target.ApplyDamage(in info);
             MarkHit(target);
-            Hit?.Invoke(!target.IsAlive);
+            RegisterHit(!target.IsAlive);
 
             RunEffectModules(new HitContext(this, config, hit.point, hit.normal, followUp.Direction,
                 target, followUp.Damage, followUp.Depth));
