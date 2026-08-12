@@ -1,11 +1,13 @@
 #nullable enable
 using System.IO;
+using System.Text.RegularExpressions;
 using CoD.Core;
 using CoD.Enemies;
 using CoD.Waves;
 using CoD.Weapons;
 using NUnit.Framework;
 using UnityEngine;
+using UnityEngine.TestTools;
 
 namespace CoD.Tests
 {
@@ -217,6 +219,132 @@ namespace CoD.Tests
             SaveData loaded = SaveSystem.Load();
             Assert.AreEqual(42, loaded.bestRound, "records must survive a downgrade, not be rewritten");
             Assert.AreEqual(99, loaded.schemaVersion);
+        }
+
+        [Test]
+        public void AV3Save_MigratesToV4_WithoutLosingTheRecordOrTheSettings()
+        {
+            // Hand-written, because there is no v3 build left to write it. This is
+            // literally the shape schema 3 shipped: everything the player had
+            // earned and every choice they had made, and not one campaign key.
+            File.WriteAllText(_savePath,
+                "{\"schemaVersion\":3,\"bestRound\":17,\"totalKills\":900,\"totalRuns\":4," +
+                "\"sandboxUnlocked\":true,\"lastMode\":1," +
+                "\"settingsInitialised\":true,\"mouseSensitivity\":0.2,\"fovVertical\":70.0," +
+                "\"masterVolume\":0.5,\"invertLook\":true," +
+                "\"graphicsInitialised\":true,\"postProcessing\":false,\"antiAliasing\":1}");
+
+            SaveData loaded = SaveSystem.Load();
+
+            Assert.AreEqual(SaveSystem.CurrentSchemaVersion, loaded.schemaVersion);
+            Assert.AreEqual(17, loaded.bestRound, "a migration must never cost the player the record");
+            Assert.AreEqual(900, loaded.totalKills);
+            Assert.AreEqual(4, loaded.totalRuns);
+            Assert.AreEqual(GameMode.Sandbox, loaded.lastMode);
+
+            // Both initialised flags stay TRUE. Clearing one would re-seed the
+            // block from SettingsConfig and quietly throw away a choice the player
+            // made — the v1 → v2 step does that on purpose because v1's values
+            // were never read; there is no such excuse here.
+            Assert.IsTrue(loaded.settingsInitialised);
+            Assert.AreEqual(70f, loaded.fovVertical, 0.001f);
+            Assert.IsTrue(loaded.invertLook);
+            Assert.IsTrue(loaded.graphicsInitialised);
+            Assert.IsFalse(loaded.postProcessing);
+            Assert.AreEqual(AntiAliasingMode.Fxaa, loaded.antiAliasing);
+
+            // An old save is an endless save. Nothing in Migrate had to say so.
+            Assert.IsFalse(loaded.campaignSelected);
+            Assert.AreEqual(string.Empty, loaded.selectedMissionId);
+            Assert.IsNotNull(loaded.missionRecords,
+                "a v3 file has no such key, and the first thing to iterate a null array throws on load");
+            Assert.AreEqual(0, loaded.missionRecords.Length);
+        }
+
+        [Test]
+        public void MissionRecords_SurviveARoundTrip()
+        {
+            var data = new SaveData
+            {
+                campaignSelected = true,
+                selectedMissionId = "mission_02_relay",
+                missionRecords = new[]
+                {
+                    new MissionRecord
+                    {
+                        missionId = "mission_01_cold_open",
+                        completed = true,
+                        bestRating = 3,
+                        bestTimeSeconds = 214.5f,
+                        deaths = 2,
+                    },
+                    new MissionRecord { missionId = "mission_02_relay", deaths = 5 },
+                },
+            };
+            SaveSystem.Save(data);
+
+            SaveData loaded = SaveSystem.Load();
+
+            Assert.IsTrue(loaded.campaignSelected);
+            Assert.AreEqual("mission_02_relay", loaded.selectedMissionId);
+            // The reason MissionRecord is a [Serializable] class of public fields
+            // and not a Dictionary: JsonUtility writes nested classes and silently
+            // writes NOTHING for a Dictionary, which would have looked like this
+            // block working right up until the first reload.
+            Assert.AreEqual(2, loaded.missionRecords.Length);
+            Assert.AreEqual("mission_01_cold_open", loaded.missionRecords[0].missionId);
+            Assert.IsTrue(loaded.missionRecords[0].completed);
+            Assert.AreEqual(3, loaded.missionRecords[0].bestRating);
+            Assert.AreEqual(214.5f, loaded.missionRecords[0].bestTimeSeconds, 0.001f);
+            Assert.AreEqual(2, loaded.missionRecords[0].deaths);
+            Assert.IsFalse(loaded.missionRecords[1].completed, "an attempted mission is not a cleared one");
+            Assert.AreEqual(5, loaded.missionRecords[1].deaths);
+        }
+
+        [Test]
+        public void AFreshSave_IsAnEndlessSave_NotACampaignOne()
+        {
+            if (File.Exists(_savePath)) File.Delete(_savePath);
+            if (File.Exists(_backupPath)) File.Delete(_backupPath);
+
+            SaveData fresh = SaveSystem.Load();
+
+            // GameMode still means RULES. Campaign is the other axis entirely, and
+            // its default has to be the one an un-upgraded build would infer.
+            Assert.AreEqual(GameMode.Run, fresh.lastMode);
+            Assert.IsFalse(fresh.campaignSelected);
+            Assert.AreEqual(string.Empty, fresh.selectedMissionId);
+            Assert.IsNotNull(fresh.missionRecords);
+            Assert.AreEqual(0, fresh.missionRecords.Length);
+        }
+
+        [Test]
+        public void AFutureSave_KeepsTheFieldsThisBuildCannotRepresent()
+        {
+            // What a schema-4 file looks like to a build that only understands 3 —
+            // which is the exact situation the second-axis decision was made for.
+            // The version is DERIVED: a literal here stops matching the moment the
+            // schema is bumped, while the behaviour it guards is still correct.
+            int future = SaveSystem.CurrentSchemaVersion + 1;
+            File.WriteAllText(_savePath,
+                "{\"schemaVersion\":" + future + ",\"bestRound\":31," +
+                "\"aFieldThisBuildHasNeverHeardOf\":\"keep me\"}");
+
+            SaveData loaded = SaveSystem.Load();
+            Assert.AreEqual(31, loaded.bestRound, "a downgrade must not cost the record");
+            Assert.AreEqual(future, loaded.schemaVersion, "Migrate leaves the future alone rather than guessing");
+            Assert.IsNotNull(loaded.missionRecords,
+                "a future save returns from Migrate before any migration step, so the null guard cannot live in one");
+
+            loaded.bestRound = 1;
+
+            // Error, not Warn: GameLog.Warn is compiled out of a shipping build,
+            // and a save path that silently does nothing forever is the failure.
+            LogAssert.Expect(LogType.Error, new Regex($"Refusing to write over a v{future} save"));
+            SaveSystem.Save(loaded);
+
+            StringAssert.Contains("aFieldThisBuildHasNeverHeardOf", File.ReadAllText(_savePath),
+                "writing would have dropped every field this build cannot name, and relabelled the file as current");
         }
     }
 

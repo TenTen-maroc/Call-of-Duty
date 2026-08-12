@@ -56,6 +56,14 @@ namespace CoD.Tests
         public void CaptureAndReset()
         {
             Capture();
+
+            // A NEW SaveData FIELD MEANS A NEW LINE BELOW. This literal is
+            // hand-listed rather than `new SaveData()` precisely so that adding a
+            // field is a decision someone makes here, and the cost of forgetting
+            // is the quietest failure in the suite: the field defaults to zero, a
+            // test asserts on it, and it passes because the code under test never
+            // had to write anything. Both bugs in the header above were that
+            // shape — a value nobody chose, read as if someone had.
             File.WriteAllText(_savePath, JsonUtility.ToJson(new SaveData
             {
                 schemaVersion = SaveSystem.CurrentSchemaVersion,
@@ -70,6 +78,13 @@ namespace CoD.Tests
                 fovVertical = 62f,
                 masterVolume = 1f,
                 invertLook = false,
+
+                // The campaign block, schema 4. Endless, no mission, no history —
+                // the configuration every PlayMode fixture in this project assumes
+                // when it loads the arena and expects the wave loop to just run.
+                campaignSelected = false,
+                selectedMissionId = string.Empty,
+                missionRecords = System.Array.Empty<MissionRecord>(),
             }, prettyPrint: true));
 
             if (File.Exists(_backupPath)) File.Delete(_backupPath);

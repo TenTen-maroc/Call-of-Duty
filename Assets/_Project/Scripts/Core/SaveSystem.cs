@@ -26,8 +26,17 @@ namespace CoD.Core
         /// 2 → 3 added the graphics block (post-processing, anti-aliasing). Bumped
         /// even though the migration is a no-op, because the version is what tells
         /// a downgraded build that this file holds fields it does not understand.
+        ///
+        /// 3 → 4 added the campaign block (campaignSelected, selectedMissionId,
+        /// missionRecords). Campaign is a SECOND AXIS rather than a third GameMode
+        /// for exactly the reason this version number exists: the enum is written
+        /// as a raw int and C# enums are not range-checked, so a shipped build
+        /// reading lastMode: 2 would answer "not Sandbox", treat a campaign
+        /// mission as a Run, and write its wave number into bestRound. As a bool
+        /// it ignores three unknown fields and starts an endless run instead. See
+        /// SaveData for the long version.
         /// </summary>
-        public const int CurrentSchemaVersion = 3;
+        public const int CurrentSchemaVersion = 4;
 
         private const string FileName = "cod_save.json";
         private const string BackupName = "cod_save.bak.json";
@@ -50,7 +59,45 @@ namespace CoD.Core
             }
             if (data == null) return new SaveData();
 
-            return Migrate(data);
+            return Normalise(Migrate(data));
+        }
+
+        /// <summary>
+        /// Makes the reference fields honest. #nullable enable checks THIS code,
+        /// not the deserialiser that fills it: JsonUtility assigns the fields the
+        /// JSON actually names and leaves the rest at whatever the constructed
+        /// object had, so a file written before schema 4 can hand back a null
+        /// array and a null string through fields declared non-null. The first
+        /// thing to iterate missionRecords would then throw, on load, on the
+        /// machine of the one player who had a save from before the campaign.
+        ///
+        /// This lives outside Migrate on purpose. A save from the FUTURE returns
+        /// from Migrate before any migration step runs, and it can be exactly as
+        /// null — "must not be null" is a property of the field, not of a version.
+        ///
+        /// An empty array is not a default value, it is the identity: no missions
+        /// played. There is no tuning number anywhere in here.
+        /// </summary>
+        private static SaveData Normalise(SaveData data)
+        {
+            if (data.missionRecords is null) data.missionRecords = System.Array.Empty<MissionRecord>();
+            if (data.selectedMissionId is null) data.selectedMissionId = string.Empty;
+
+            // The entries too. An array can survive the parse with a null slot or
+            // a record whose JSON object simply omitted missionId, and a save file
+            // is the one input in this game that a player can open in Notepad.
+            for (int i = 0; i < data.missionRecords.Length; i++)
+            {
+                MissionRecord? record = data.missionRecords[i];
+                if (record is null)
+                {
+                    record = new MissionRecord();
+                    data.missionRecords[i] = record;
+                }
+                if (record.missionId is null) record.missionId = string.Empty;
+            }
+
+            return data;
         }
 
         public static void Save(SaveData data)
@@ -157,6 +204,25 @@ namespace CoD.Core
                 // the same path a brand-new save takes. Writing real values here
                 // instead would put a tuning number in a migration, and tuning
                 // numbers live in ScriptableObjects.
+            }
+
+            if (data.schemaVersion < 4)
+            {
+                // Deliberately nothing, and for a DIFFERENT reason than the < 3
+                // branch above. That one is empty because a real default is a
+                // tuning number that has to come from a ScriptableObject. This one
+                // is empty because the campaign block has no real default at all:
+                // false means the menu has never been pointed at the campaign,
+                // empty means no mission chosen, and no records means no mission
+                // played. A save from before the campaign IS an endless save, and
+                // the zero values already say so — which is also why there is no
+                // campaignInitialised flag to clear here.
+                //
+                // The one thing a v3 file can genuinely hand over is a NULL array
+                // where this build declares a non-null one, and that is fixed in
+                // Normalise rather than here. A save from the future returns above
+                // without ever reaching a migration step and can be just as null,
+                // so the guard belongs on the load path, not on this version's.
             }
 
             data.schemaVersion = CurrentSchemaVersion;
