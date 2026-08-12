@@ -11,6 +11,11 @@
 *.mat       text eol=lf merge=unityyamlmerge diff
 *.anim      text eol=lf merge=unityyamlmerge diff
 *.controller text eol=lf merge=unityyamlmerge diff
+# An AudioMixer is YAML like every other Unity asset, and it is the ONE asset in
+# this project that a human authors by hand (AudioMixerController is internal to
+# UnityEditor, so no builder can make one). Listed here so the file a human drops
+# in lands with LF endings and a mergeable diff like everything a builder writes.
+*.mixer     text eol=lf merge=unityyamlmerge diff
 *.meta      text eol=lf
 *.cs        text eol=lf diff=csharp
 *.shader    text eol=lf
