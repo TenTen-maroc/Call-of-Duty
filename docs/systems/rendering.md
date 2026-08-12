@@ -1,6 +1,6 @@
 # Rendering
 
-> Last verified: 2026-08-11
+> Last verified: 2026-08-12
 > **Verified in play: no.** Compiled, built, and covered by 5 PlayMode tests that
 > assert both scenes render with post-processing on and that the profile kept its
 > overrides through the save. Whether the bloom intensity *looks* right is a
@@ -10,8 +10,9 @@
 ## Overview
 
 The image pipeline: the post-processing stack, the arena's light rig, surface
-response on the materials, and the one generated texture. URP 6 (17.0.4), forward
-renderer, [PC_RPAsset](../../Assets/Settings/PC_RPAsset.asset).
+response on the materials, and the one generated texture. URP 6 (17.0.4),
+**Forward+**, [PC_RPAsset](../../Assets/Settings/PC_RPAsset.asset) driving
+[PC_Renderer](../../Assets/Settings/PC_Renderer.asset).
 
 **What this replaced: nothing at all.** The project ran its whole life with
 post-processing switched off and no gate noticed. The `Main Camera` in every scene
@@ -28,6 +29,40 @@ rendered with no tonemapping, no bloom and no anti-aliasing.
 
 A missing component is invisible to every other gate in this repo. That is what
 [RenderingTests](../../Assets/_Project/Tests/PlayMode/RenderingTests.cs) is for.
+
+## The renderer
+
+[PC_Renderer](../../Assets/Settings/PC_Renderer.asset) is not the stock forward
+renderer, and two of its settings are load-bearing:
+
+- **`m_RenderingMode: 2` — Forward+, not Forward.** The per-object light limit
+  (`m_AdditionalLightsPerObjectLimit: 4`) stops applying the way it does in
+  Forward: Forward+ culls lights per screen tile rather than per object, so the
+  four static arena lights plus the muzzle flash plus an explosion light can all
+  reach the same surface without one of them being dropped. That is why the
+  limit of 4 is survivable. It costs a depth prepass, which the depth texture
+  below was already paying for.
+- **One Renderer Feature: `ScreenSpaceAmbientOcclusion`,** active, and nothing in
+  this doc previously mentioned it. Settings as committed: intensity `0.4`,
+  radius `0.3`, samples `1`, direct-lighting strength `0.25`, `Downsample: 0`
+  (full resolution), `AfterOpaque: 0`, `Source: 1` (**DepthNormals**). The
+  DepthNormals source is the expensive half of the choice — it makes URP produce
+  a full-resolution `_CameraNormalsTexture` in the prepass. `Samples: 1` and a
+  0.3 m radius keep it to contact shadows in corners rather than a general
+  dimming; on a grey box with almost no albedo variation it is doing a large
+  share of the work that makes a wall meet a floor.
+
+**Known defect — a second, unmanaged volume stack.** `PC_RPAsset.m_VolumeProfile`
+still points at Unity's template `Assets/Settings/SampleSceneProfile.asset`
+(guid `10fc4df2…`), not at
+[PostFx_Arena](../../Assets/_Project/Data/Game/PostFx_Arena.asset)
+(guid `2412ce7c…`). The pipeline asset's profile is the *default* volume — it sits
+underneath every scene's `Volume` at the lowest priority, and everything it
+overrides is in force everywhere unless the scene volume overrides the same
+parameter. So the values in the table below are being blended over a stack nobody
+in this project tunes or reviews. Someone else is fixing it; do not fix it here.
+Until then, treat any post-processing behaviour that the table cannot explain as
+suspect rather than as a mystery.
 
 ## Data Assets
 
@@ -84,6 +119,107 @@ scene is hand-authored.
   beside `PlayerLook` and `CameraShake` so that `CoD.Core` — which everything
   depends on — never references the render pipeline. See
   [settings.md](settings.md).
+
+## Budget
+
+The binding constraint on this project is **4 GB of VRAM on an RTX 3050 Laptop**,
+and it is spent on textures, not geometry. Two things compete for it: the render
+targets, which are fixed by the settings below and do not move as content is
+added, and the textures, which move every time somebody imports a pack.
+
+### Render targets at 1920×1080
+
+Computed from resolution × format for the CURRENT contents of
+[PC_RPAsset](../../Assets/Settings/PC_RPAsset.asset) and
+[PC_Renderer](../../Assets/Settings/PC_Renderer.asset). **These are arithmetic,
+not measurement** — the setting each row is derived from is named so the row can
+be re-checked when a setting changes. 1920×1080 is 2,073,600 pixels, so 1 B/px is
+2.07 MB.
+
+| Target | From | Format | Size |
+| --- | --- | --- | --- |
+| Camera colour ×2 (post ping-pong) | `m_SupportsHDR: 1`, `m_HDRColorBufferPrecision: 0` → 32-bit | R11G11B10, 4 B/px | 16.6 MB |
+| Camera depth attachment | always | D32_SFloat_S8_UInt, 8 B/px allocated | 16.6 MB |
+| `_CameraDepthTexture` | `m_RequireDepthTexture: 1` | R32_SFloat, 4 B/px | 8.3 MB |
+| `_CameraNormalsTexture` | SSAO `Source: 1` (DepthNormals) | 4 B/px, full res | 8.3 MB |
+| `_CameraOpaqueTexture` | `m_RequireOpaqueTexture: 1`, `m_OpaqueDownsampling: 1` (½ res) | 960×540, 4 B/px | 2.1 MB |
+| Main light shadow atlas | `m_MainLightShadowmapResolution: 2048`, `m_ShadowCascadeCount: 4` | 2048² depth, four 1024² tiles | 16.8 MB |
+| Additional light shadow atlas | `m_AdditionalLightsShadowmapResolution: 2048` | 2048² depth | **0 MB today** |
+| SSAO target + blur | Renderer Feature, `Downsample: 0` | R8 full res, ping-pong | ~5 MB |
+| SMAA edge + blend | camera post AA, the shipped default | R8G8 + RGBA8, full res | ~12 MB |
+| Bloom mip chain ×2 | `PostFx_Arena` | from ½ res down | ~5.5 MB |
+| Colour grading LUT | `m_ColorGradingMode: 1` (HDR), size 32 | 1024×32 strip | 0.3 MB |
+| | | | **≈90 MB** |
+
+Two lines in that table are worth arguing about before any content is added:
+
+- **The additional-light atlas costs nothing today because nothing uses it.** All
+  four arena lights are `LightShadows.None`. Give any one of them a shadow and
+  16.8 MB is allocated for the atlas — plus the per-frame cost of another shadow
+  pass, which is the part that shows up on the 3050, not the memory.
+- **`m_RequireOpaqueTexture` is on and nothing currently reads it.** Nothing in
+  the project samples `_CameraOpaqueTexture` (no refraction, no distortion, no
+  glass). It is 2.1 MB and a full-screen copy every frame for a feature that is
+  not in use. Turning it off is a free win the moment somebody confirms that in
+  the Frame Debugger; leave it until then, because a shader that quietly needs it
+  fails as an invisible object, not as an error.
+
+Depth-format padding and driver allocation granularity make the total soft by
+roughly ±20 MB. The real figure comes from a snapshot, not from this table.
+
+### Texture budget
+
+| | Budget | What it means |
+| --- | --- | --- |
+| Target | **450 MB** | Where the project should sit. Leaves room for meshes, shader variants, the ~90 MB above, and the driver's own reserve on a laptop that is also driving a desktop. |
+| Hard cap | **700 MB** | Past this, the 4 GB card is at real risk in a built player: the failure is a hitch when a new drone type first appears, or an allocation failure minutes into a run. |
+
+What 450 MB actually buys, in BC7/BC5 with mip maps (mips add a third):
+
+| Max Size | Per texture | Fits in 450 MB |
+| --- | --- | --- |
+| 4096 | 22.4 MB | 20 |
+| 2048 | 5.6 MB | 80 |
+| 1024 | 1.4 MB | **321** |
+| 512 | 0.35 MB | 1285 |
+
+This is why CLAUDE.md says 1024 project-wide and why
+[guard-texture-budget.mjs](../../Tools/guards/guard-texture-budget.mjs) enforces
+it. Texture memory scales with **area**: 4096 → 1024 is 16× less, every time.
+Twenty 4K albedo/normal pairs — forty textures, one modest environment pack —
+is 896 MB, *past the hard cap on its own*, for detail that is invisible at 1080p
+on a 3 m crate. The same forty at 1024 is 56 MB, or 42 MB if the albedos go to
+BC1. Weapons and hands may sit at 2048 because the viewmodel fills a third of the
+screen for the entire run; nothing else earns it.
+
+Where the project stands right now: **one texture**, the generated 1024 detail
+normal. There is enormous headroom. This is a discipline problem, not a capacity
+problem, and the guards exist so it stays one — including
+[guard-lfs-budget.mjs](../../Tools/guards/guard-lfs-budget.mjs), because the
+other price of a 4K import is an LFS object that is billed forever.
+
+`CoD → Report Texture Budget`
+([ArtReport.cs](../../Assets/_Project/Scripts/Editor/ArtReport.cs)) prints the
+running total by folder against these two numbers. Its figures are editor-side
+and **overstate** a shipping player.
+
+### Nothing here can measure frame time
+
+**No automated gate in this repo can answer "does it hold 60 fps on the 3050",
+and none ever will.** Both test suites and `Tools/verify-build.mjs` run with
+`-batchmode -nographics`, which does almost no GPU work — no shadow passes, no
+post-processing, no fill. A green run proves the code executes, not that the
+frame fits. That is tuning-card item 9, and it is a human with a laptop.
+
+The tools that can answer it, and what each one is for:
+
+| Tool | Answers | The catch |
+| --- | --- | --- |
+| **Memory Profiler** snapshot | Actual VRAM by object, the real total | Take it against a **Development build**, never the editor. The editor holds uncompressed copies, editor-only assets and the whole asset database, and inflates everything. |
+| **Frame Debugger** | The real pass list and target formats — the only way to confirm the table above | Attach to a Development build; the editor's pass list is not the player's. |
+| **RenderDoc** | Per-draw GPU timing and real allocation sizes | Capture from the built `.exe`. This is the one that says *which pass* costs the frame. |
+| **`nvidia-smi`** | Total process VRAM from outside Unity, including driver overhead | `nvidia-smi --query-gpu=memory.used --format=csv -l 1`. The only number that includes everything, and the only one that matters when the card runs out. |
+| Unity Profiler, GPU module | Frame time split by pass, live | Development build, and connect over the network rather than running it on the same GPU. |
 
 ## Key Behaviours & Non-Obvious Patterns
 
@@ -145,7 +281,10 @@ scene is hand-authored.
   text is never grained or vignetted. That is why the menu can share the arena
   profile safely.
 - A `-batchmode` test run does almost no GPU work, so **no automated gate can
-  measure what any of this costs in frame time.**
+  measure what any of this costs in frame time.** The manual tools that can are
+  named under [Budget](#nothing-here-can-measure-frame-time).
+- `PC_RPAsset.m_VolumeProfile` points at Unity's `SampleSceneProfile`, so a second
+  volume stack blends underneath every scene. See [The renderer](#the-renderer).
 
 ## Related Systems
 

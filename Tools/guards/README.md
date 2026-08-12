@@ -15,31 +15,31 @@ Run them all: `node Tools/check.mjs`
 | `guard-no-find-in-update.mjs` | `Find`/`GetComponent`/`Camera.main`/`Instantiate` inside `Update`/`FixedUpdate`/`LateUpdate` | Invisible with 3 objects in a test scene, fatal with 40 in a real wave. |
 | `guard-no-mutable-statics.mjs` | Mutable static fields/events/settable properties in first-party code | Domain Reload is off for iteration speed, so statics survive between Play sessions — double-fired events and stale singletons that appear on the second play only. |
 | `guard-lfs-hooks.mjs` | The Git LFS hooks going missing when `core.hooksPath` is redirected | Redirecting hooks makes git ignore `.git/hooks/` entirely, where `git lfs install` puts them. Pushes still succeed — pointers push fine — but the objects never upload, and the break surfaces as a corrupt *clone*, later, elsewhere. |
+| `guard-texture-budget.mjs` | First-party textures imported above 1024 (2048 for weapons/hands) | Texture memory scales with area, so 4K instead of 1K is 16× the VRAM. Forty 4K textures is ~900 MB of a 4 GB card. Nothing goes wrong in the editor — it goes wrong in the built player, on the target laptop, after the 4K source is already in LFS history forever. |
+| `guard-lfs-budget.mjs` | The LFS working set passing 400 MB, or any one object passing 25 MB | LFS storage is **cumulative and never reclaimed**: re-exporting a file adds a second copy, billed forever. Blowing GitHub's free 1 GB/month bandwidth breaks clones across the whole account, and the quota page is the only place the truth is visible. |
 
 Read a guard's header before deleting it. Each header documents the failure
 mode, not just the rule.
 
-## Current state: one guard fails on purpose
+## Current state: all eight pass, and the hook is live
 
-Until the Unity project exists, `guard-meta-files.mjs` exits 1 with:
+`core.hooksPath` is set to `Tools/hooks`, so `pre-commit` runs every guard on
+every commit. This was not true during setup: `guard-meta-files.mjs` and
+`guard-texture-budget.mjs` both exit 1 with
 
 ```text
-guard-meta-files: no Assets/ folder found — run from the project root
+guard-<name>: no Assets/ folder found — run from the project root
 ```
 
-**This is the guard working correctly** — that check is how it catches being run
-from the wrong directory. `node Tools/check.mjs` therefore reports one failure
-until Unity has generated `Assets/`. Do not "fix" it by weakening the guard.
+when there is no Unity project yet, and **that is the guard working correctly** —
+it is how they catch being run from the wrong directory. Do not "fix" a future
+recurrence of that message by weakening the check; fix the directory.
 
-The consequence for setup: the pre-commit hook is **not active yet**. It is
-committed at `Tools/hooks/pre-commit` but switched off, because an active hook
-would block every commit made before Unity exists.
-
-## Activating the hook (after the Unity project is created)
+## Activating the hook (on a new machine or a fresh clone)
 
 ```bash
 git config core.hooksPath Tools/hooks
-node Tools/check.mjs                 # all six must pass now
+node Tools/check.mjs                 # all eight must pass
 ```
 
 `core.hooksPath` is used instead of `.git/hooks/` so the hook is committed and
