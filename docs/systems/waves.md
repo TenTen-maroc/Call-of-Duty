@@ -1,6 +1,6 @@
 # Waves
 
-> Last verified: 2026-08-11 — compiles clean, builds headlessly, references
+> Last verified: 2026-08-12 — compiles clean, builds headlessly, references
 > proven by GreyBoxVerify. **Not yet verified in play:** the pacing of a full
 > wave, whether the alive cap is ever actually reached, and the feel of the
 > 3-attacker limit with a crowd.
@@ -41,7 +41,11 @@ replays and most runs never get past. Past wave 10 the endless ramp takes over.
 
 - **[WaveRunner.cs](../../Assets/_Project/Scripts/Waves/WaveRunner.cs)** — phases
   `Countdown / Wave / Cleared / Shop / GameOver`, the spawn queue, money payouts,
-  permadeath, `SkipWave` and `RestartRun` for the sandbox.
+  permadeath, `SkipWave` and `RestartRun` for the sandbox. Also carries the
+  mission-director seam described below, which is inert without a director.
+- **[RunOutcome.cs](../../Assets/_Project/Scripts/Waves/RunOutcome.cs)** — how a
+  run stopped. `Died` is value 0 and the default, because it is the only ending
+  endless mode has.
 - **[WaveConfig.cs](../../Assets/_Project/Scripts/Waves/WaveConfig.cs)** — one
   authored wave. `OnValidate` warns when a wave is far larger than the alive cap.
 - **[AttackTokenPool.cs](../../Assets/_Project/Scripts/Waves/AttackTokenPool.cs)** —
@@ -164,6 +168,108 @@ budget resets. Standing inside `radius` (2.5 m, measured on the floor plane) hea
 
 `WaveRunner.SkipShopForBonus()` on `TAB`. See [shop.md](shop.md).
 
+## The mission-director seam (2026-08-12)
+
+> **Additive and inert.** There is no `MissionDirector` in the repo yet. Every
+> member below is unreachable in Run and in Sandbox, and endless mode behaves
+> exactly as it did before the seam existed. That inertness is the acceptance
+> criterion, not a nicety — see [campaign.md](campaign.md).
+
+Before this, `WaveRunner` could not be told which waves to run, could not be
+held for a briefing, and could end a run exactly one way: `_playerHealth.Died`.
+A campaign needs all three. A **second** runner would have to duplicate — and
+keep in sync forever — the spawn queue's struct-copy writeback, both
+placement-failure hang guards (one of which needed a second fix after the first
+only half-worked), and the wave-that-planned-nothing recovery with its explicit
+refusal to pay a clear bonus. That is the entire hard-won part of the file, so
+the loop was **opened**, not forked.
+
+### The API
+
+| Member | Access | What it does | Refuses / guards |
+| --- | --- | --- | --- |
+| `SetWaves(WaveConfig[])` | internal | Swaps the authored wave list, because a mission ships its own. `_waves` is private-serialized and otherwise written only by `GreyBoxBuilder`. | **`Phase == Wave`** — logs an error, keeps the old list |
+| `Suspended` | public get | The loop is held. | — |
+| `Suspend()` / `Resume()` | internal | Hold and release. Non-destructive: queue, live drones and attack tokens all survive. | Both are idempotent |
+| `StartFrom(int wave)` | internal | Points the loop at a wave and enters countdown — a checkpoint restore. Sets `_wave = wave - 1`, because a countdown starts `_wave + 1`. | Clamps at 0, so no negative wave |
+| `AbortWave()` | internal | The destructive companion: `ClearTheArena()`. | Caller **must** pair it with `Suspend()` or `StartFrom()` |
+| `SetDeathEndsRun(bool)` | internal | False makes a death a checkpoint rewind instead of a game over. | — |
+| `PlayerDown` | public event | Raised **instead of** ending the run when `SetDeathEndsRun(false)` is in force. | Unreachable in endless |
+| `FinishRun(RunOutcome)` | internal | Ends the run without a corpse: clears the arena, records the outcome, phase → `GameOver`, raises `RunEnded`. | No-ops once `Phase == GameOver` |
+| `Outcome` | public get | How the run ended. Meaningful at `GameOver`. | Defaults to `Died` |
+| `RunEnded` | public event | **Signature changed** from `Action` to `Action<RunOutcome>`. It had zero subscribers in the whole project at the time, so nothing broke. | — |
+
+- **[RunOutcome.cs](../../Assets/_Project/Scripts/Waves/RunOutcome.cs)** —
+  `Died / MissionComplete / MissionFailed / Abandoned`. `Died` is **first on
+  purpose**: it is therefore the value of an uninitialised field and the only
+  ending endless mode has, so with no director the default is already right and
+  nothing has to be set for endless to stay endless. Reordering it is the bug.
+
+### The ordering guarantee this hangs on
+
+Unity does **not** guarantee `Awake` order between components, but it **does**
+guarantee that every `Awake` completes before any `Start`, for objects present
+when the scene loads. So:
+
+1. `MissionDirector.Awake()` calls `Suspend()` (and `SetDeathEndsRun(false)`).
+2. `WaveRunner.Start()` opens with `if (Suspended) return;` — **before**
+   `RunContext.BeginRun`. In campaign the runner therefore begins no run, opens
+   no countdown and spawns nothing.
+3. The director starts everything later, on its own schedule, after the briefing.
+
+No execution-order attribute to keep in sync, no race, and **no new serialized
+field**: a bool cannot be `Check`ed by `GreyBoxVerify` (it tests
+`objectReferenceValue`). *The absence of a director is the endless configuration.*
+
+### Behaviours worth knowing before touching this
+
+- **`Update()` early-returns while suspended**, before `_tokens.Tick`. A hold
+  therefore cannot time out the attack tokens of drones that are standing
+  perfectly still through a briefing.
+- **`Resume()` gives the clock back.** Phase deadlines are absolute `Time.time`
+  stamps, so without the shift a ten-second briefing would leave `_phaseEndsAt`
+  ten seconds in the past and the countdown would end on the first frame back —
+  a wave arriving with no warning at all. `_suspendedAt` exists only for this.
+- **`AbortWave()` does not pick a phase.** Left alone in `RunPhase.Wave` with an
+  empty arena, the very next `Update` finds the clear condition satisfied and
+  pays the bonus for a fight that was cancelled. That is why the contract is
+  "always with `Suspend()` or `StartFrom()`".
+- **`FinishRun` deliberately does not call `RunContext.RecordRunEnded`.** That
+  writes the permadeath record, and a mission's wave number must never land in
+  `bestRound`. The caller decides what an ending is worth recording — the same
+  split `PausePanel` already uses when it quits a run.
+- **`ClearTheArena()` was extracted from `OnPlayerDied`.** The reasoning in its
+  comment ("a game-over screen with drones still chewing on the corpse behind it
+  reads as a crash") applies identically to a mission-complete screen and to a
+  checkpoint fade. Three callers: `OnPlayerDied`, `FinishRun`, `AbortWave`.
+- **`OnPlayerDied` does not route through `FinishRun`.** It keeps its own
+  `RecordRunEnded` and its own `SetPhase`, so the endless death path is
+  byte-identical to what shipped.
+
+### What is proven, and what is not
+
+[WaveRunnerSeamTests.cs](../../Assets/_Project/Tests/EditMode/WaveRunnerSeamTests.cs)
+(EditMode) covers the parts that are pure: the `RunOutcome` defaults and member
+count, a fresh runner reporting the endless configuration, every seam member
+still existing with the signature a director will compile against, `Suspend` /
+`Resume` idempotence, `Update` doing nothing while suspended (with an
+un-suspended control that *does* move), `SetWaves` landing outside a wave and
+being refused inside one with the old list still standing, `StartFrom`'s
+off-by-one and its clamp, and `FinishRun` recording the outcome, ending the
+phase and raising `RunEnded` exactly once.
+
+The members are `internal` and the tests live in another assembly, so they are
+reached by reflection rather than by widening the API or adding an
+`InternalsVisibleTo` that shipping code would carry forever. A side benefit: the
+lookups fail loudly if anyone renames a seam member.
+
+**PlayMode still owes:** death routing (`PlayerDown` against `RunEnded`) needs a
+`Health` and a fired `Awake`; `AbortWave`'s `DespawnAll` and token release need
+a registry and a pool; and a hold carrying a *live* queue across real frames
+cannot be shown without a scene. None of it is reachable until a director
+exists.
+
+
 ## Related Systems
 
 - [drones.md](drones.md) — what a wave is made of; the token interface lives there.
@@ -176,7 +282,9 @@ budget resets. Standing inside `radius` (2.5 m, measured on the floor plane) hea
 - `SpawnTask` is a struct in a `List`, so the loop **writes the modified copy
   back** (`_queue[i] = task`). Forgetting that is a wave that spawns forever.
 - The runner calls `RunContext.BeginRun` in `Start`, after `RunContext.Awake` has
-  loaded the save. Moving either changes what the first wave sees.
+  loaded the save. Moving either changes what the first wave sees — and `Start`
+  now returns before `BeginRun` when `Suspended` is set, which is the whole
+  campaign hand-off. Do not move that check below `BeginRun`.
 - `RestartRun` reloads the scene. That is the cheapest correct reset, but it means
   anything that must survive a restart has to be in the save file, not in a
   component.

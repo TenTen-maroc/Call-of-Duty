@@ -64,6 +64,21 @@ namespace CoD.Waves
         private int _placementFailuresThisWave;
 
         /// <summary>
+        /// Whether the player's death is the end of the run.
+        ///
+        /// True everywhere except campaign, where a death is a rewind to the last
+        /// checkpoint and a director wants to hear about it rather than have the
+        /// loop close itself. Run state, not a setting: it is flipped at runtime by
+        /// SetDeathEndsRun and must never become a serialized field — GreyBoxVerify
+        /// can only Check an object reference, so a serialized bool is a scene knob
+        /// nothing proves. The ABSENCE of a director is the endless configuration.
+        /// </summary>
+        private bool _deathEndsRun = true;
+
+        /// <summary>When Suspend() stopped the clock, so Resume() can give back exactly what it took.</summary>
+        private float _suspendedAt;
+
+        /// <summary>
         /// Multiplies the NEXT clear bonus. Set by walking out of a shop break
         /// without buying, consumed the moment a clear actually pays.
         ///
@@ -90,9 +105,36 @@ namespace CoD.Waves
         public event Action<RunPhase>? PhaseChanged;
         public event Action<int>? WaveStarted;
         public event Action<int>? WaveCleared;
-        public event Action? RunEnded;
+
+        /// <summary>
+        /// The run is over, and how. It carried no payload while dying was the only
+        /// way a run could end; a mission that was completed, failed by its own
+        /// rules, or walked away from wants a different screen than a corpse does.
+        /// </summary>
+        public event Action<RunOutcome>? RunEnded;
+
+        /// <summary>
+        /// The player died and the run did NOT end. Raised only while
+        /// SetDeathEndsRun(false) is in force, so a director can rewind to a
+        /// checkpoint. Unreachable in endless mode, where death is the ending.
+        /// </summary>
+        public event Action? PlayerDown;
 
         public RunPhase Phase { get; private set; } = RunPhase.Countdown;
+
+        /// <summary>
+        /// How the run ended. Meaningful once Phase is GameOver, and Died by
+        /// default because that is the only ending endless mode has — so every
+        /// reader is already correct with no director in the scene.
+        /// </summary>
+        public RunOutcome Outcome { get; private set; } = RunOutcome.Died;
+
+        /// <summary>
+        /// The loop is held. Update does nothing while this is true, but nothing is
+        /// discarded either: the spawn queue, the drones already in the arena and
+        /// the attack tokens are all exactly where Suspend() left them.
+        /// </summary>
+        public bool Suspended { get; private set; }
         public int WaveNumber => _wave;
         public ShopService? Shop => _shop;
         /// <summary>What the next clear will pay, as a multiplier. 1 unless the player skipped a break.</summary>
@@ -144,6 +186,22 @@ namespace CoD.Waves
 
         private void Start()
         {
+            // THE ORDERING GUARANTEE THIS WHOLE SEAM HANGS ON.
+            //
+            // Unity does not promise Awake ORDER between components, but it does
+            // promise that every Awake has completed before any Start runs, for
+            // objects present when the scene loads. A MissionDirector calls
+            // Suspend() from its Awake; by the time this Start executes the flag is
+            // therefore already set, with no race and no execution-order attribute
+            // to keep in sync.
+            //
+            // Returning here means that in campaign the runner does not begin a
+            // run, does not open a countdown and does not spawn a thing — the
+            // director does all three later, on its own schedule, after the
+            // briefing. With no director in the scene Suspended is false and this
+            // line is unreachable, which is what keeps endless mode identical.
+            if (Suspended) return;
+
             if (_run != null && _shopConfig != null)
             {
                 // Sandbox is "everything unlocked". In a game whose whole
@@ -159,6 +217,11 @@ namespace CoD.Waves
 
         private void Update()
         {
+            // Held by a director: a briefing, a cutscene, a checkpoint fade. The
+            // token pool stops ticking with everything else so a hold cannot expire
+            // the tokens of drones that are standing perfectly still.
+            if (Suspended) return;
+
             float now = Time.time;
             _tokens?.Tick(now);
 
@@ -395,19 +458,41 @@ namespace CoD.Waves
             EnterCountdown();
         }
 
+        /// <summary>
+        /// Drop everything the arena is holding: queued spawns, live drones, and
+        /// the attack tokens they were carrying.
+        ///
+        /// A game-over screen with drones still chewing on the corpse behind it
+        /// reads as a crash. So does a mission-complete screen, and so does a
+        /// checkpoint fade — same three calls, same reason, three callers.
+        /// </summary>
+        private void ClearTheArena()
+        {
+            _registry?.DespawnAll();
+            _queue.Clear();
+            _tokens?.Clear();
+        }
+
         private void OnPlayerDied(Health health, DamageInfo info)
         {
             if (Phase == RunPhase.GameOver) return;
 
-            // Clear the arena first: a game-over screen with drones still chewing
-            // on the corpse behind it reads as a crash.
-            _registry?.DespawnAll();
-            _queue.Clear();
-            _tokens?.Clear();
+            ClearTheArena();
 
+            // Campaign death is a rewind to the last checkpoint, not a game over.
+            // The runner reports it and stops there: what a death costs is the
+            // director's decision, and the phase is left untouched so the arena can
+            // simply be refilled without a scene reload.
+            if (!_deathEndsRun)
+            {
+                PlayerDown?.Invoke();
+                return;
+            }
+
+            Outcome = RunOutcome.Died;
             _run?.RecordRunEnded();
             SetPhase(RunPhase.GameOver);
-            RunEnded?.Invoke();
+            RunEnded?.Invoke(RunOutcome.Died);
         }
 
         private void OnDroneKilled(DroneController drone, DamageInfo info)
@@ -511,6 +596,123 @@ namespace CoD.Waves
                 NextAt = Time.time + startDelay,
                 Interval = count > 0 ? Mathf.Max(0f, overSeconds) / count : 0f,
             });
+        }
+
+        // ---------- the mission-director seam ----------
+        //
+        // Seven additions through which a MissionDirector drives THIS loop instead
+        // of forking it. Every one generalises something the runner already does
+        // and hides: it already picks a starting wave, already carries a wave list,
+        // already has a do-nothing state, already ends a run, already clears the
+        // arena. A second implementation would have to duplicate — and keep in sync
+        // forever — the spawn queue's struct-copy writeback, both placement-failure
+        // hang guards, and the wave-that-planned-nothing recovery with its refusal
+        // to pay a clear bonus. That is the entire hard-won part of this file.
+        //
+        // With no director in the scene NONE of this is reachable: Suspended stays
+        // false, _deathEndsRun stays true, Outcome stays Died, and _waves stays
+        // whatever the scene serialized. Endless mode behaves exactly as it did
+        // before the seam existed, and that inertness is the acceptance criterion.
+
+        /// <summary>
+        /// Replace the authored wave list, because a mission ships its own. `_waves`
+        /// is private-serialized and written by the grey-box builder only.
+        ///
+        /// Refused mid-wave, loudly. ConfigForWave is read by the live spawn queue
+        /// AND by the payout: swapping the list under a running wave changes what
+        /// the queue is draining and pays that wave's moneyBonusOnClear out of a
+        /// different asset than the one the player actually fought.
+        /// </summary>
+        internal void SetWaves(WaveConfig[] waves)
+        {
+            if (Phase == RunPhase.Wave)
+            {
+                GameLog.Error(
+                    $"SetWaves refused during wave {_wave}: the spawn queue and the clear bonus both read the " +
+                    "wave list, so swapping it now pays for a fight nobody had. End or abort the wave first.",
+                    this);
+                return;
+            }
+            _waves = waves;
+        }
+
+        /// <summary>
+        /// Hold the loop — a briefing, a cutscene, a checkpoint fade.
+        ///
+        /// Non-destructive on purpose: the spawn queue, the drones already in the
+        /// arena and the held attack tokens all survive, so Resume() puts the player
+        /// back into the fight they left rather than a fresh one. AbortWave is the
+        /// destructive companion.
+        /// </summary>
+        internal void Suspend()
+        {
+            if (Suspended) return;
+            Suspended = true;
+            _suspendedAt = Time.time;
+        }
+
+        /// <summary>Put the loop back, along with the clock the hold was keeping.</summary>
+        internal void Resume()
+        {
+            if (!Suspended) return;
+            Suspended = false;
+
+            // Phase deadlines are absolute Time.time stamps, so seconds the player
+            // spent reading a briefing would otherwise be spent by the countdown
+            // too: _phaseEndsAt lands in the past and the wave arrives on the first
+            // frame back, with no warning at all. Give back exactly what was taken.
+            _phaseEndsAt += Time.time - _suspendedAt;
+        }
+
+        /// <summary>
+        /// Aim the loop at a wave and count down to it — a checkpoint restore.
+        ///
+        /// The countdown starts wave `_wave + 1`, so this backs up one:
+        /// StartFrom(5) means the next wave fought is 5. It does NOT clear the
+        /// arena; pair it with AbortWave when the abandoned wave's drones are still
+        /// walking around.
+        /// </summary>
+        internal void StartFrom(int wave)
+        {
+            _wave = Mathf.Max(0, wave - 1);
+            EnterCountdown();
+        }
+
+        /// <summary>
+        /// Throw the current wave away: queued spawns, live drones, held tokens.
+        ///
+        /// The caller owns what happens next, and must call one of Suspend() or
+        /// StartFrom() with it. Left alone in RunPhase.Wave with an empty arena the
+        /// very next Update finds the clear condition satisfied and pays the bonus
+        /// for a fight that was cancelled.
+        /// </summary>
+        internal void AbortWave() => ClearTheArena();
+
+        /// <summary>
+        /// Whether the player's death ends the run. False in campaign, where the
+        /// runner raises PlayerDown and leaves the phase alone so a director can
+        /// rewind to the last checkpoint.
+        /// </summary>
+        internal void SetDeathEndsRun(bool value) => _deathEndsRun = value;
+
+        /// <summary>
+        /// End the run without a corpse: a mission completed, a mission failed by
+        /// its own rules, a run walked away from.
+        ///
+        /// Deliberately does NOT call RunContext.RecordRunEnded. That writes the
+        /// permadeath record, and a mission's wave number must never land in
+        /// bestRound — the endless record would be polluted by content that does
+        /// not share its difficulty curve. The caller decides what an ending is
+        /// worth recording, exactly as PausePanel already does when it quits a run.
+        /// </summary>
+        internal void FinishRun(RunOutcome outcome)
+        {
+            if (Phase == RunPhase.GameOver) return;
+
+            ClearTheArena();
+            Outcome = outcome;
+            SetPhase(RunPhase.GameOver);
+            RunEnded?.Invoke(outcome);
         }
 
         // ---------- sandbox ----------
