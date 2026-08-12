@@ -78,6 +78,7 @@ namespace CoD.Enemies
                     drone.SetTelegraph(progress);
                     if (now < state.PhaseEndsAt) return;
 
+                    drone.PlayAttackAnimation();
                     state.Phase = DroneAttackPhase.Firing;
                     state.BurstRemaining = Mathf.Max(1, burstCount);
                     state.PhaseEndsAt = now;   // first round leaves immediately

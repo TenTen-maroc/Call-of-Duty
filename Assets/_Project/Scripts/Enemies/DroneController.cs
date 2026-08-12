@@ -23,6 +23,8 @@ namespace CoD.Enemies
     public sealed class DroneController : MonoBehaviour
     {
         [SerializeField] private NavMeshAgent? _agent = null;
+        [Tooltip("Present on a rigged humanoid, null on a drone. Every call site is null-checked, so a cube pays nothing for it.")]
+        [SerializeField] private EnemyAnimator? _animator = null;
         [SerializeField] private Health? _health = null;
         [SerializeField] private PooledObject? _pooled = null;
         [Tooltip("Plays the attack telegraph cue. Audible because the drone is still alive during a windup.")]
@@ -142,6 +144,10 @@ namespace CoD.Enemies
             _waveSpeedMultiplier = 1f;
             _nextRepathAt = 0f;
             SetTelegraph(0f);
+            // Pooled objects are REUSED. A soldier respawning part-way through
+            // its own death animation is the same class of bug the pool's
+            // generation counter exists to prevent elsewhere.
+            _animator?.ResetForReuse();
 
             // HP comes from the drone's own config, not a shared HealthConfig —
             // one source of truth per archetype.
@@ -183,6 +189,18 @@ namespace CoD.Enemies
             if (!_agent.enabled || !_agent.isOnNavMesh) return;
 
             _agent.speed = _config.moveSpeed * _speedMultiplier * _waveSpeedMultiplier;
+
+            // Fed from the agent's REALISED velocity, not from its target speed.
+            // A soldier stopped dead against a wall, or zeroed by an attack
+            // module for a stop-to-shoot, must read as standing still — driving
+            // the blend from config.moveSpeed would leave it running on the spot.
+            if (_animator != null)
+            {
+                Vector3 velocity = _agent.velocity;
+                velocity.y = 0f;
+                _animator.SetSpeed(velocity.magnitude);
+            }
+
             if (now < _nextRepathAt) return;
             _nextRepathAt = now + _config.repathInterval;
 
@@ -244,6 +262,13 @@ namespace CoD.Enemies
         /// <summary>0 = normal, 1 = about to go off. Drives the windup tint.</summary>
         public void SetTelegraph(float amount)
         {
+            // The pose is the SAME contract on a second channel, and it is the
+            // one that survives having no glowing core. Set before the early
+            // return below, because a humanoid prefab has no core renderer at
+            // all and would otherwise be silently un-telegraphed -- which is the
+            // fairness contract failing in the exact case it was extended for.
+            _animator?.SetTelegraph(amount);
+
             if (_coreRenderer == null || _propertyBlock == null) return;
             // MaterialPropertyBlock rather than renderer.material: touching
             // .material clones it per drone, which is forty extra materials and
@@ -267,6 +292,13 @@ namespace CoD.Enemies
             _coreRenderer.SetPropertyBlock(_propertyBlock);
         }
 
+        /// <summary>
+        /// The windup is over and the attack is committed. Called by the attack
+        /// modules at the moment they act, so the pose and the damage are the
+        /// same beat rather than two things that drift apart.
+        /// </summary>
+        public void PlayAttackAnimation() => _animator?.PlayAttack();
+
         public void PlayCue(AudioClip? clip)
         {
             if (clip == null || _audio == null) return;
@@ -286,6 +318,7 @@ namespace CoD.Enemies
         private void OnHealthDied(Health health, DamageInfo info)
         {
             if (!_active) return;
+            _animator?.PlayDeath();
             if (_config != null && _config.deathVfx != null && _pool != null)
             {
                 _pool.SpawnForSeconds(_config.deathVfx, Position, Quaternion.identity, _config.deathVfxLifetime);

@@ -62,6 +62,7 @@ namespace CoD.Enemies
                     drone.SetTelegraph(1f - Mathf.Clamp01(remaining / Mathf.Max(0.01f, windupSeconds)));
                     if (remaining > 0f) return;
 
+                    drone.PlayAttackAnimation();
                     Slam(drone);
                     state.HasAttackedOnce = true;
                     state.Phase = DroneAttackPhase.Idle;

@@ -62,6 +62,7 @@ namespace CoD.Enemies
                     drone.SetTelegraph(1f - Mathf.Clamp01(remaining / Mathf.Max(0.01f, fuseSeconds)));
                     if (remaining > 0f) return;
 
+                    drone.PlayAttackAnimation();
                     Detonate(drone);
                     state.HasAttackedOnce = true;
                     // SelfDestruct routes through the drone's single exit path, so
