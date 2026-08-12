@@ -73,23 +73,69 @@ namespace CoD.EditorTools
                 l.weaponSlots = 2;
             });
 
-            // Grey/red tactical palette. The first pass was washed out: a near-white
-            // floor under a bright directional light left nothing to read the
-            // crosshair or the muzzle flash against.
-            Material grey = LoadOrCreateMaterial(Materials + "/GreyBox_Floor.mat", new Color(0.17f, 0.18f, 0.20f));
-            Material wall = LoadOrCreateMaterial(Materials + "/GreyBox_Wall.mat", new Color(0.28f, 0.29f, 0.32f));
-            Material targetMat = LoadOrCreateMaterial(Materials + "/GreyBox_Target.mat", new Color(0.62f, 0.13f, 0.11f));
-            Material hot = LoadOrCreateMaterial(Materials + "/Fx_Hot.mat", new Color(1f, 0.82f, 0.45f));
-            Material gunmetal = LoadOrCreateMaterial(Materials + "/Weapon_Body.mat", new Color(0.10f, 0.105f, 0.115f));
-            Material gunAccent = LoadOrCreateMaterial(Materials + "/Weapon_Accent.mat", new Color(0.055f, 0.06f, 0.065f));
+            // ---- the palette ----------------------------------------------
+            // Every colour in the arena comes from one asset now, and is
+            // RE-ASSERTED on every build. See PaletteConfig for the drift this
+            // kills: the literals that used to live right here were only ever
+            // read on the day each .mat was created, so the "tactical palette"
+            // change never reached disk and the floor shipped ~1.9x too bright
+            // with every gate green.
+            //
+            // The configure callback is deliberately empty: PaletteConfig's own
+            // field initialisers ARE the shipped defaults, which keeps one
+            // number in one place instead of two that can disagree.
+            PaletteConfig palette = LoadOrCreate<PaletteConfig>(DataGame + "/Palette_GreyBox.asset", _ => { });
+
+            Material grey = LoadOrCreateMaterial(Materials + "/GreyBox_Floor.mat", palette.floor);
+            Material wall = LoadOrCreateMaterial(Materials + "/GreyBox_Wall.mat", palette.wall);
+            Material targetMat = LoadOrCreateMaterial(Materials + "/GreyBox_Target.mat", palette.practiceTarget);
+            Material gunmetal = LoadOrCreateMaterial(Materials + "/Weapon_Body.mat", palette.weaponBody);
+            Material gunAccent = LoadOrCreateMaterial(Materials + "/Weapon_Accent.mat", palette.weaponAccent);
+            Material droneHull = LoadOrCreateMaterial(Materials + "/Drone_Hull.mat", palette.droneHull);
+
+            // A shell casing is a physical object that bounces off the floor, so
+            // it stays lit. Everything else that used to share this material is
+            // LIGHT, not surface, and moves to the additive pair below.
+            Material hot = LoadOrCreateMaterial(Materials + "/Fx_Hot.mat", palette.sparkHot);
+
+            // A bullet hole is the one impact element that must be DARK. It was
+            // sharing the muzzle-flash material, which painted a bright orange
+            // dot on every wall the player shot.
+            Material impactMark = LoadOrCreateMaterial(Materials + "/Fx_ImpactMark.mat", new Color(0.03f, 0.03f, 0.035f));
+
+            ApplyPalette(grey, palette.floor);
+            ApplyPalette(wall, palette.wall);
+            ApplyPalette(targetMat, palette.practiceTarget);
+            ApplyPalette(gunmetal, palette.weaponBody);
+            ApplyPalette(gunAccent, palette.weaponAccent);
+            ApplyPalette(droneHull, palette.droneHull);
+            ApplyPalette(hot, palette.sparkHot);
 
             // Edge trim is COOL on purpose. Every threat in this game is read by
             // the colour of its core — Rusher red, Shooter amber, Tank crimson —
             // so nothing in the architecture is allowed to be warm and bright, or
             // the player learns to check a wall for danger. Cold light marks
             // places; warm light means something is trying to kill you.
-            Material trim = LoadOrCreateEmissiveMaterial(Materials + "/Trim_Emissive.mat",
-                new Color(0.30f, 0.62f, 0.92f), 1.2f);
+            Material trim = LoadOrCreateEmissiveMaterial(Materials + "/Trim_Emissive.mat", palette.trim, palette.trimEmission);
+            Material droneCore = LoadOrCreateEmissiveMaterial(Materials + "/Drone_Core.mat", palette.rusherCore, palette.rusherEmission);
+            Material shooterCore = LoadOrCreateEmissiveMaterial(Materials + "/Drone_Core_Shooter.mat", palette.shooterCore, palette.shooterEmission);
+            Material tankCore = LoadOrCreateEmissiveMaterial(Materials + "/Drone_Core_Tank.mat", palette.tankCore, palette.tankEmission);
+            ApplyEmission(trim, palette.trim, palette.trimEmission);
+            ApplyEmission(droneCore, palette.rusherCore, palette.rusherEmission);
+            ApplyEmission(shooterCore, palette.shooterCore, palette.shooterEmission);
+            ApplyEmission(tankCore, palette.tankCore, palette.tankEmission);
+
+            // ---- VFX materials --------------------------------------------
+            // Every particle system in the project used to share ONE OPAQUE Lit
+            // material, and the sparks system had no material assigned at all —
+            // so every bullet impact rendered Unity's magenta error particles,
+            // and nothing that was supposed to glow blended or glowed. Additive
+            // transparent is what makes a spark read as light instead of as a
+            // small orange brick.
+            Material sparkFx = LoadOrCreateParticleMaterial(Materials + "/Fx_Spark.mat", palette.sparkHot);
+            Material fireFx = LoadOrCreateParticleMaterial(Materials + "/Fx_Fire.mat", palette.fire);
+            ApplyParticleSurface(sparkFx, palette.sparkHot);
+            ApplyParticleSurface(fireFx, palette.fire);
 
             // Surfaces, re-asserted on every build. LoadOrCreateMaterial returns
             // an existing material untouched, which is right for values a human
@@ -108,31 +154,21 @@ namespace CoD.EditorTools
             ApplySurface(targetMat, smoothness: 0.35f, metallic: 0.1f);
             ApplySurface(gunmetal, smoothness: 0.62f, metallic: 0.85f);
             ApplySurface(gunAccent, smoothness: 0.45f, metallic: 0.70f);
-
-            // Drone palette: a dark hull so the glowing core is the only thing the
-            // eye tracks, and the core is what the telegraph tints.
-            Material droneHull = LoadOrCreateMaterial(Materials + "/Drone_Hull.mat", new Color(0.13f, 0.14f, 0.17f));
-            Material droneCore = LoadOrCreateEmissiveMaterial(Materials + "/Drone_Core.mat",
-                new Color(0.75f, 0.12f, 0.10f), 1.6f);
+            ApplySurface(impactMark, smoothness: 0.1f, metallic: 0.0f);
             // Metallic and fairly smooth: a hull that catches a highlight reads as
             // a machine, and it is what makes the dark body legible at all against
             // a dark floor once the glowing core stops being the only lit pixel.
             ApplySurface(droneHull, smoothness: 0.55f, metallic: 0.75f);
 
-            GameObject decal = BuildDecalPrefab(hot);
-            GameObject sparks = BuildSparksPrefab();
-            GameObject flash = BuildMuzzleFlashPrefab(hot);
+            GameObject decal = BuildDecalPrefab(impactMark);
+            GameObject sparks = BuildSparksPrefab(sparkFx);
+            GameObject flash = BuildMuzzleFlashPrefab(sparkFx);
             GameObject casing = BuildCasingPrefab(hot);
             GameObject dummy = BuildDummyTargetPrefab(targetMat, targetHealth);
 
-            Material shooterCore = LoadOrCreateEmissiveMaterial(Materials + "/Drone_Core_Shooter.mat",
-                new Color(0.95f, 0.55f, 0.10f), 1.8f);
-            Material tankCore = LoadOrCreateEmissiveMaterial(Materials + "/Drone_Core_Tank.mat",
-                new Color(0.85f, 0.06f, 0.22f), 1.4f);
-
-            GameObject explosion = BuildExplosionPrefab(hot);
-            GameObject droneDeath = BuildDroneDeathPrefab(hot);
-            GameObject slamVfx = BuildSlamPrefab(hot);
+            GameObject explosion = BuildExplosionPrefab(fireFx);
+            GameObject droneDeath = BuildDroneDeathPrefab(fireFx);
+            GameObject slamVfx = BuildSlamPrefab(fireFx);
             GameObject projectile = BuildDroneProjectilePrefab(shooterCore);
 
             GameObject rusherPrefab = BuildDronePrefab("Drone_Rusher", DroneShape.Rusher, droneHull, droneCore);
@@ -228,7 +264,7 @@ namespace CoD.EditorTools
             EditorUtility.SetDirty(rifle);
 
             BuildGreyBoxScene(game, settings, loadout, impact, grey, wall, targetMat, gunmetal, gunAccent,
-                dummy, decal, sparks, flash, casing, drones, runAssets, postFx, trim);
+                dummy, decal, sparks, flash, casing, drones, runAssets, postFx, trim, palette);
             BuildMainMenuScene(game, settings, postFx);
             BuildBootScene();
             RegisterScenes();
@@ -991,10 +1027,14 @@ namespace CoD.EditorTools
             return SavePrefab(root, Prefabs + "/Fx_ImpactDecal.prefab");
         }
 
-        private static GameObject BuildSparksPrefab()
+        private static GameObject BuildSparksPrefab(Material material)
         {
             GameObject root = new("Fx_ImpactSparks");
             ParticleSystem particles = root.AddComponent<ParticleSystem>();
+            // The defect this parameter exists for: this renderer had NO material
+            // at all, so every bullet impact in the game rendered Unity default
+            // magenta. Nothing failed; it just looked broken.
+            root.GetComponent<ParticleSystemRenderer>().sharedMaterial = material;
 
             ParticleSystem.MainModule main = particles.main;
             main.duration = 0.4f;
@@ -1370,7 +1410,8 @@ namespace CoD.EditorTools
             PlayerLoadoutConfig loadout, ImpactConfig impact,
             Material floorMat, Material wallMat, Material targetMat, Material gunmetal, Material gunAccent,
             GameObject dummyPrefab, GameObject decal, GameObject sparks, GameObject flash, GameObject casing,
-            DroneAssets drones, RunAssets runAssets, VolumeProfile postFx, Material trimMat)
+            DroneAssets drones, RunAssets runAssets, VolumeProfile postFx, Material trimMat,
+            PaletteConfig palette)
         {
             Scene scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
 
@@ -1393,14 +1434,30 @@ namespace CoD.EditorTools
             // it separates the far wall from the near one, which is what makes a
             // grey box readable instead of a flat field of the same colour.
             RenderSettings.ambientMode = UnityEngine.Rendering.AmbientMode.Trilight;
-            RenderSettings.ambientSkyColor = new Color(0.22f, 0.25f, 0.31f);
-            RenderSettings.ambientEquatorColor = new Color(0.15f, 0.16f, 0.18f);
-            RenderSettings.ambientGroundColor = new Color(0.07f, 0.07f, 0.08f);
+            RenderSettings.ambientSkyColor = palette.ambientSky;
+            RenderSettings.ambientEquatorColor = palette.ambientEquator;
+            RenderSettings.ambientGroundColor = palette.ambientGround;
             RenderSettings.fog = true;
             RenderSettings.fogMode = FogMode.Linear;
-            RenderSettings.fogColor = new Color(0.12f, 0.13f, 0.16f);
-            RenderSettings.fogStartDistance = 14f;
-            RenderSettings.fogEndDistance = 55f;
+            RenderSettings.fogColor = palette.fogColor;
+            RenderSettings.fogStartDistance = palette.fogStart;
+            RenderSettings.fogEndDistance = palette.fogEnd;
+
+            // The arena is a sealed interior, and until now it reflected the sky.
+            // Unity's default skybox was still assigned and defaultReflectionMode
+            // was still Skybox, so the ONLY reflection source in the game was a
+            // bright procedural blue sky — which is what Weapon_Body.mat, at
+            // metallic 0.85, was mirroring. A gun that reads as plastic in a dark
+            // bunker is usually blamed on the material; it was the environment.
+            //
+            // Real baked probes are a later job. A flat dark custom reflection is
+            // wrong in the way a grey box is wrong — uniformly, and far less wrong
+            // than a sky.
+            RenderSettings.skybox = null;
+            RenderSettings.defaultReflectionMode = UnityEngine.Rendering.DefaultReflectionMode.Custom;
+            RenderSettings.customReflectionTexture = null;
+            RenderSettings.ambientIntensity = 1f;
+            RenderSettings.reflectionIntensity = 0.35f;
 
             BuildPostFx(postFx);
 
@@ -2729,6 +2786,129 @@ namespace CoD.EditorTools
         /// so every surface bounced light identically and the arena read as
         /// untextured primitives, because that is exactly what it was.
         /// </summary>
+        /// <summary>
+        /// Re-asserts a material's base colour from the palette, every build.
+        ///
+        /// The counterpart to LoadOrCreateMaterial's "return an existing .mat
+        /// untouched". That rule is right for a value a human tuned in the
+        /// Inspector — and wrong for a shipped default, which is exactly how
+        /// the tactical palette shipped as its own pre-tuning values for the
+        /// whole life of the project. The tuning now lives in PaletteConfig, so
+        /// re-asserting from it stomps nobody: the asset a human edits is the
+        /// one that wins.
+        /// </summary>
+        private static void ApplyPalette(Material material, Color color)
+        {
+            material.SetColor("_BaseColor", color);
+            EditorUtility.SetDirty(material);
+        }
+
+        /// <summary>
+        /// Same, for a material that glows. The _EMISSION keyword is re-asserted
+        /// too: without it URP ignores _EmissionColor entirely, which would make
+        /// DroneController.SetTelegraph — the attack fairness contract — do
+        /// nothing visible while looking completely correct in the Inspector.
+        /// </summary>
+        private static void ApplyEmission(Material material, Color color, float intensity)
+        {
+            material.SetColor("_BaseColor", color);
+            material.EnableKeyword("_EMISSION");
+            material.globalIlluminationFlags = MaterialGlobalIlluminationFlags.RealtimeEmissive;
+            material.SetColor("_EmissionColor", color * intensity);
+            EditorUtility.SetDirty(material);
+        }
+
+        /// <summary>
+        /// An ADDITIVE, soft particle material.
+        ///
+        /// Every particle system in the project used to share one OPAQUE Lit
+        /// material, which is why nothing ever glowed, nothing blended, and
+        /// particles cut a hard edge into the floor they intersected. A spark is
+        /// light, not surface: additive is the correct blend, and soft particles
+        /// are what stop the intersection edge.
+        ///
+        /// Soft particles read _CameraDepthTexture, and the PC pipeline asset
+        /// already has m_RequireDepthTexture on for SSAO — so this is free here
+        /// and would silently do nothing on a pipeline without it.
+        /// </summary>
+        private static Material LoadOrCreateParticleMaterial(string path, Color color)
+        {
+            Material? material = AssetDatabase.LoadAssetAtPath<Material>(path);
+            if (material != null) return material;
+
+            Shader shader = Shader.Find("Universal Render Pipeline/Particles/Unlit");
+            material = new Material(shader);
+            AssetDatabase.CreateAsset(material, path);
+            return material;
+        }
+
+        /// <summary>
+        /// The additive/transparent/soft setup, re-asserted every build for the
+        /// same reason ApplySurface is.
+        ///
+        /// URP's particle shaders are driven by BOTH float properties and shader
+        /// keywords, and the material inspector is what normally keeps the two in
+        /// sync. Set one without the other from a script and the material renders
+        /// as opaque alpha-blend while every value in the Inspector reads correct
+        /// — the same silent-null class as _EMISSION and _NORMALMAP.
+        /// </summary>
+        private static void ApplyParticleSurface(Material material, Color color)
+        {
+            const float TRANSPARENT = 1f;
+            const float ADDITIVE = 2f;
+
+            material.SetColor("_BaseColor", color);
+            material.SetFloat("_Surface", TRANSPARENT);
+            material.SetFloat("_Blend", ADDITIVE);
+            material.SetFloat("_ZWrite", 0f);
+            material.SetFloat("_SoftParticlesEnabled", 1f);
+            material.SetFloat("_SoftParticleNearFadeDistance", 0f);
+            material.SetFloat("_SoftParticleFarFadeDistance", 0.6f);
+            material.SetInt("_SrcBlend", (int)UnityEngine.Rendering.BlendMode.SrcAlpha);
+            material.SetInt("_DstBlend", (int)UnityEngine.Rendering.BlendMode.One);
+
+            material.EnableKeyword("_SURFACE_TYPE_TRANSPARENT");
+            material.EnableKeyword("_SOFTPARTICLES_ON");
+            material.DisableKeyword("_ALPHAPREMULTIPLY_ON");
+            material.DisableKeyword("_ALPHAMODULATE_ON");
+
+            // Additive geometry must draw after opaques or it blends against an
+            // unfinished frame.
+            material.renderQueue = (int)UnityEngine.Rendering.RenderQueue.Transparent;
+            EditorUtility.SetDirty(material);
+        }
+
+        /// <summary>
+        /// Gets a volume override, ADDING it only if the profile has none.
+        ///
+        /// The difference between this and AddOverride matters: AddOverride on a
+        /// profile that already has the component produces a SECOND copy, and a
+        /// stack with two Blooms is not a stack with one Bloom. This is what lets
+        /// new shipped defaults land on the existing PostFx_Arena.asset without
+        /// recreating it — the same get-or-add discipline SetRef uses for scene
+        /// references.
+        /// </summary>
+        private static T EnsureOverride<T>(VolumeProfile profile) where T : VolumeComponent
+        {
+            return profile.TryGet(out T existing) ? existing : AddOverride<T>(profile);
+        }
+
+        /// <summary>
+        /// Sets a volume parameter ONLY if nobody has overridden it.
+        ///
+        /// Override() is for introducing a value; this is for introducing a value
+        /// without stomping one a human tuned. A parameter whose overrideState is
+        /// already true was chosen deliberately — by the previous build or by a
+        /// person in the Inspector — and a build that silently reverts tuning is
+        /// the bug PaletteConfig exists to kill, arriving from the other side.
+        /// </summary>
+        private static void EnsureValue<T>(VolumeParameter<T> parameter, T value)
+        {
+            if (parameter.overrideState) return;
+            parameter.overrideState = true;
+            parameter.value = value;
+        }
+
         private static void ApplySurface(Material material, float smoothness, float metallic,
             Texture2D? normalMap = null, float tiling = 1f, float normalScale = 1f)
         {
@@ -2786,44 +2966,117 @@ namespace CoD.EditorTools
         /// </summary>
         private static VolumeProfile LoadOrCreateVolumeProfile(string path)
         {
-            VolumeProfile? existing = AssetDatabase.LoadAssetAtPath<VolumeProfile>(path);
-            if (existing != null) return existing;
+            VolumeProfile? profile = AssetDatabase.LoadAssetAtPath<VolumeProfile>(path);
+            if (profile == null)
+            {
+                profile = ScriptableObject.CreateInstance<VolumeProfile>();
+                AssetDatabase.CreateAsset(profile, path);
+            }
 
-            VolumeProfile profile = ScriptableObject.CreateInstance<VolumeProfile>();
-            AssetDatabase.CreateAsset(profile, path);
+            ApplyPostFxDefaults(profile);
+            EditorUtility.SetDirty(profile);
+            AssetDatabase.SaveAssets();
+            return profile;
+        }
 
+        /// <summary>
+        /// The shipped post-processing defaults, applied on every build but only
+        /// where nobody has chosen otherwise.
+        ///
+        /// This used to run once, on the day the profile was created, which meant
+        /// a new override could never reach an existing profile — you would have
+        /// had to delete the asset to get it, and deleting it throws away every
+        /// tuned value at the same time. EnsureOverride/EnsureValue make adding a
+        /// default a non-event: absent overrides land, present ones are left
+        /// exactly as they are.
+        /// </summary>
+        private static void ApplyPostFxDefaults(VolumeProfile profile)
+        {
             // Neutral, NOT ACES. ACES desaturates and hue-shifts reds, and every
             // threat in this game is read by the colour of its core through fog —
             // Rusher red, Shooter amber, Tank crimson. Filmic rolloff is worth
             // having; losing the palette that carries the readability is not.
-            Tonemapping tonemapping = AddOverride<Tonemapping>(profile);
-            Override(tonemapping.mode, TonemappingMode.Neutral);
+            Tonemapping tonemapping = EnsureOverride<Tonemapping>(profile);
+            EnsureValue(tonemapping.mode, TonemappingMode.Neutral);
 
             // The one change that makes the existing emissive cores resolve.
             // High-quality filtering stays OFF: this targets a 4 GB 3050.
-            Bloom bloom = AddOverride<Bloom>(profile);
-            Override(bloom.threshold, 1.05f);
-            Override(bloom.intensity, 0.35f);
-            Override(bloom.scatter, 0.62f);
-            Override(bloom.highQualityFiltering, false);
+            Bloom bloom = EnsureOverride<Bloom>(profile);
+            EnsureValue(bloom.threshold, 1.05f);
+            EnsureValue(bloom.intensity, 0.35f);
+            EnsureValue(bloom.scatter, 0.62f);
+            EnsureValue(bloom.highQualityFiltering, false);
+            // Pinned deliberately, and NOT left to the pipeline default. The PC
+            // pipeline asset used to point at Unity's SampleSceneProfile as the
+            // stack's base, and that template overrode bloom iteration count — so
+            // bloom cost more and read tighter and hotter than every comment here
+            // described, from a file nobody thought of as game content. The
+            // template is deleted; pinning the value here makes it ours, so no
+            // future base profile can move it without somebody noticing.
+            // (skipIterations was the URP 16 spelling and is obsolete in 17.)
+            EnsureValue(bloom.maxIterations, 6);
 
-            Vignette vignette = AddOverride<Vignette>(profile);
-            Override(vignette.intensity, 0.28f);
-            Override(vignette.smoothness, 0.35f);
+            Vignette vignette = EnsureOverride<Vignette>(profile);
+            EnsureValue(vignette.intensity, 0.28f);
+            EnsureValue(vignette.smoothness, 0.35f);
 
             // The grey/red tactical palette, pushed slightly.
-            ColorAdjustments color = AddOverride<ColorAdjustments>(profile);
-            Override(color.contrast, 8f);
-            Override(color.saturation, -6f);
+            ColorAdjustments color = EnsureOverride<ColorAdjustments>(profile);
+            EnsureValue(color.contrast, 8f);
+            EnsureValue(color.saturation, -6f);
 
             // Nearly free, and it breaks up surfaces that carry no texture.
-            FilmGrain grain = AddOverride<FilmGrain>(profile);
-            Override(grain.type, FilmGrainLookup.Thin1);
-            Override(grain.intensity, 0.15f);
+            FilmGrain grain = EnsureOverride<FilmGrain>(profile);
+            EnsureValue(grain.type, FilmGrainLookup.Thin1);
+            EnsureValue(grain.intensity, 0.15f);
+            // ---- the grade -------------------------------------------------
+            // Everything below folds into the 32^3 HDR grading LUT the pipeline
+            // already builds every frame, so it costs no additional milliseconds
+            // whatsoever. It is the best look-per-frame-time in the project, and
+            // it is why Tonemapping stays Neutral: a LUT can add filmic rolloff
+            // on top of Neutral without ACES's red hue shift.
 
-            EditorUtility.SetDirty(profile);
-            AssetDatabase.SaveAssets();
-            return profile;
+            // Cool shadows, warm highlights. If there is one move that reads as
+            // "modern military shooter" rather than "grey box with bloom", it is
+            // this one. It also reinforces the palette rule the arena is built
+            // on — cool is architecture, warm is a threat — by pushing the two
+            // apart in every pixel rather than only in the emissive ones.
+            ShadowsMidtonesHighlights split = EnsureOverride<ShadowsMidtonesHighlights>(profile);
+            EnsureValue(split.shadows, new Vector4(0.92f, 0.97f, 1.08f, 0f));
+            EnsureValue(split.midtones, new Vector4(1f, 1f, 1f, 0f));
+            EnsureValue(split.highlights, new Vector4(1.06f, 1.01f, 0.93f, 0f));
+
+            // Cools the whole image toward the tactical palette. Free in the LUT.
+            WhiteBalance balance = EnsureOverride<WhiteBalance>(profile);
+            EnsureValue(balance.temperature, -6f);
+
+            // A small lift so the blacks do not crush to nothing underneath the
+            // vignette and PlayerDamageFeedback's low-health tint, which stack on
+            // the same corners of the screen. Crushed corners hide drones.
+            LiftGammaGain levels = EnsureOverride<LiftGammaGain>(profile);
+            EnsureValue(levels.lift, new Vector4(1f, 1f, 1.01f, 0.012f));
+
+            // Reads as a lens rather than as a bug at this strength: roughly
+            // three taps, and identity at screen centre so it never smears the
+            // crosshair or the point of impact.
+            ChromaticAberration aberration = EnsureOverride<ChromaticAberration>(profile);
+            EnsureValue(aberration.intensity, 0.06f);
+
+            // DELIBERATELY ABSENT, and each for a reason worth keeping written
+            // down, because every one of them is a tempting one-click add:
+            //   MotionBlur     - URP's is camera-only. On a fast mouse turn it
+            //                    smears the whole screen, which in a horde game
+            //                    hides the drone that is about to reach you.
+            //                    It was sitting dormant in the template profile
+            //                    that used to sit under this stack.
+            //   DepthOfField   - 1.5-3 ms on a 3050 and it fights target
+            //                    readability. ADS-only is defensible later;
+            //                    always-on never is.
+            //   PaniniProjection - for ultra-wide FOV. 62 vertical is not wide
+            //                    enough to need it, and it is a fullscreen pass.
+            //   ColorLookup    - wanted, but it needs an authored LUT strip
+            //                    graded from a real screenshot. Do it from the
+            //                    game, not from imagination.
         }
 
         /// <summary>

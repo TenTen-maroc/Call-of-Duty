@@ -181,6 +181,31 @@ namespace CoD.Tests
 
             Assert.IsTrue(profile.TryGet(out Vignette _), "no Vignette");
             Assert.IsTrue(profile.TryGet(out ColorAdjustments _), "no ColorAdjustments");
+
+            // The grade. Every one of these folds into the HDR grading LUT and so
+            // costs nothing at runtime — which is exactly why a missing one is
+            // invisible. AddOverride has to call AssetDatabase.AddObjectToAsset or
+            // the profile saves referencing objects that were never written, and
+            // the failure mode is an empty profile in the Inspector and no post
+            // at all, with every other gate still green.
+            Assert.IsTrue(profile.TryGet(out ShadowsMidtonesHighlights split),
+                "no ShadowsMidtonesHighlights — the cool-shadow/warm-highlight split is the grade");
+            Assert.IsTrue(split.shadows.overrideState, "the shadow tint is not overridden, so it does nothing");
+
+            Assert.IsTrue(profile.TryGet(out WhiteBalance balance), "no WhiteBalance");
+            Assert.IsTrue(balance.temperature.overrideState, "white balance is not overridden");
+
+            Assert.IsTrue(profile.TryGet(out ChromaticAberration aberration), "no ChromaticAberration");
+            Assert.IsTrue(aberration.intensity.overrideState, "chromatic aberration is not overridden");
+
+            // Motion blur is refused on purpose, not merely absent: URP's is
+            // camera-only, so a fast mouse turn smears the entire screen and
+            // hides the drone that is about to reach you. It shipped dormant
+            // inside the template profile that used to sit under this stack, one
+            // Inspector click from live. If this assertion ever fails, somebody
+            // added it back — read the comment in ApplyPostFxDefaults first.
+            Assert.IsFalse(profile.TryGet(out MotionBlur _),
+                "MotionBlur is in the arena profile — it is refused deliberately; see ApplyPostFxDefaults");
         }
     }
 }
