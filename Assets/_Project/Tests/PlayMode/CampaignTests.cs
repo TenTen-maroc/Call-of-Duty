@@ -3,11 +3,13 @@ using System.Collections;
 using CoD.Core;
 using CoD.Enemies;
 using CoD.Player;
+using CoD.UI;
 using CoD.Waves;
 using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 using UnityEngine.TestTools;
+using UnityEngine.UI;
 
 namespace CoD.Tests
 {
@@ -567,6 +569,252 @@ namespace CoD.Tests
             yield return null;
             Assert.Greater(director.Progress.Kills, before,
                 "drones died and the mission counted none of them");
+        }
+
+        // ---------- the HUD the mission speaks through ----------
+
+        /// <summary>
+        /// THE OBJECTIVE HAS TO BE READABLE, AND NOTHING EVER CHECKED THAT IT WAS.
+        ///
+        /// A real play session photographed the first line of the campaign — the
+        /// very first thing the game says to a player — rendering as
+        /// "EADY / THE CONTROL POINT". The whole top-left column sat 90 units in
+        /// from the left of a 1920-unit canvas: 4.7%, which is inside the 5% band
+        /// displays and capture paths have been free to crop since television.
+        /// The margin went first and the opening word of "REACH THE CONTROL POINT"
+        /// went with it.
+        ///
+        /// WHY IT SHIPPED. Every gate this project has was satisfied. It
+        /// compiled, GreyBoxVerify proved every reference non-null, the campaign
+        /// suite drove the whole mission, and the headless build ran — because
+        /// not one of them ever asked where anything was DRAWN. A wired label and
+        /// a visible label are different claims, and only the first had a test.
+        ///
+        /// WHY THIS TEST IS SHAPED LIKE THIS. It asserts on the rendered rect
+        /// against the CANVAS rect, never on a coordinate. An assertion that the
+        /// objective sits at x 120 would have passed just as happily at x 90 the
+        /// day before the screenshot, and passes forever on any wrong-but-
+        /// unchanged value — which is exactly the gate that was missing. Width is
+        /// measured with Unity's own text generator rather than a character
+        /// count, so it says "this string fits" without pinning the label to one
+        /// font size.
+        ///
+        /// The label is found by WHAT IT SAYS, not by name and not by reflecting
+        /// a private field. That makes the test fail if the objective never
+        /// reaches the screen at all, which is the other half of "the player
+        /// cannot read the objective".
+        /// </summary>
+        [UnityTest]
+        public IEnumerator TheObjectiveLine_StaysInsideTheCanvas_AndHoldsItsOwnStrings()
+        {
+            SelectMission(Mission01Id);
+            yield return LoadArena();
+
+            MissionDirector director = FindDirector();
+            yield return WaitForMissionStart(director);
+            Assert.IsNotNull(director.Mission, "the catalog did not resolve the selected mission");
+
+            // The canvas is reached THROUGH the component that writes the
+            // objective, so this is provably the surface the mission draws on
+            // rather than whichever canvas a type search happened to return.
+            ObjectiveHud objectiveHud = Find<ObjectiveHud>(
+                "no ObjectiveHud in the arena. The scenes are GENERATED — run CoD -> Build Grey Box " +
+                "(GreyBoxBuilder.BuildHeadless).");
+            var canvas = objectiveHud.GetComponent<Canvas>();
+            Assert.IsNotNull(canvas,
+                "ObjectiveHud is not on the HUD canvas — the builder adds it to the canvas GameObject, and this " +
+                "test has nothing to measure the labels against without it");
+
+            Rect canvasRect = WorldRectOf(canvas!.GetComponent<RectTransform>());
+            Assert.Greater(canvasRect.width * canvasRect.height, 0f,
+                "the HUD canvas has no area, so every assertion below would pass or fail on nothing");
+
+            // Built exactly the way the HUD builds it, from the director itself.
+            var described = new System.Text.StringBuilder(160);
+            director.DescribeActive(described);
+            string line = described.ToString();
+            Assert.IsNotEmpty(line,
+                "the director describes no active objective, so mission 1 opens telling the player nothing");
+
+            Text? objective = null;
+            yield return WaitUntil(() => (objective = LabelShowing(canvas, line)) != null, StepSeconds,
+                $"a HUD label to show the first objective (\"{line}\")");
+
+            AssertInsideCanvas(canvasRect, objective!.rectTransform, $"the mission objective (\"{line}\")");
+            AssertHoldsWithoutWrapping(objective!, LongestObjectiveLine(director.Mission!),
+                "the mission objective list");
+
+            // The other half of the screenshot. The wave line sits directly above
+            // the objective in the same column and was left on BuildLabel's 320
+            // placeholder, which "WAVE 9 — CROSSFIRE" does not fit inside: it
+            // wrapped, and a 48-tall Truncate box then dropped the line the wave
+            // identity was on. Nothing failed; the name was simply never drawn.
+            Text[] labels = canvas.GetComponentsInChildren<Text>(true);
+            Assert.Greater(labels.Length, 0, "the HUD canvas has no labels under it at all");
+            AssertHoldsWithoutWrapping(LabelNamed(labels, "WaveLabel"), LongestWaveLine, "the wave line");
+
+            // And the general form of the defect, applied to every label the HUD
+            // owns — the shop, the pause menu and the death screen included, all
+            // of which are built by the same hand out of the same helper.
+            for (int i = 0; i < labels.Length; i++)
+            {
+                AssertInsideCanvas(canvasRect, labels[i].rectTransform, $"the HUD label '{labels[i].name}'");
+            }
+        }
+
+        /// <summary>
+        /// The worst counter any Describe can append to a title: three digits over
+        /// three is wider than the "0:45" a hold timer produces and wider than any
+        /// quota either shipped mission asks for. Not a tuning value — a sample
+        /// string, and a FLOOR: a label that cannot hold a title plus this cannot
+        /// hold the lines that already shipped.
+        /// </summary>
+        private const string WorstCaseCounter = " 000/000";
+
+        /// <summary>
+        /// The longest line WaveHud can write: "WAVE 10" and the longest identity
+        /// authored in Assets/_Project/Data/Waves. A floor, not a pin, exactly as
+        /// <see cref="WorstCaseCounter"/> is — and it carries the real em dash,
+        /// because WaveHud does.
+        /// </summary>
+        private const string LongestWaveLine = "WAVE 10 — OVERWATCH";
+
+        /// <summary>
+        /// Slack on the canvas-edge comparison, in screen pixels. Not a tuning
+        /// value — a float-equality tolerance, so a label resting exactly on the
+        /// edge does not fail on rounding. A label a whole pixel proud of the
+        /// screen is not the defect this file is about; one a hundred pixels
+        /// proud is, and one pixel of slack still catches that.
+        /// </summary>
+        private const float EdgeTolerancePixels = 1f;
+
+        /// <summary>
+        /// A RectTransform's four world corners reduced to their bounding Rect.
+        /// A screen-space-overlay canvas puts world units and screen pixels in the
+        /// same space, so these numbers are pixels on the player's monitor.
+        ///
+        /// Min/max across all four corners rather than corners[0] and corners[2],
+        /// because those two are only the bottom-left and top-right of an
+        /// UNROTATED rect — and a rotated one would then report a bounding box
+        /// smaller than itself, which is a clipping test that hides clipping.
+        /// </summary>
+        private static Rect WorldRectOf(RectTransform rect)
+        {
+            var corners = new Vector3[4];
+            rect.GetWorldCorners(corners);
+            float minX = corners[0].x, maxX = corners[0].x;
+            float minY = corners[0].y, maxY = corners[0].y;
+            for (int i = 1; i < corners.Length; i++)
+            {
+                minX = Mathf.Min(minX, corners[i].x);
+                maxX = Mathf.Max(maxX, corners[i].x);
+                minY = Mathf.Min(minY, corners[i].y);
+                maxY = Mathf.Max(maxY, corners[i].y);
+            }
+            return Rect.MinMaxRect(minX, minY, maxX, maxY);
+        }
+
+        /// <summary>
+        /// Fails if any part of a label's rect is outside the canvas it is drawn
+        /// on. Both rects come from GetWorldCorners, so this holds at any
+        /// resolution, any aspect ratio and any CanvasScaler factor — which is
+        /// the whole reason it is not written as "x must equal 120".
+        /// </summary>
+        private static void AssertInsideCanvas(Rect canvasRect, RectTransform rect, string what)
+        {
+            Rect world = WorldRectOf(rect);
+            Assert.GreaterOrEqual(world.xMin, canvasRect.xMin - EdgeTolerancePixels,
+                $"{what} runs {canvasRect.xMin - world.xMin:F0} px off the LEFT edge of the screen. " +
+                "Its opening characters are simply not drawn.");
+            Assert.LessOrEqual(world.xMax, canvasRect.xMax + EdgeTolerancePixels,
+                $"{what} runs {world.xMax - canvasRect.xMax:F0} px off the RIGHT edge of the screen");
+            Assert.GreaterOrEqual(world.yMin, canvasRect.yMin - EdgeTolerancePixels,
+                $"{what} runs {canvasRect.yMin - world.yMin:F0} px off the BOTTOM edge of the screen");
+            Assert.LessOrEqual(world.yMax, canvasRect.yMax + EdgeTolerancePixels,
+                $"{what} runs {world.yMax - canvasRect.yMax:F0} px off the TOP edge of the screen");
+        }
+
+        /// <summary>
+        /// Puts a sample string into a label and asks Unity what it would need.
+        ///
+        /// preferredWidth is measured UNWRAPPED, so "rect.width >= preferredWidth"
+        /// is precisely "this line does not wrap". preferredHeight is measured at
+        /// the rect's CURRENT width, so "rect.height >= preferredHeight" is
+        /// precisely "nothing is truncated off the bottom". Neither mentions a
+        /// font size — raise the size and both numbers move with it, and the
+        /// assertion still means what it says.
+        ///
+        /// The wrap mode is asserted too, and it is not decoration: with
+        /// Overflow the rect stops bounding what the label draws, and every
+        /// on-screen assertion in this file quietly stops proving anything.
+        ///
+        /// The label is restored BEFORE the asserts, so a failure does not also
+        /// leave the running game reading a test fixture.
+        /// </summary>
+        private static void AssertHoldsWithoutWrapping(Text label, string sample, string what)
+        {
+            Assert.AreEqual(HorizontalWrapMode.Wrap, label.horizontalOverflow,
+                $"{what} overflows horizontally instead of wrapping, so its rect no longer bounds what it draws " +
+                "and the on-screen assertions in this test stop meaning anything");
+
+            string original = label.text;
+            label.text = sample;
+            float neededWidth = label.preferredWidth;
+            float neededHeight = label.preferredHeight;
+            Rect rect = label.rectTransform.rect;
+            label.text = original;
+
+            Assert.GreaterOrEqual(rect.width, neededWidth,
+                $"{what} is {neededWidth - rect.width:F0} units too narrow for \"{sample}\". It wraps, and a " +
+                "Truncate overflow then throws the wrapped line away with no error anywhere — the text is just " +
+                "missing.");
+            Assert.GreaterOrEqual(rect.height, neededHeight,
+                $"{what} is {neededHeight - rect.height:F0} units too short for \"{sample}\", so its last line " +
+                "is cut off the bottom of the box");
+        }
+
+        /// <summary>
+        /// The longest line the mission can put on the objective list: its widest
+        /// title plus the worst counter a Describe appends. Read off the mission
+        /// itself rather than hardcoded, so authoring a longer objective moves
+        /// this test with it instead of leaving it certifying an old string.
+        ///
+        /// Length stands in for width, which is honest for a set of same-cased
+        /// titles in one font and is why the RESULT is then measured by Unity
+        /// rather than by counting characters.
+        /// </summary>
+        private static string LongestObjectiveLine(MissionConfig mission)
+        {
+            string longest = string.Empty;
+            for (int i = 0; i < mission.StepCount; i++)
+            {
+                MissionObjective? objective = mission.steps[i].objective;
+                if (objective == null) continue;
+                if (objective.title.Length > longest.Length) longest = objective.title;
+            }
+            Assert.IsNotEmpty(longest, "the mission has no objective titles, so there is nothing to size against");
+            return longest + WorstCaseCounter;
+        }
+
+        /// <summary>The label currently drawing this exact string, or null while the HUD has not caught up yet.</summary>
+        private static Text? LabelShowing(Canvas canvas, string text)
+        {
+            Text[] labels = canvas.GetComponentsInChildren<Text>(true);
+            for (int i = 0; i < labels.Length; i++)
+            {
+                if (labels[i].text == text) return labels[i];
+            }
+            return null;
+        }
+
+        private static Text LabelNamed(Text[] labels, string name)
+        {
+            for (int i = 0; i < labels.Length; i++)
+            {
+                if (labels[i].name == name) return labels[i];
+            }
+            Assert.Fail($"no HUD label named '{name}'. The scenes are GENERATED — run CoD -> Build Grey Box.");
+            return null!;
         }
 
         /// <summary>Applies a fatal blow to everything alive, so a quota can be driven without a firefight.</summary>

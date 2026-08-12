@@ -29,6 +29,7 @@ namespace CoD.UI
         private int _lastEnemies = -1;
         private int _lastMoney = -1;
         private int _lastCountdown = -1;
+        private bool _lastHeld;
         private RunPhase _lastPhase = (RunPhase)(-1);
 
         private void OnEnable()
@@ -88,11 +89,35 @@ namespace CoD.UI
             RunPhase phase = _runner.Phase;
             int seconds = Mathf.CeilToInt(_runner.PhaseTimeRemaining);
 
-            // Two keys, because the countdown changes its text while the phase
-            // stays the same.
-            if (phase == _lastPhase && seconds == _lastCountdown) return;
+            // A SUSPENDED runner is not counting down to anything, and saying so
+            // is the whole point.
+            //
+            // A mission director holds the wave loop during any step that does
+            // not want enemies -- walking to a control point, hacking a
+            // terminal, extracting. While it is held the runner never left
+            // RunPhase.Countdown, and _phaseEndsAt is still zero because Start
+            // early-returned before EnterCountdown ever ran. So PhaseTimeRemaining
+            // is 0, and Mathf.Max(1, ...) below floors the display at one --
+            // which printed "WAVE 1 IN 1", permanently, on the first screen of
+            // the first mission. The player is promised a wave in one second and
+            // it never arrives, which reads as a frozen game rather than as a
+            // quiet objective.
+            bool held = _runner.Suspended;
+
+            // Three keys now: the countdown changes text while the phase stays
+            // the same, and the hold changes it while BOTH stay the same.
+            if (phase == _lastPhase && seconds == _lastCountdown && held == _lastHeld) return;
             _lastPhase = phase;
             _lastCountdown = seconds;
+            _lastHeld = held;
+
+            if (held)
+            {
+                // Silent, not "PAUSED". The objective HUD is already telling the
+                // player what to do; a second banner competing with it is noise.
+                _bannerLabel.text = string.Empty;
+                return;
+            }
 
             _bannerLabel.text = phase switch
             {

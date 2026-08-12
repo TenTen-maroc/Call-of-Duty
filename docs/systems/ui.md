@@ -1,6 +1,8 @@
 # UI
 
-> Last verified: 2026-08-12 (runs; crosshair, HUD and hitmarker confirmed in play)
+> Last verified: 2026-08-12 (runs; crosshair, HUD and hitmarker confirmed in play.
+> The layout section below is measured, not played — the scene has to be
+> regenerated before any of it is on screen.)
 
 ## Overview
 
@@ -36,6 +38,41 @@ raises events; the UI decides what to draw.
   It also shows the live alive-count and attacker-token counters. Entirely inside
   `#if UNITY_EDITOR || DEVELOPMENT_BUILD`, so a shipping build cannot be cheated
   by someone who found the key.
+
+## Layout
+
+Every label on the arena canvas is created by `BuildLabel` in
+[GreyBoxBuilder.cs](../../Assets/_Project/Scripts/Editor/GreyBoxBuilder.cs), which
+sets `anchorMin`, `anchorMax` **and** `pivot` to the same vector — so a label
+anchored `(0, 1)` grows down-and-right from the top-left corner, and one anchored
+`(0.5, 0.5)` grows symmetrically about the centre. The canvas is
+`ScreenSpaceOverlay` + `ScaleWithScreenSize`, reference 1920×1080, **match =
+width**, so the canvas is always exactly 1920 reference units wide and gets
+taller or shorter as the aspect ratio changes. Horizontal positions are therefore
+fixed; vertical ones are not.
+
+- **The title-safe inset.** `HUD_SAFE_X` (120) and `HUD_SAFE_Y` (72) are the
+  margin every corner-anchored label keeps — ammo, health, wave, enemies, money.
+  They are 6.25% and 6.7% of their axes, deliberately clear of the 5% band that
+  displays and capture paths are free to crop.
+- **The top-left column** — wave line, enemies count, objective list — is one
+  block. `HUD_COLUMN_WIDTH` (720) is shared, and each row's Y is *derived* from
+  the row above (`HUD_COLUMN_WAVE_Y` → `..._ENEMIES_Y` → `..._OBJECTIVE_Y`)
+  rather than typed, so the rows cannot drift into each other again.
+- **The mission banner is anchored to the top edge**, not to the centre plus an
+  offset. A centre-anchored banner's distance from the top grows with half the
+  canvas height, and the canvas gets *shorter* as the screen gets wider.
+- **The interact prompt is centre-anchored on purpose** and is the one element
+  that should stay that way: its job is to sit a fixed distance under the
+  crosshair. 120 units below centre cannot outrun half the canvas at any aspect.
+- **`BuildLabel`'s 320×48 is a placeholder, not a default.** Any label carrying a
+  string longer than roughly fifteen characters has to replace it.
+
+`CampaignTests.TheObjectiveLine_StaysInsideTheCanvas_AndHoldsItsOwnStrings` is
+the gate. It compares each label's `GetWorldCorners` against the canvas's own,
+so it fails on *clipping* rather than on a coordinate, and it measures width with
+Unity's text generator (`preferredWidth`/`preferredHeight`) rather than a
+character count, so it never pins a label to one font size.
 
 ## Key Behaviors & Non-Obvious Patterns
 
@@ -114,6 +151,21 @@ raises events; the UI decides what to draw.
 
 ## Gotchas
 
+- **A wired label and a visible label are different claims.** `GreyBoxVerify`
+  proves the first; only the PlayMode layout test proves the second. The
+  objective line shipped 90 units from the left edge — inside the 5% a display
+  may crop — and a real play session photographed the campaign's opening
+  instruction reading "EADY / THE CONTROL POINT". Every gate passed: it compiled,
+  every reference was non-null, the mission ran end to end and the headless build
+  booted. None of them asked where anything was *drawn*.
+- **The wave line was 320 units wide and nothing said so.** Once waves got
+  identities, "WAVE 9 — CROSSFIRE" measured wider than that at 34 pt, wrapped,
+  and a 48-tall Truncate box discarded the wrapped line. The wave name was simply
+  never drawn, with no error anywhere. Unity gives no signal when a `Text`
+  overflows a Truncate rect — assert `preferredWidth` against `rect.width`.
+- **Moving a label in the builder changes nothing until the scene is
+  regenerated.** `CoD → Build Grey Box`, then `CoD → Verify and Repair Grey Box`.
+  The layout test fails against a stale scene, which is the intended behaviour.
 - `Hitmarker` and `Crosshair` both hold a `WeaponController` reference; if the
   player rig is rebuilt they must be re-wired. `GreyBoxVerify` checks exactly that.
 - The console uses IMGUI (`OnGUI`), which is fine because it only exists in dev

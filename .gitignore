@@ -58,3 +58,4 @@ Thumbs.db
 # Local secrets (Steam keys, signing, API tokens) — placeholders only in .env.template
 .env
 .env.local
+Logs/

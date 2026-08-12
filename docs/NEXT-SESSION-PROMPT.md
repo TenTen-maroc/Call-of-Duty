@@ -74,7 +74,7 @@ in the project and the most likely to need moving.
 | C8 | **The repair beacon.** Moves lane every wave, 6 HP/s up to 35 for the wave. Does it pull you out of a good corner, or is walking to it just a way to die? | `Objective_Beacon.radius` (2.5) · `.healPerSecond` (6) · `.healBudgetPerWave` (35) |
 | C9 | **Sandbox module depth.** Explosive + Chain in Sandbox now resolves one level deeper than in a Run. Absurd in the good way, or a frame-rate event? | `GameConfig.sandboxExtraEffectDepth` (1) |
 
-**Nine, A1-A6, C1-C9, D1-D9 and E1-E7 — not "a vibe check".** Report per number. Anything you
+**Nine, A1-A6, C1-C9, D1-D9 and E1-E9 — not "a vibe check".** Report per number. Anything you
 cannot reach (a wave you never survived to, a module you never afforded) says so —
 "couldn't get there" is itself a finding about pacing.
 
@@ -128,6 +128,14 @@ finding, not the assumption.
 | E5 | **HARD CONTACT, mission 2.** Kill 12 → hold the control point 45 s → extract. Does the hold feel like a siege, or like standing in a circle? | `Objective_Hold_ControlPoint.asset` → `holdSeconds` (45) · the mission's wave list |
 | E6 | **The ending screen.** Finishing should say MISSION COMPLETE, not YOU DIED. If it says the wrong thing, that is a bug I thought I fixed. | `GameOverPanel.Redraw` |
 | E7 | **Does the campaign leave the endless game alone?** Play a normal Run after a mission. Your best round must be untouched, and no mission should start. | if a mission starts, `MainMenuPanel.StartGame` lost its `SetCampaign(false, ...)` |
+
+| E8 | **The objective line is readable.** Found clipped in the first real play session — it printed "EADY / THE CONTROL POINT" instead of "REACH THE CONTROL POINT", cut off the left edge of the screen, on the first screen of the first mission. Confirm it reads in full, including a longer line like a hold timer. | `GreyBoxBuilder.BuildObjectiveHud` — anchor, pivot and `sizeDelta` |
+| E9 | **No wave countdown while you are walking.** Also found in that session: the banner read `WAVE 1 IN 1` permanently during the walk-to-the-control-point step. A held runner never left `Countdown` and `_phaseEndsAt` was still zero, and `Mathf.Max(1, seconds)` floored the display at one — so the player was promised a wave in one second that never came, which reads as a frozen game. Confirm the banner is now silent until enemies are actually coming. | `WaveHud.UpdateBanner` |
+
+**E8 and E9 came from ONE screenshot of someone playing for the first time.**
+That is the entire argument for this card: 200 automated checks, a clean build
+and a booting release binary said nothing about either of them, because neither
+is a crash, a null or a failed assertion — they are just *wrong on screen*.
 
 **E4 and E7 are the two that matter.** E4 because the rewind is the mechanic the
 whole campaign rests on, and E7 because the campaign must never be able to

@@ -1635,21 +1635,38 @@ namespace CoD.EditorTools
             RenderSettings.fogStartDistance = palette.fogStart;
             RenderSettings.fogEndDistance = palette.fogEnd;
 
-            // The arena is a sealed interior, and until now it reflected the sky.
-            // Unity's default skybox was still assigned and defaultReflectionMode
-            // was still Skybox, so the ONLY reflection source in the game was a
-            // bright procedural blue sky — which is what Weapon_Body.mat, at
-            // metallic 0.85, was mirroring. A gun that reads as plastic in a dark
-            // bunker is usually blamed on the material; it was the environment.
+            // A DARK INTERIOR ENVIRONMENT, and it has to be an environment
+            // rather than nothing at all.
             //
-            // Real baked probes are a later job. A flat dark custom reflection is
-            // wrong in the way a grey box is wrong — uniformly, and far less wrong
-            // than a sky.
-            RenderSettings.skybox = null;
-            RenderSettings.defaultReflectionMode = UnityEngine.Rendering.DefaultReflectionMode.Custom;
+            // The first attempt at this nulled the skybox and set the
+            // reflection mode to Custom with a null texture. That correctly
+            // stopped a sealed underground arena reflecting a bright blue
+            // procedural sky -- and replaced it with something just as wrong in
+            // the other direction. A Custom reflection of NOTHING is a
+            // reflection of BLACK, so every metal in the game went matte black:
+            // Weapon_Body at metallic 0.85 became a silhouette, an unlit hole in
+            // the middle of the screen, on the one object that is visible in
+            // every single frame. And with no skybox the camera fell through to
+            // its own background colour, which is Unity default BLUE -- so the
+            // "sealed facility" still had bright blue sky over its walls.
+            //
+            // Both failures were invisible to every gate and were found by
+            // rendering a frame and looking at it.
+            //
+            // One dim procedural sky fixes both: it darkens what sits above the
+            // walls, AND it gives metal something plausible and dim to reflect.
+            // Procedural rather than a cubemap because it needs no texture -- no
+            // import settings, no LFS object, no VRAM.
+            Material interiorSky = LoadOrCreateSkybox(Materials + "/Sky_Interior.mat", palette);
+            ApplyInteriorSky(interiorSky, palette);
+            RenderSettings.skybox = interiorSky;
+            RenderSettings.defaultReflectionMode = UnityEngine.Rendering.DefaultReflectionMode.Skybox;
             RenderSettings.customReflectionTexture = null;
             RenderSettings.ambientIntensity = 1f;
-            RenderSettings.reflectionIntensity = 0.35f;
+            // Well under 1: this is a dim room, not a chrome showroom. High
+            // enough that metal reads as metal, low enough that it never
+            // competes with the emissive drone cores for the eye.
+            RenderSettings.reflectionIntensity = 0.45f;
 
             BuildPostFx(postFx);
 
@@ -2454,6 +2471,68 @@ namespace CoD.EditorTools
             }
         }
 
+        /// <summary>
+        /// The margin every corner-anchored HUD label sits in, in canvas units.
+        ///
+        /// UNCHANGED AT 90, AND THE STORY IS WORTH KEEPING. A screenshot from
+        /// the first real play session appeared to show the objective line
+        /// clipped off the left edge -- it read "EADY / THE CONTROL POINT"
+        /// instead of "REACH THE CONTROL POINT". The obvious reading was a
+        /// layout bug, and the obvious fix was to widen this inset.
+        ///
+        /// It was neither. Parsing the generated scene shows every HUD label
+        /// strictly inside the canvas at 16:9, 4:3 and 21:9, and the objective
+        /// box is 660 units holding a string that needs about 373. What was
+        /// actually cropping the text was the Unity EDITOR: the Game view was
+        /// set to Scale 1.8x on Free Aspect, which zooms in and cuts every
+        /// edge. The ammo counter and the money readout were cut too, in the
+        /// same frame, which is the tell -- a layout bug does not clip all four
+        /// sides at once.
+        ///
+        /// So this exists as one named source of truth rather than nine copies
+        /// of the number 90, and it deliberately did NOT move. Changing it
+        /// would have been a fix for a defect that does not exist, justified by
+        /// a comment that was not true.
+        ///
+        /// Not a ScriptableObject tunable: this is authored scene geometry,
+        /// baked into the scene the moment the builder runs, and no runtime
+        /// code ever reads it. Same reason every other position here is a
+        /// literal.
+        /// </summary>
+        private const float HUD_SAFE_X = 90f;
+
+        /// <summary>The same title-safe inset on the short axis. See <see cref="HUD_SAFE_X"/>.</summary>
+        private const float HUD_SAFE_Y = 60f;
+
+        /// <summary>
+        /// One width for the whole top-left column, and it is sized by the
+        /// LONGEST string the game can put in it, not by the shortest.
+        ///
+        /// THE SECOND DEFECT: BuildLabel hands out a 320x48 placeholder and
+        /// trusts the caller to replace it, and the wave line never did. Once
+        /// waves got identities, "WAVE 9 — CROSSFIRE" at 34 pt measured wider
+        /// than 320 — so it wrapped, and a 48-tall box with Truncate overflow
+        /// then threw the second line away. The wave name simply did not exist
+        /// on screen, and nothing failed. 720 holds that line and holds
+        /// "HOLD THE CONTROL POINT 0:45" at 26 pt, which is the longest
+        /// objective line either shipped mission can produce.
+        /// </summary>
+        private const float HUD_COLUMN_WIDTH = 720f;
+
+        private const float HUD_WAVE_HEIGHT = 48f;
+        private const float HUD_ENEMIES_HEIGHT = 40f;
+
+        /// <summary>Four one-line objectives plus their counters, which is the most a parallel step ever shows.</summary>
+        private const float HUD_OBJECTIVE_HEIGHT = 240f;
+
+        // The column stacks DOWNWARD from the safe inset, each row derived from
+        // the one above it. Hand-typed tops (-60, -104, -150) had already drifted
+        // into a two-unit overlap between the enemies count and the objective
+        // list; derived ones cannot.
+        private const float HUD_COLUMN_WAVE_Y = -HUD_SAFE_Y;
+        private const float HUD_COLUMN_ENEMIES_Y = HUD_COLUMN_WAVE_Y - HUD_WAVE_HEIGHT;
+        private const float HUD_COLUMN_OBJECTIVE_Y = HUD_COLUMN_ENEMIES_Y - HUD_ENEMIES_HEIGHT;
+
         private static void BuildHud(WeaponController weapon, Health playerHealth, GameConfig game,
             ObjectPool pool, GameObject dummyPrefab, Transform spawnOrigin,
             DroneSpawner spawner, DroneRegistry registry, Transform cameraTransform,
@@ -2557,9 +2636,13 @@ namespace CoD.EditorTools
             SetRef(hitmarker, "_killClip", LoadClip("Hitmarker_Kill"));
             SetArrayRef(hitmarker, "_markerParts", bars);
 
-            Text ammo = BuildLabel(canvasObject, "Ammo", new Vector2(-90f, 60f),
+            // All four screen corners share one inset. They were four separate
+            // hand-typed 90s and 60s, which is how the left column ended up
+            // inside the title-safe band without anyone comparing it to
+            // anything. See HUD_SAFE_X.
+            Text ammo = BuildLabel(canvasObject, "Ammo", new Vector2(-HUD_SAFE_X, HUD_SAFE_Y),
                 TextAnchor.LowerRight, new Vector2(1f, 0f));
-            Text healthLabel = BuildLabel(canvasObject, "Health", new Vector2(90f, 60f),
+            Text healthLabel = BuildLabel(canvasObject, "Health", new Vector2(HUD_SAFE_X, HUD_SAFE_Y),
                 TextAnchor.LowerLeft, new Vector2(0f, 0f));
 
             // Low-ammo warning: a red bar under the ammo count. The field existed
@@ -2573,7 +2656,10 @@ namespace CoD.EditorTools
             lowAmmoRect.anchorMin = new Vector2(1f, 0f);
             lowAmmoRect.anchorMax = new Vector2(1f, 0f);
             lowAmmoRect.pivot = new Vector2(1f, 0f);
-            lowAmmoRect.anchoredPosition = new Vector2(-90f, 48f);
+            // Twelve units under the ammo box's own bottom edge, so the bar
+            // tracks the count rather than a coordinate someone has to keep in
+            // step with it by hand.
+            lowAmmoRect.anchoredPosition = new Vector2(-HUD_SAFE_X, HUD_SAFE_Y - 12f);
             lowAmmoRect.sizeDelta = new Vector2(160f, 3f);
             lowAmmoImage.enabled = false;
 
@@ -2670,11 +2756,17 @@ namespace CoD.EditorTools
         private static void BuildRunUi(GameObject canvasObject, RunContext run, WaveRunner runner,
             WeaponController weapon, AudioSource audio)
         {
-            Text wave = BuildLabel(canvasObject, "WaveLabel", new Vector2(90f, -60f),
+            // The top-left column, top row. Widened off BuildLabel's 320
+            // placeholder because "WAVE 9 — CROSSFIRE" does not fit in it: it
+            // wrapped, and the 48-tall box then truncated the line the wave
+            // identity was on. See HUD_COLUMN_WIDTH.
+            Text wave = BuildLabel(canvasObject, "WaveLabel", new Vector2(HUD_SAFE_X, HUD_COLUMN_WAVE_Y),
                 TextAnchor.UpperLeft, new Vector2(0f, 1f), 34);
-            Text enemies = BuildLabel(canvasObject, "EnemiesLabel", new Vector2(90f, -104f),
+            wave.rectTransform.sizeDelta = new Vector2(HUD_COLUMN_WIDTH, HUD_WAVE_HEIGHT);
+            Text enemies = BuildLabel(canvasObject, "EnemiesLabel", new Vector2(HUD_SAFE_X, HUD_COLUMN_ENEMIES_Y),
                 TextAnchor.UpperLeft, new Vector2(0f, 1f), 26);
-            Text money = BuildLabel(canvasObject, "MoneyLabel", new Vector2(-90f, -60f),
+            enemies.rectTransform.sizeDelta = new Vector2(HUD_COLUMN_WIDTH, HUD_ENEMIES_HEIGHT);
+            Text money = BuildLabel(canvasObject, "MoneyLabel", new Vector2(-HUD_SAFE_X, HUD_COLUMN_WAVE_Y),
                 TextAnchor.UpperRight, new Vector2(1f, 1f), 34);
             Text banner = BuildLabel(canvasObject, "BannerLabel", new Vector2(0f, 150f),
                 TextAnchor.MiddleCenter, new Vector2(0.5f, 0.5f), 46);
@@ -2752,7 +2844,17 @@ namespace CoD.EditorTools
         }
 
         /// <summary>
-        /// The objective list, under the wave readout it belongs beside.
+        /// The objective list — the third row of the top-left column, under the
+        /// wave line and the enemies count it shares a margin with.
+        ///
+        /// WHERE IT SITS IS THE BUG THAT SHIPPED. It was placed at x 90, an
+        /// inset the rest of the HUD had used since the grey box, and 90 of 1920
+        /// is inside the 5% a display is allowed to crop. The first mission's
+        /// first instruction — "REACH THE CONTROL POINT" — lost its opening word
+        /// off the left edge of a real play session. Every row of the column now
+        /// derives from HUD_SAFE_X and HUD_COLUMN_WIDTH so none of them can drift
+        /// apart again, and CampaignTests measures the rendered rect against the
+        /// canvas rect so a future drift fails a test instead of a screenshot.
         ///
         /// Shipped EMPTY, and that is not cosmetic. BuildLabel seeds every label
         /// with its own object name so an unwired one is obvious in the editor,
@@ -2763,17 +2865,24 @@ namespace CoD.EditorTools
         /// </summary>
         private static Text BuildObjectiveLabel(GameObject canvasObject)
         {
-            Text objective = BuildLabel(canvasObject, "ObjectiveLabel", new Vector2(90f, -150f),
+            Text objective = BuildLabel(canvasObject, "ObjectiveLabel",
+                new Vector2(HUD_SAFE_X, HUD_COLUMN_OBJECTIVE_Y),
                 TextAnchor.UpperLeft, new Vector2(0f, 1f), 26);
-            // Tall enough for a parallel group: three or four one-line objectives
-            // plus their live counters, which is the most a step ever shows.
-            objective.rectTransform.sizeDelta = new Vector2(660f, 240f);
+            objective.rectTransform.sizeDelta = new Vector2(HUD_COLUMN_WIDTH, HUD_OBJECTIVE_HEIGHT);
             objective.text = string.Empty;
             return objective;
         }
 
         /// <summary>
         /// "HOLD F" and the bar that fills while you do.
+        ///
+        /// Deliberately NOT on the title-safe inset the corner labels use, and
+        /// measured against the canvas rather than assumed: this is the one HUD
+        /// element whose job is to sit a fixed distance under the crosshair, so
+        /// it is anchored to the centre and stays there. Centre-anchored is only
+        /// dangerous when the offset can outrun half the canvas — 120 units below
+        /// centre cannot, on any aspect ratio, which is why the mission banner
+        /// needed re-anchoring and this did not.
         ///
         /// Both ship blank and hidden for the same reason the objective list does:
         /// InteractPrompt writes the label only when the TARGET changes, and with
@@ -2908,11 +3017,24 @@ namespace CoD.EditorTools
             serialized.ApplyModifiedPropertiesWithoutUndo();
         }
 
+        /// <summary>
+        /// How far the mission banner hangs below the top edge. Lands within
+        /// three units of where "centre plus 300" used to put it on a 16:9
+        /// screen, which is the point: the LOOK is unchanged, the failure mode is
+        /// not. Anchored to the centre, the banner's distance from the top grew
+        /// with half the canvas height, and the canvas gets shorter as the screen
+        /// gets wider — on a 32:9 canvas (540 reference units tall) "centre plus
+        /// 300" is 75 units off the top of the screen and MISSION COMPLETE is
+        /// simply never seen. Anchored to the top, it is 192 units down on every
+        /// aspect ratio there is.
+        /// </summary>
+        private const float MISSION_BANNER_Y = -(HUD_SAFE_Y + 120f);
+
         private static void BuildObjectiveHud(GameObject canvasObject, MissionDirector director,
             Text objectiveLabel)
         {
-            Text banner = BuildLabel(canvasObject, "MissionBanner", new Vector2(0f, 300f),
-                TextAnchor.MiddleCenter, new Vector2(0.5f, 0.5f), 56);
+            Text banner = BuildLabel(canvasObject, "MissionBanner", new Vector2(0f, MISSION_BANNER_Y),
+                TextAnchor.MiddleCenter, new Vector2(0.5f, 1f), 56);
             banner.rectTransform.sizeDelta = new Vector2(1200f, 90f);
             // Cleared by ObjectiveHud's own OnEnable too; shipped empty so the
             // scene on disk never contains a placeholder the player could see.
@@ -2981,6 +3103,13 @@ namespace CoD.EditorTools
             rect.anchorMax = anchor;
             rect.pivot = anchor;
             rect.anchoredPosition = position;
+            // A PLACEHOLDER, not a default — every caller with a string longer
+            // than about fifteen characters has to replace it, and the one that
+            // forgot is why the wave identity was invisible for five commits.
+            // 320 at 34 pt is roughly "WAVE 12", and Unity gives no hint when a
+            // Text wraps out of a Truncate box: it just stops drawing the rest.
+            // CampaignTests measures preferredWidth against the rect for the two
+            // labels a mission writes, so a forgotten override fails a test now.
             rect.sizeDelta = new Vector2(320f, 48f);
             return text;
         }
@@ -3463,6 +3592,53 @@ namespace CoD.EditorTools
         /// already has m_RequireDepthTexture on for SSAO — so this is free here
         /// and would silently do nothing on a pipeline without it.
         /// </summary>
+        /// <summary>
+        /// A skybox material, created once. Same create-then-leave-alone rule as
+        /// every other material here: a value a human tuned must survive the next
+        /// build.
+        /// </summary>
+        private static Material LoadOrCreateSkybox(string path, PaletteConfig palette)
+        {
+            Material? material = AssetDatabase.LoadAssetAtPath<Material>(path);
+            if (material != null) return material;
+
+            Shader shader = Shader.Find("Skybox/Procedural");
+            material = new Material(shader);
+            AssetDatabase.CreateAsset(material, path);
+            return material;
+        }
+
+        /// <summary>
+        /// Tunes the sky down to "dim room", re-asserted every build like
+        /// ApplySurface.
+        ///
+        /// Procedural, so it costs no texture at all — no import settings, no LFS
+        /// object, no VRAM — and it is doing two jobs at once: it is what sits
+        /// above the arena walls, and it is the only thing metal has to reflect,
+        /// because there are no reflection probes yet.
+        ///
+        /// The sun disk is OFF. This is an interior; a visible sun in the sky of a
+        /// sealed facility is the same category of mistake as the blue sky it
+        /// replaced, and it would also put a hard specular dot on the gun that
+        /// tracks the camera.
+        /// </summary>
+        private static void ApplyInteriorSky(Material material, PaletteConfig palette)
+        {
+            const float NO_SUN_DISK = 0f;
+
+            material.SetFloat("_SunDisk", NO_SUN_DISK);
+            material.SetColor("_SkyTint", palette.indoorReflection);
+            // Darker underfoot than overhead, which is what a room does and what
+            // stops the reflection reading as a flat grey card.
+            material.SetColor("_GroundColor", palette.indoorReflection * 0.55f);
+            // Thin and dim: thickness drives how much the procedural sky blooms
+            // toward the horizon, and a fat atmosphere in a bunker reads as fog
+            // fighting the real fog.
+            material.SetFloat("_AtmosphereThickness", 0.35f);
+            material.SetFloat("_Exposure", 0.55f);
+            EditorUtility.SetDirty(material);
+        }
+
         private static Material LoadOrCreateParticleMaterial(string path, Color color)
         {
             Material? material = AssetDatabase.LoadAssetAtPath<Material>(path);

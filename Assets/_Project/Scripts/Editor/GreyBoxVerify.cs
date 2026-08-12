@@ -291,6 +291,15 @@ namespace CoD.EditorTools
                     Check(waveHud, "_runner", stillNull);
                     Check(waveHud, "_run", stillNull);
                     Check(waveHud, "_bannerLabel", stillNull);
+                    // The other three the builder wires and this verifier never
+                    // read. Every WaveHud.Update path is `if (label != null)`, so
+                    // an unwired one is silent by construction: the wave number,
+                    // the enemies remaining and the money would each just never
+                    // appear, and the run would look like a run with nothing
+                    // happening rather than a HUD with nothing wired.
+                    Check(waveHud, "_waveLabel", stillNull);
+                    Check(waveHud, "_enemiesLabel", stillNull);
+                    Check(waveHud, "_moneyLabel", stillNull);
                 }
                 foreach (ShopPanel shopPanel in root.GetComponentsInChildren<ShopPanel>(true))
                 {
