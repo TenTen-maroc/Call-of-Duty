@@ -1,12 +1,13 @@
 # Audio
 
 > Last verified: 2026-08-12
-> **Verified in play: no. Verified at all: barely.** Everything below compiles
-> (typecheck 9/9, zero warnings) and passes the eight guards. Nothing here has
-> been executed: Unity was never launched for this work, no test covers it yet,
-> the two config assets do not exist on disk yet, and neither component is wired
-> into a scene yet. Read [What is not done](#what-is-not-done) before you assume
-> the game makes any noise.
+> **Verified in play: no. Verified by machine: only by the compiler.** Everything
+> below compiles (typecheck 9/9, zero warnings) and passes the guards. Both config
+> assets are now on disk. Neither component has ever *run*: Unity has not been
+> launched for any of this work, no test covers it, and the scene wiring described
+> in [Scene wiring](#scene-wiring) was written but **never executed** — the menu
+> item exists, nobody has pressed it. Read
+> [What is not done](#what-is-not-done) before you assume the game makes any noise.
 
 ## READ THIS FIRST: there is no AudioMixer, and no builder can make one
 
@@ -121,6 +122,10 @@ added to do for the eye. **None of them is the origin**: (0, 0, 0) is *inside*
 ### [Footsteps](../../Assets/_Project/Scripts/Player/Footsteps.cs) (`CoD.Player`)
 
 Serialized: `_config` (FootstepConfig), `_motor` (PlayerMotor), `_audio` (AudioSource).
+Those three names are the contract [SceneWiring](../../Assets/_Project/Scripts/Editor/SceneWiring.cs)
+writes through `SerializedObject`, and renaming one without updating that file is a
+silent null no compiler catches — so `SetRef` there reports a missing field as a
+hard failure with an exit code, rather than shrugging.
 
 Reads [PlayerMotor](../../Assets/_Project/Scripts/Player/PlayerMotor.cs)'s existing
 surface: `HorizontalSpeed`, `IsGrounded`, `IsSprinting`, `IsCrouched`,
@@ -129,8 +134,10 @@ this needed.
 
 ### [ArenaAmbience](../../Assets/_Project/Scripts/Core/ArenaAmbience.cs) (`CoD.Core`)
 
-Serialized: `_config` (AmbienceConfig). Builds its own `AudioSource` children in
-`Awake`, fades them up, then sets `enabled = false`.
+Serialized: `_config` (AmbienceConfig) — **and nothing else**. Builds its own
+`AudioSource` children in `Awake` from the rows in the asset, fades them up, then
+sets `enabled = false`. There is no emitter list to wire in the scene, by design:
+see [Scene wiring](#scene-wiring).
 
 ## Key Behaviors & Non-Obvious Patterns
 
@@ -222,23 +229,95 @@ Serialized: `_config` (AmbienceConfig). Builds its own `AudioSource` children in
   per emitter; Doppler is hard-off in `ArenaAmbience.CreateSource` with a comment
   saying why.
 
-## Scene wiring (NOT DONE — this is the handover)
+## Scene wiring
 
-Neither component is in any scene. `10_GreyBox` needs:
+`CoD → Wire Scene Extras`
+([SceneWiring.cs](../../Assets/_Project/Scripts/Editor/SceneWiring.cs)), or headless:
 
-1. On the existing **`Player`** GameObject (the one carrying `CharacterController`,
-   `PlayerInput`, `PlayerMotor`, `Health`, `PlayerLook`):
-   - an `AudioSource` (2D; `Footsteps.Awake` forces `playOnAwake=false`,
-     `loop=false`, `spatialBlend=0`, `dopplerLevel=0` itself)
-   - a `Footsteps` component with `_config` → `Footsteps_Player.asset`,
-     `_motor` → the `PlayerMotor` on the same object, `_audio` → that `AudioSource`
-     (`_audio` also falls back to `GetComponent<AudioSource>()` in `Awake`)
-2. A new empty GameObject **`Ambience` at world (0, 0, 0)** — emitter positions are
-   local to it — carrying `ArenaAmbience` with `_config` → `Ambience_Arena.asset`.
+```bash
+Unity.exe -batchmode -quit -projectPath . -executeMethod CoD.EditorTools.SceneWiring.WireSceneExtrasHeadless
+```
+
+**This is a separate step from every other builder, and it has never been run.**
+Both components, both config assets and this whole page shipped in one commit and
+the game stayed silent, because nothing put either component into a scene. Every
+gate was green the whole time: the code compiled, the guards passed over it, the
+assets were on disk with correct defaults, and the feature did not exist at
+runtime. Nothing in this project's toolchain can tell "installed" from "compiled",
+which is why the pass ends by re-opening the saved scene and proving the
+components are in it.
+
+What it puts into `10_GreyBox`:
+
+1. On whatever GameObject carries **`PlayerMotor`** — found by component, never by
+   the name `Player`, so renaming it in the builder cannot turn this into a no-op:
+   - an `AudioSource` on that same root (2D; `Footsteps.Awake` forces
+     `playOnAwake=false`, `loop=false`, `spatialBlend=0`, `dopplerLevel=0` itself,
+     and the pass writes them at author time too so the Inspector tells the truth)
+   - a `Footsteps` with `_config` → `Footsteps_Player.asset`, `_motor` → the
+     `PlayerMotor` on the same object, `_audio` → that `AudioSource`
+2. A root GameObject **`Ambience` at world (0, 0, 0)** carrying `ArenaAmbience`
+   with `_config` → `Ambience_Arena.asset`. **That is its only serialized field** —
+   there are no emitter transforms to wire, because the component builds its own
+   `AudioSource` children in `Awake` from the rows in the asset.
 
 `Footsteps` belongs on the `Player` root and **not** on the camera: the probe
 origin is the component's own transform, and the camera's transform carries the
-landing dip and the shake.
+landing dip and the shake. The pass warns about any `Footsteps` it finds without a
+`PlayerMotor` beside it.
+
+The `AudioSource` goes on the **player root** rather than a child of its own, for
+robustness rather than tidiness: `Footsteps.Awake` falls back to
+`GetComponent<AudioSource>()` on its own GameObject, so a `_audio` reference that
+failed to persist still resolves at runtime. It is safe because exactly one script
+in the project calls `GetComponent<AudioSource>()` — that fallback — and nothing
+else on the `Player` owns a source (the weapon's two live on the camera, the HUD's
+on the canvas).
+
+### Run order, and the way this silently un-installs itself
+
+**`CoD → Build Grey Box` first, then this.** `GreyBoxBuilder` does not edit
+`10_GreyBox`; it calls `EditorSceneManager.NewScene(EmptyScene)` and writes a brand
+new scene over the top. Every component this pass adds is therefore **gone** after
+a grey box rebuild — silently, with no error and no missing reference, because the
+scene is simply whole and quiet again. Re-run `Wire Scene Extras` after every grey
+box build, exactly as `CoD → Build Missions` has to be re-run after one.
+
+That is also why the pass is idempotent: "run it again" is the fix, so running it
+again has to be free. It tests for the *component*, not for an object name — a
+second `Footsteps` on the player would be a flam rather than a louder step, and a
+second `ArenaAmbience` would build a full second set of emitters from the same
+asset. References are re-asserted on every run (a null one is a component that
+warns once at `Awake` and then does nothing all run), but `SetRef` writes only when
+the value actually differs, so a second run leaves the scene byte-identical and
+never re-saves it.
+
+### What to read in the log
+
+One line, always:
+
+```text
+SceneWiring: added N component(s), rewired M reference(s), unresolved K  [Assets/_Project/Scenes/10_GreyBox.unity]
+```
+
+- **First run on a freshly built grey box**: expect `added 3` (a `Footsteps`, an
+  `AudioSource`, an `ArenaAmbience`), `rewired 4` (`_config`, `_motor`, `_audio`,
+  and the ambience `_config`), `unresolved 0`.
+- **Second run, immediately after**: `added 0, rewired 0, unresolved 0`. Anything
+  else means the pass is not idempotent, or the grey box was rebuilt in between.
+- **`unresolved` must be 0.** Non-zero prints
+  `SceneWiring: UNRESOLVED after save+reload:` with one line per failure and the
+  headless entry point exits 1. `(no such serialized field)` in that list is the
+  serious one — it means a field was renamed or a name was guessed.
+- The success line is
+  `SceneWiring: footsteps and ambience are in the scene, and every reference
+  survived a save/reload round trip.`
+- Warnings that are worth reading but do not fail the run: a `Footsteps` with no
+  `PlayerMotor` beside it, more than one `ArenaAmbience`, and an `Ambience` root
+  that is not at the world origin with identity rotation and unit scale (its
+  emitter coordinates are local to it, so a drift silently moves the whole room
+  tone; the pass reports it and deliberately does not correct it, because an offset
+  might be a second arena).
 
 ## Related Systems
 
@@ -287,16 +366,47 @@ landing dip and the shake.
   are currently independent. **The convergence, when someone wants it, is to move
   `SurfaceType` into `CoD.Core` and key both tables off it**, so a catwalk sparks
   and rings from the same authored fact. Do not duplicate a third surface table.
+- **Empty clip arrays are silent on every path — audited line by line, not
+  assumed.** `PlayStep` and `HandleLanding` both take `PickClip`, which returns
+  `null` for a null or zero-length array, and both `return` on it without logging.
+  `Surface(index)` returns `null` when nothing is authored at all
+  (`DefaultSurfaceIndex` is `-1` for an empty `surfaces` array) and both callers
+  return on that too. `ArenaAmbience.Build` counts only non-null clips, and a count
+  of zero sets `enabled = false` in `Awake` with no log. The *only* audio log in
+  either component is `Footsteps.Awake`'s one-shot warning for a missing `_config`,
+  `_motor` or `_audio` — a wiring fault, fired once, never per step. **Nothing here
+  can spam the console**, which is what makes it safe to wire the components in
+  before any WAV exists.
+- **A wired, clipless `Footsteps` is not free.** It stays `enabled`, so `Update`
+  runs every frame and fires one `Physics.Raycast` per stride — roughly twice a
+  second — to resolve a surface whose clips it will then find empty and discard.
+  It allocates nothing (the single-hit `out RaycastHit` overload, cached
+  references, float maths), so it does not touch the 16 KB/frame budget; the cost is
+  CPU only and negligible. Worth knowing before anyone profiles a silent build and
+  wonders what is casting rays. `ArenaAmbience` does not have this problem — it
+  disables itself in `Awake` when nothing is authored.
+- **`Wire Scene Extras` is not part of any build gate.** `GreyBoxVerify` does not
+  know these two components exist, so a grey box rebuild that drops them exits 0
+  with every reference green. The wiring pass carries its own round-trip
+  verification instead. If a future session folds these into `GreyBoxBuilder`, fold
+  the checks into `GreyBoxVerify` in the same commit or the gate goes back to being
+  blind to exactly this failure.
 
 ## What is not done
 
-- **Unity was never launched for this work.** No editor, no `-runTests`, no
-  `verify-build.mjs`. The gates that actually ran are `node Tools/typecheck.mjs`
-  (9/9, zero errors and zero warnings) and `node Tools/check.mjs` (8 guards).
-- **The two `.asset` files do not exist yet.** Somebody must run
-  `CoD → Build Audio Config` (menu, or `-executeMethod
-  CoD.EditorTools.AudioBuilder.BuildAudioHeadless`).
-- **Nothing is wired into a scene** — see [Scene wiring](#scene-wiring-not-done--this-is-the-handover).
+- **Unity has still never been launched for any of this.** No editor, no
+  `-runTests`, no `verify-build.mjs` — not for the components, not for the configs,
+  and not for the wiring pass, which was written and never executed. The gates that
+  actually ran are `node Tools/typecheck.mjs` (9/9, zero errors and zero warnings)
+  and `node Tools/check.mjs`.
+- **The two `.asset` files now exist** — `Footsteps_Player.asset` and
+  `Ambience_Arena.asset`, both under `Assets/_Project/Data/Game/`, both carrying the
+  right `m_Script` guid. `CoD → Build Audio Config` is still the way to recreate
+  them if they are ever lost, and it leaves an existing one untouched.
+- **`CoD → Wire Scene Extras` has never been run**, so `10_GreyBox` on disk still
+  contains neither component. Until somebody runs it, everything on this page is
+  code that cannot execute. See [Scene wiring](#scene-wiring) for the exact log
+  lines that prove it worked.
 - **There are no clips**, so even fully wired the game is still silent. Authoring
   or sourcing footstep and ambience audio is the next real step, and it is the one
   that costs LFS budget — check `guard-lfs-budget` before committing any.
