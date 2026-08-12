@@ -29,7 +29,7 @@ obvious, emphasise the non-obvious.
 
 ## Automated verification
 
-Beyond `typecheck.mjs` and the guards, the project has 127 tests:
+Beyond `typecheck.mjs` and the guards, the project has 192 tests:
 
 ```
 Unity.exe -batchmode -runTests -projectPath . -testPlatform EditMode -testResults Logs/tests-editmode.xml
