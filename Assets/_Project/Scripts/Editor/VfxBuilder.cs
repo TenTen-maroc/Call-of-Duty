@@ -53,6 +53,13 @@ namespace CoD.EditorTools
         private const string DecalPrefabPath = Prefabs + "/Fx_ImpactDecal.prefab";
 
         /// <summary>
+        /// The gunmetal the weapon rig is made of. GreyBoxBuilder's asset, loaded
+        /// rather than created for the reason the decal above is: two builders
+        /// writing one material is drift with a coin-flip winner.
+        /// </summary>
+        private const string WeaponBodyMaterialPath = Materials + "/Weapon_Body.mat";
+
+        /// <summary>
         /// The layer the gun lives on. Its NAME is the stable handle; the index
         /// is not. See GreyBoxBuilder for the full argument — the short version
         /// is that anything spawned at the muzzle has to be drawn by the overlay
@@ -135,6 +142,7 @@ namespace CoD.EditorTools
             GameObject tracer = BuildTracerPrefab(tracerFx, spark);
             GameObject wideFlash = BuildWideFlashPrefab(sparkFx);
             GameObject smoke = BuildSmokePrefab(smokeFx);
+            GameObject rocket = BuildRocketPrefab(tracerFx, spark);
 
             // Concrete throws DUST, not sparks — masonry does not spark, and the
             // whole point of the table is that two surfaces stop looking alike.
@@ -213,6 +221,19 @@ namespace CoD.EditorTools
                 weapon.tracerPrefab = tracer;
                 weapon.muzzleFlashWidePrefab = wideFlash;
                 weapon.muzzleSmokePrefab = smoke;
+
+                // The round itself, and ONLY for a weapon that says it fires one.
+                // Stamping it on every weapon would be harmless today and a trap
+                // tomorrow: `projectilePrefab` is what OnValidate reads to decide
+                // whether a launcher is finished, so a hitscan rifle carrying one
+                // would make that warning unreachable for the weapon that needs it.
+                //
+                // Assigned unconditionally rather than only-when-empty, unlike
+                // ArsenalBuilder's house feedback. This is not a choice a human
+                // makes per weapon — it is THE round, and a launcher pointing at a
+                // deleted prefab fires nothing at all.
+                if (weapon.delivery == DeliveryMode.Projectile) weapon.projectilePrefab = rocket;
+
                 EditorUtility.SetDirty(weapon);
                 wired++;
             }
@@ -220,10 +241,12 @@ namespace CoD.EditorTools
             AssetDatabase.SaveAssets();
             AssetDatabase.Refresh();
 
-            Debug.Log($"VFX built: 4 surface rows on {impact.name}, tracer + wide flash + smoke on {wired} weapon(s). " +
-                      "Two things this cannot do and a human must: add Fx_Tracer, the three impact prefabs, the wide " +
-                      "flash and the smoke puff to the arena ObjectPool prewarm list, and add the " +
-                      $"'{MetalLayerName}' / '{GrateLayerName}' / '{FleshLayerName}' layers to TagManager.asset.");
+            Debug.Log($"VFX built: 4 surface rows on {impact.name}, tracer + wide flash + smoke on {wired} weapon(s), " +
+                      $"and {rocket.name} on every projectile weapon. " +
+                      "Two things this cannot do and a human must: add Fx_Tracer, Fx_Rocket, the three impact " +
+                      "prefabs, the wide flash and the smoke puff to the arena ObjectPool prewarm list (Build Grey " +
+                      $"Box does it), and add the '{MetalLayerName}' / '{GrateLayerName}' / '{FleshLayerName}' " +
+                      "layers to TagManager.asset.");
         }
 
         /// <summary>Entry point for -executeMethod. Same work, non-zero exit on failure.</summary>
@@ -297,6 +320,105 @@ namespace CoD.EditorTools
             // muzzle flash is the opposite case, on Viewmodel for the opposite
             // reason.
             return SavePrefab(root, Prefabs + "/Fx_Tracer.prefab");
+        }
+
+        /// <summary>
+        /// The launcher's round: a body you can see coming, and the trail that
+        /// tells you where it came from.
+        ///
+        /// A ROCKET HAS TO BE VISIBLE OR IT IS A RANDOM EXPLOSION. That is the
+        /// whole argument for delivering it as a projectile instead of a hitscan
+        /// ray with a big blast — the travel time is the readability, and it is
+        /// only readable if the object is legible in flight. Hence a solid body at
+        /// 0.42 m (four times the drone round's silhouette) plus an additive
+        /// trail, on the Default layer, drawn by the world camera.
+        ///
+        /// NO COLLIDER, for CoD.Core.Projectile's reason: it sweeps a ray between
+        /// frames, because a small fast trigger tunnels through a wall at any sane
+        /// physics step. The rocket is FASTER than the drone round, so the trigger
+        /// version would be worse here, not better.
+        ///
+        /// The TrailRenderer defaults that are wrong for a pooled object are set
+        /// explicitly, exactly as BuildTracerPrefab sets them: `autodestruct`
+        /// DESTROYS the GameObject, which on a pooled instance means the pool
+        /// hands out a reference to a dead object later, and `emitting` true from
+        /// creation lays a line from the pool root at the world origin before a
+        /// single shot is fired. Projectile.Launch does the Clear().
+        /// </summary>
+        private static GameObject BuildRocketPrefab(Material trailMaterial, Color color)
+        {
+            var body = AssetDatabase.LoadAssetAtPath<Material>(WeaponBodyMaterialPath);
+            if (body == null)
+            {
+                Debug.LogWarning($"VfxBuilder: no '{WeaponBodyMaterialPath}' — the rocket will render with " +
+                                 "Unity's default material. Run CoD -> Build Grey Box, then this builder again.");
+            }
+
+            GameObject root = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            root.name = "Fx_Rocket";
+            root.transform.localScale = new Vector3(0.11f, 0.11f, 0.42f);
+            if (body != null) root.GetComponent<MeshRenderer>().sharedMaterial = body;
+            Object.DestroyImmediate(root.GetComponent<Collider>());
+
+            TrailRenderer trail = root.AddComponent<TrailRenderer>();
+            trail.sharedMaterial = trailMaterial;
+            // Longer than a tracer's 0.09 s because a rocket is slower and the
+            // trail is how it is TRACKED rather than how it is glimpsed: 0.5 s at
+            // 34 m/s is a 17 m ribbon, about half the arena.
+            trail.time = 0.5f;
+            trail.widthMultiplier = 0.13f;
+            trail.widthCurve = new AnimationCurve(new Keyframe(0f, 1f), new Keyframe(1f, 0.2f));
+            trail.minVertexDistance = 0.2f;
+            trail.numCapVertices = 0;
+            trail.numCornerVertices = 0;
+            trail.alignment = LineAlignment.View;
+            trail.textureMode = LineTextureMode.Stretch;
+            trail.autodestruct = false;
+            trail.emitting = false;
+            trail.shadowCastingMode = ShadowCastingMode.Off;
+            trail.receiveShadows = false;
+            trail.lightProbeUsage = LightProbeUsage.Off;
+            trail.reflectionProbeUsage = ReflectionProbeUsage.Off;
+
+            var gradient = new Gradient();
+            gradient.SetKeys(
+                new[] { new GradientColorKey(color, 0f), new GradientColorKey(color, 1f) },
+                new[] { new GradientAlphaKey(0.85f, 0f), new GradientAlphaKey(0f, 1f) });
+            trail.colorGradient = gradient;
+
+            PooledObject pooled = root.AddComponent<PooledObject>();
+            Projectile projectile = root.AddComponent<Projectile>();
+            // Wired by string AND resolved again in Awake by TryGetComponent. The
+            // belt is here because SetRef binds by a string no compiler checks;
+            // the braces are in Projectile.Awake because a silent null here is a
+            // rocket that never returns to the pool.
+            SetRef(projectile, "_pooled", pooled);
+            SetRef(projectile, "_trail", trail);
+
+            return SavePrefab(root, Prefabs + "/Fx_Rocket.prefab");
+        }
+
+        /// <summary>
+        /// Writes a [SerializeField] private reference from an editor script.
+        ///
+        /// A fourth copy of GreyBoxBuilder's, for the reason this file exists at
+        /// all: that one is private to a four-thousand-line builder, and the point
+        /// of a separate VFX builder is that authoring a prefab never opens it.
+        /// ⚠️ It binds BY STRING. A typo is a silent null that no compiler catches
+        /// and no build reports — see the class header of GreyBoxVerify.
+        /// </summary>
+        private static void SetRef(Object target, string field, Object? value)
+        {
+            SerializedObject serialized = new(target);
+            SerializedProperty property = serialized.FindProperty(field);
+            if (property == null)
+            {
+                throw new System.InvalidOperationException(
+                    $"'{target.GetType().Name}' has no serialized field '{field}'. SetRef binds by string, so " +
+                    "a renamed field fails here rather than silently wiring nothing.");
+            }
+            property.objectReferenceValue = value;
+            serialized.ApplyModifiedProperties();
         }
 
         /// <summary>

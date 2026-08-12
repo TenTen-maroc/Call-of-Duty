@@ -132,6 +132,31 @@ finding, not the assumption.
 | E8 | **The objective line is readable.** Found clipped in the first real play session — it printed "EADY / THE CONTROL POINT" instead of "REACH THE CONTROL POINT", cut off the left edge of the screen, on the first screen of the first mission. Confirm it reads in full, including a longer line like a hold timer. | `GreyBoxBuilder.BuildObjectiveHud` — anchor, pivot and `sizeDelta` |
 | E9 | **No wave countdown while you are walking.** Also found in that session: the banner read `WAVE 1 IN 1` permanently during the walk-to-the-control-point step. A held runner never left `Countdown` and `_phaseEndsAt` was still zero, and `Mathf.Max(1, seconds)` floored the display at one — so the player was promised a wave in one second that never came, which reads as a frozen game. Confirm the banner is now silent until enemies are actually coming. | `WaveHud.UpdateBanner` |
 
+---
+
+## Part F — the launcher, and the five guns nobody could hold
+
+Added 2026-08-12 (W4). Until this landed the game could put **two** of its
+weapons in a player's hands; there are now seven and all of them are reachable.
+
+**How to reach them:** Sandbox, backquote for the console, **digit 0** cycles the
+weapon. Digit 2 for infinite ammo and digit 6 to spawn drones.
+
+| # | What to feel | If it is wrong, move this |
+| --- | --- | --- |
+| F1 | **The launcher.** One round in the tube, a rocket that takes about a second to cross a lane, a 4.5 m blast. THE question: does having to LEAD a rusher feel skilful or feel like the gun is broken? | `RL_Launcher.projectileSpeed` (34) — raise it to 45 before touching anything else |
+| F2 | **Is the rocket readable in flight?** It is a dark cube with a bright trail on the world camera. Can you see it leave the tube and track it to the wall, or does it vanish? | `Fx_Rocket` in `VfxBuilder.BuildRocketPrefab` — the trail `time` (0.5) and `widthMultiplier` (0.13) |
+| F3 | **The blast.** 70 damage at the centre, 24.5 at 4.5 m, and it must NEVER hurt you. Fire one at a wall two metres away: you should take nothing. If you take damage, stop and say so — that is a bug, not a number. | `Effect_RocketBlast.radius` · `.damageFraction` (0.7) |
+| F4 | **One round, three seconds to reload.** Is that "make it count" or is it "the launcher is unusable in a wave"? | `RL_Launcher.magazineSize` (1) · `.reloadEmptyTime` (3.4) |
+| F5 | **Cycling weapons mid-wave.** Digit 0 through all seven. Does each one feel like a different gun, or like the same gun with different numbers? This is the first time anybody has been able to answer that. | the per-weapon `Configure` methods in `ArsenalBuilder` |
+| F6 | **The shotgun, finally holdable.** `SG_Breacher` has never been fired. Twelve pellets, one pull at contact, two at ten metres. Also the D5 hitmarker case: twelve pellets into one drone must be ONE click. | `SG_Breacher.pelletSpreadDegrees` is **still 0** — an aimed shotgun puts every pellet on one point. Say whether that reads as broken before it is changed |
+
+**F3 and F6 are the two that matter.** F3 because self-damage would be the one
+launcher bug that ends runs, and F6 because the shotgun's missing pattern is a
+known unfixed hole that has now become reachable — see docs/systems/weapons.md.
+
+---
+
 **E8 and E9 came from ONE screenshot of someone playing for the first time.**
 That is the entire argument for this card: 200 automated checks, a clean build
 and a booting release binary said nothing about either of them, because neither
@@ -156,6 +181,14 @@ damage the record the endless game is played for.
   the navmesh still has no islands. All asserted by RenderingTests.
 - The beacon relocates between waves and heals only within its per-wave budget.
 - Skipping a break arms the bonus and spends it exactly once.
+
+**One image question nobody has answered.** Every frame the harness renders shows
+a large flat pale-blue band across the lower third of the arena, with a hard
+horizontal edge, and a warmer floor beneath it. It is NOT a regression — a
+stash-and-rebuild baseline at the previous commit renders it identically — but
+whether it reads as a lit floor or as a lighting seam is exactly the "atmospheric
+or blotchy" question in the list below, and it is the most conspicuous thing in
+the image.
 
 **One tuning interaction to watch:** the post `Vignette` (0.28) sits underneath
 `PlayerDamageFeedback._lowHealthTint`, which is a separate full-screen image. Not
@@ -306,12 +339,17 @@ WHERE IT STANDS
 Six weapons, a two-mission campaign with checkpoints, a wave loop with a shop,
 three drone archetypes, a full HDR grade, a separate viewmodel camera, tracers,
 per-surface impacts, footsteps and ambience components (no audio FILES yet).
-~212 tests. Everything is a grey box: zero imported art, one generated texture.
+~222 tests. Everything is a grey box: zero imported art, one generated texture.
+
+W4 IS DONE (2026-08-12). Projectiles landed: Enemies/DroneProjectile.cs was
+PROMOTED to Core/Projectile.cs keeping its .meta (so every prefab reference
+survived), both sides fire it, a round passes through its own declared faction and
+its owner, and RL_Launcher fires a rocket that carries its own WeaponConfig.
+Sandbox console digit 0 now cycles the whole registry — before that, five of the
+seven weapons could not be held by anybody. Nobody has fired any of it: see Part F
+of the tuning card above.
 
 DO NEXT, in this order — each is free and worth more than the paid art that follows:
-  W4  projectiles -> launcher. Promote Enemies/DroneProjectile.cs to Core rather
-      than writing a second one; carry the WeaponConfig ON the projectile, because
-      a rocket in flight outlives a weapon swap.
   W5  attachments + optics -> sniper. A new AttachmentConfig SO composed into
       WeaponConfig, NOT the EffectModule pattern (that would be a class per
       attachment). Do NOT extend Stat/StatExtensions.Count — separate WeaponStat.
@@ -332,6 +370,15 @@ THE GATES, every commit:
   Unity.exe -batchmode -runTests -projectPath . -testPlatform PlayMode  -testResults Logs/tests-playmode.xml
   node Tools/verify-build.mjs   # builds a real player and RUNS it
   node Tools/screenshot.mjs     # renders 8 frames from the built player -- LOOK AT THEM
+
+⚠️ THE SCREENSHOT HARNESS FIRES NOTHING. BuildSmokeTest lives in CoD.Core, which
+references nothing and therefore cannot reach WeaponController — so no frame it
+renders has ever contained a shot, a tracer, an impact or a rocket. It proves the
+arena and the HUD render; it cannot photograph the weapon work. To compare a
+render change against a baseline today, `git stash -u`, run it, look, and pop.
+Closing that gap needs a dev-only trigger on the CoD.UI side (where the cheat
+console already lives) plus a Core-side seam for the harness to pull it, and it is
+worth doing before the next Track G phase.
 
 UNITY MUST BE CLOSED for every one of those. "Another Unity instance is running"
 is the error, and it is the user having the editor open.

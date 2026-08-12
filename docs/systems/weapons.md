@@ -10,9 +10,17 @@
 > marksman, LMG and shotgun, authored by `ArsenalBuilder`. None of the four has
 > been fired. Their numbers satisfy their classes' balance laws by arithmetic and
 > by test; whether any of them is *fun* is unanswered, and the shotgun has a known
-> unfixed hole in the fire path — see "Does 'a weapon is data' hold?" below. The
-> four assets and `Weapons.asset` do not exist on disk until someone runs
-> `CoD → Build Arsenal`.)
+> unfixed hole in the fire path — see "Does 'a weapon is data' hold?" below.
+>
+> ⚠️ **And to seven with the launcher (W4, 2026-08-12)** — the first weapon whose
+> shot does not resolve on the frame the trigger is pulled. Its rocket, its blast
+> and the projectile seam under it are covered by five PlayMode tests that drive
+> the real fire path in the real arena, and **nobody has fired it**.
+>
+> Every asset named here is generated: run `CoD → Build Grey Box`, then
+> `CoD → Build Arsenal`, then `CoD → Build VFX`, then `CoD → Build Grey Box`
+> again. The last pass is not superstition — it is what puts `Fx_Rocket` in the
+> pool's prewarm list and the weapon registry on the sandbox console.)
 
 ## Overview
 
@@ -21,8 +29,17 @@ never written to, plus a `WeaponRuntime` object holding everything that changes.
 `WeaponController` is the MonoBehaviour that turns input into shots, damage and
 feedback. New weapons are new assets, not new code.
 
-Hitscan, not projectiles: a raycast per pellet, nearest hit wins. Projectiles
-arrive later with the Shooter drone, and they will reuse the same pool.
+**Two deliveries, one fire path.** `WeaponConfig.delivery` picks between them and
+it is the ONLY branch in `FireOneShot`:
+
+- **Hitscan** — a raycast per pellet, nearest hit wins, resolved on the frame the
+  trigger is pulled. Six of the seven weapons.
+- **Projectile** — a real pooled object in the air, resolved when it arrives. The
+  launcher, and see "The launcher, and what a projectile costs" below.
+
+Cadence, ammo, burst, bloom, the shotgun pattern, recoil, the muzzle, the casing
+and the audio are shared by both. A launcher differs from a rifle in what leaves
+the barrel and in nothing else.
 
 ## Data Assets
 
@@ -57,8 +74,9 @@ see the next section before authoring any weapon.
 
 ## The arsenal
 
-Six weapons, all one class (`WeaponConfig`) driving one controller. Two are the
-grey box's; four were added on 2026-08-12 to test the claim that a weapon is data.
+Seven weapons, all one class (`WeaponConfig`) driving one controller. Two are the
+grey box's; four were added on 2026-08-12 to test the claim that a weapon is data,
+and the launcher was added the same day to find out where the claim stops.
 
 | Asset | `stableId` | Class / law | Damage × pellets | RPM | Mag / reserve | Point-blank TTK | Falloff | ADS | The trade |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -68,6 +86,7 @@ grey box's; four were added on 2026-08-12 to test the claim that a weapon is dat
 | `DMR_Marksman` | `wpn_dmr_marksman` | Marksman · arcade | 55 × 1 | 240 single | 10 / 60 | **250 ms** (2 pulls) | 40→90 @ **0.85** | 0.32 s | 2.0× headshot and real range; a miss costs 250 ms |
 | `LMG_Support` | `wpn_lmg_support` | LMG · arcade | 20 × 1 | 750 auto | **100** / 300 | **320 ms** (5 pulls) | 20→55 @ 0.55 | 0.42 s | 8 s of continuous fire; 5.4 s empty reload, 70% recoil recovery |
 | `SG_Breacher` | `wpn_sg_breacher` | Shotgun · **contact burst** | 10 × **12** | 70 single | 6 / 48 | **one pull** at contact, **two** at 10 m | 6→16 @ 0.3 | 0.28 s | owns the first six metres and nothing after |
+| `RL_Launcher` | `wpn_rl_launcher` | Launcher · **re-engagement** | 100 × 1 **+ blast** | 55 single | **1** / 8 | **one pull**, after a ~1 s flight | 30→80 @ 0.85 | 0.45 s | one round in the tube, and the shot has to be led |
 
 Built by [ArsenalBuilder.cs](../../Assets/_Project/Scripts/Editor/ArsenalBuilder.cs)
 (`CoD → Build Arsenal`, or `-executeMethod CoD.EditorTools.ArsenalBuilder.BuildArsenalHeadless`).
@@ -77,13 +96,83 @@ Like every builder here the configure callback runs **on create only**, so a
 number a human moved in the Inspector survives a re-run; what is re-asserted every
 run is references — the registry's entries, and any feedback slot still empty.
 
-All four new weapons adopt the **same** `Fx_MuzzleFlash` and `Fx_ShellCasing`
-prefabs the rifle uses, so the arsenal trebled without one new pool entry and
-without a new gun's first shot allocating.
+All five new weapons adopt the **same** `Fx_MuzzleFlash` and `Fx_ShellCasing`
+prefabs the rifle uses, so the arsenal more than trebled on **one** new pool
+entry — `Fx_Rocket`, which the launcher genuinely needs — and without a new gun's
+first shot allocating.
 
 `ArsenalBuilder` also re-checks every weapon against its class's law at build time
 and throws (non-zero exit, headless) if one fails. It reads the same `const`s off
 `WeaponConfig` that `WeaponDataTests` reads — one law, two readers, never two laws.
+
+## The launcher, and what a projectile costs
+
+The launcher answers to `BalanceLaw.ReEngagementCost`, and it *earns* the
+exemption from the arcade window rather than being granted it by its enum:
+100 damage × 1 pellet is exactly one pull on a 100 HP drone, so the one-shot
+premise holds and is asserted. Then the price of the second shot — 0.45 s to aim
+against the 0.35 s floor, and 55 RPM = **1.09 s** to cycle against the 0.9 s
+floor. Re-engagement is ~1.54 s against the AR's 0.257 s time-to-kill: six rifle
+kills per launcher kill, and that gap *is* the balance.
+
+**The flight time is the fairness.** A rocket at 34 m/s crosses the arena's
+longest lane in about a second, so a rusher closing at 6 m/s has to be led. That
+is the skill cost the damage pays for, and it is also why delivery is a
+projectile rather than a hitscan ray with a big radius: a 100-damage hitscan
+weapon is unavoidable and unreadable at the same time, which is the exact
+argument that keeps the Shooter drone's rounds slow.
+
+**A magazine of one.** One chambered, eight in reserve, 3.0 s to reload, 1.1 s to
+swap away from. Two rounds would make the miss free.
+
+`headshotMultiplier` is 1.0 on purpose: `Explosive` already refuses weakpoint
+children on the blast, and a weakpoint bonus on the direct hit would make a
+100-damage round a 150-damage round for aim that a 4.5 m blast makes irrelevant.
+
+### The blast is its own asset
+
+`Effect_RocketBlast` — 4.5 m, 0.7 of the round that caused it, falling to 0.35 at
+the edge, `maxDepth` **0**. Deliberately NOT the shop's `Effect_Explosive`, which
+ships `maxDepth 1` so blast victims detonate in turn: that is the absurd thing
+the shop *sells*, and on a 100-damage round in a wave-12 crowd it is a frame
+event rather than a big hit. Sharing one asset would also mean tuning the
+launcher silently retunes the shop item, because configs are shared references.
+
+### The three ways a projectile can go wrong, none of which throws
+
+Splitting the pull from the impact by a second opens three holes. All three are
+pinned by [LauncherTests.cs](../../Assets/_Project/Tests/PlayMode/LauncherTests.cs).
+
+1. **It can resolve with the wrong weapon.** A rocket in flight OUTLIVES A WEAPON
+   SWAP. Read the controller's *current* runtime at impact and a rocket still in
+   the air when the player takes the pistol lands for the pistol's damage, the
+   pistol's falloff and the pistol's modules. So the `WeaponConfig` is **carried
+   on the round** — `Projectile.Payload` — and the sink casts it back, refusing
+   the impact rather than guessing if the cast fails.
+2. **It can resolve outside the weapon's damage model.** Falloff, the stat sheet,
+   the cheat multiplier, the weakpoint bonus, the impact VFX, the per-surface
+   sound, the hitmarker rule and the ordered effect-module list all live in
+   `WeaponController.ResolveHit`. A projectile that applied its own damage would
+   need a second copy of every one of them, and a launcher whose blast never
+   fires is a 100-damage rifle. So the projectile hands the impact **back**,
+   through `IProjectileImpactSink`, and `ResolveHit` + `DrainFollowUps` run
+   exactly as they do for a ray.
+3. **It can detonate on the shooter.** `ProjectileShot.Owner` is passed through
+   on the sweep whatever side it is on, and `Explosive` already refuses
+   `OwnerHealth`.
+
+⚠️ **`ResolveHit` takes an explicit `rangeMetres` rather than reading
+`hit.distance`.** For a ray they are the same number. For a projectile the hit is
+the result of a sweep across ONE FRAME, so its `distance` is a few centimetres
+however far the rocket flew — reading it would have made every launcher round
+point blank at every range in the arena, silently, because falloff has no other
+symptom. The value passed is `Projectile.DistanceTravelled`.
+
+⚠️ **A projectile weapon throws no tracer**, even though `VfxBuilder` stamps
+`tracerPrefab` onto every weapon on disk. The round *is* the visible line;
+`_tracerEnd` is only ever resolved by a hitscan pull, so a tracer here would fly
+to the far end of the aim ray while the rocket that matters is a metre out of the
+tube. One line in `SpawnTracer`, kept by a test.
 
 ### Does "a weapon is data" hold? — the honest answer
 
@@ -535,6 +624,28 @@ Covered by
 collider-less bystander, and asserts one payment, one hitmarker, a sticky kill
 flag, and twelve pellets' worth of damage on the primary target. It drives
 `FireOneShot` by reflection because a headless run has no input device to press.
+
+## Reaching the arsenal at all (2026-08-12)
+
+Until W4, the game could put exactly **two** of its weapons in a player's hands:
+the rifle the loadout starts with, and the SMG the shop sells. The pistol, the
+marksman rifle, the LMG, the shotgun and the launcher were authored,
+balance-gated, covered by tests and **unreachable by any human being** — and a
+weapon nobody can hold cannot be judged, which is the one thing this project
+still needs from a person.
+
+The sandbox cheat console's **digit 0** now walks `WeaponRegistry.allWeapons`,
+wrapping at the end and stepping past empty slots. It goes through
+`WeaponController.EquipWeapon` — the same call the shop makes — so bought effect
+modules carry across exactly as they do in a real run, and the cheat exercises
+the shipping path rather than a private one. The registry reference is wired by
+`GreyBoxBuilder` and re-asserted and checked by `GreyBoxVerify`; missing it is a
+warning at build time, not a failure, because `ArsenalBuilder` runs after the
+grey box and on a first-ever build the asset genuinely does not exist yet.
+
+**None of the five is in the shop**, deliberately. Shop odds are one of the
+things the tuning card asks about (item 3), and adding five weapons to the pool
+would change that answer before anyone has given it.
 
 ## Related Systems
 

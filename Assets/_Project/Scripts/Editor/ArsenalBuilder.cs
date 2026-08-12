@@ -60,6 +60,29 @@ namespace CoD.EditorTools
         private const string MarksmanPath = DataWeapons + "/DMR_Marksman.asset";
         private const string LmgPath = DataWeapons + "/LMG_Support.asset";
         private const string ShotgunPath = DataWeapons + "/SG_Breacher.asset";
+        private const string LauncherPath = DataWeapons + "/RL_Launcher.asset";
+
+        /// <summary>
+        /// The launcher's OWN blast, deliberately not the shop's Effect_Explosive.
+        ///
+        /// Two assets rather than one because they are two different things
+        /// wearing one class. Effect_Explosive is a PURCHASE — it ships maxDepth 1
+        /// so blast victims detonate in turn, which is the absurd-in-a-good-way
+        /// thing the shop sells. A launcher's warhead is the weapon's identity and
+        /// is authored against a 100-damage round: at maxDepth 1 every drone in a
+        /// four-metre radius would set off its own 70-damage blast, and one pull
+        /// into a wave-12 crowd becomes a frame event rather than a big hit.
+        ///
+        /// Sharing one asset would also mean tuning the launcher retunes the shop
+        /// item and the reverse, silently, because configs are shared references.
+        /// </summary>
+        private const string RocketBlastPath = DataEffects + "/Effect_RocketBlast.asset";
+
+        /// <summary>Where GreyBoxBuilder keeps the effect modules. This builder adds exactly one.</summary>
+        private const string DataEffects = "Assets/_Project/Data/Effects";
+
+        /// <summary>GreyBoxBuilder's explosion, reused. It already carries its own sound.</summary>
+        private const string ExplosionPrefabPath = Prefabs + "/Fx_Explosion.prefab";
 
         /// <summary>
         /// The health every balance number in this file is written against. It is
@@ -92,6 +115,16 @@ namespace CoD.EditorTools
             WeaponConfig lmg = LoadOrCreate<WeaponConfig>(LmgPath, ConfigureLmg);
             WeaponConfig shotgun = LoadOrCreate<WeaponConfig>(ShotgunPath, ConfigureShotgun);
 
+            // The launcher is the FIRST weapon in the game that is not purely a
+            // row of numbers, and the exception is instructive rather than
+            // damning: what it needed was a delivery mode and a projectile, both
+            // of which are now fields on WeaponConfig. Weapon number eight that
+            // fires a rocket is data again.
+            WeaponConfig launcher = LoadOrCreate<WeaponConfig>(LauncherPath, ConfigureLauncher);
+            Explosive rocketBlast = LoadOrCreate<Explosive>(RocketBlastPath, ConfigureRocketBlast);
+            SetExplosionVfx(rocketBlast);
+            EnsureCarriesModule(launcher, rocketBlast);
+
             // ---- the house feedback set ----------------------------------
             // Re-asserted every run, but ONLY into an empty slot. A null muzzle
             // flash is a gun that fires with no light and no sound, and nothing
@@ -110,7 +143,7 @@ namespace CoD.EditorTools
             AudioClip? dryFire = Load<AudioClip>(Audio + "/DryFire.wav");
             AudioClip? reload = Load<AudioClip>(Audio + "/Reload_AR.wav");
 
-            WeaponConfig[] authored = { pistol, marksman, lmg, shotgun };
+            WeaponConfig[] authored = { pistol, marksman, lmg, shotgun, launcher };
             foreach (WeaponConfig weapon in authored)
             {
                 AdoptHouseFeedback(weapon, flash, casing, fireClose, fireTail, dryFire, reload);
@@ -119,7 +152,7 @@ namespace CoD.EditorTools
             // ---- the registry --------------------------------------------
             // Every weapon, including the two this builder did not author.
             WeaponRegistry registry = LoadOrCreate<WeaponRegistry>(RegistryPath, _ => { });
-            EnsureListed(registry, rifle, smg, pistol, marksman, lmg, shotgun);
+            EnsureListed(registry, rifle, smg, pistol, marksman, lmg, shotgun, launcher);
 
             AssetDatabase.SaveAssets();
             AssetDatabase.Refresh();
@@ -431,6 +464,152 @@ namespace CoD.EditorTools
 
             config.adsFovMultiplier = 0.9f;
             config.cameraShakeAmplitude = 1.1f;
+        }
+
+        /// <summary>
+        /// The launcher, and the first weapon in the game that does not resolve on
+        /// the frame the trigger is pulled.
+        ///
+        /// THE LAW IT ANSWERS TO. Launcher maps to BalanceLaw.ReEngagementCost,
+        /// which is binary and is EARNED BY THE ASSET rather than granted by the
+        /// enum: 100 damage x 1 pellet = exactly one pull on a 100 HP drone, so
+        /// the one-shot premise holds. Then the price of the second shot —
+        /// 0.45 s to aim against the floor of 0.35, and 55 RPM = 1.09 s to cycle
+        /// against the floor of 0.9. Re-engagement is 1.54 s against the AR's
+        /// 0.257 s time-to-kill, which is six rifle kills per launcher kill, and
+        /// that gap IS the balance. TTK says nothing about a weapon that kills
+        /// instantly.
+        ///
+        /// WHAT THE FLIGHT TIME BUYS AND COSTS. A rocket at 34 m/s crosses the
+        /// arena's longest lane in about a second, so a rusher closing at 6 m/s
+        /// has to be LED. That is the skill cost the damage pays for, and it is
+        /// also the fairness: the round is visible for the whole of that second,
+        /// which a hitscan 100-damage weapon never is. It is why delivery is a
+        /// projectile rather than a hitscan ray with a big radius.
+        ///
+        /// A MAGAZINE OF ONE. Everything about this weapon should say "make it
+        /// count": one round chambered, eight in reserve, three seconds to reload,
+        /// and 1.1 s to swap away from. Two rounds would make the miss free.
+        ///
+        /// headshotMultiplier is 1.0 on purpose. An explosion does not headshot —
+        /// Explosive already refuses weakpoint children on the blast — and a
+        /// weakpoint bonus on the DIRECT hit would make a 100-damage round a
+        /// 150-damage round for aim that a four-metre blast makes irrelevant.
+        /// </summary>
+        private static void ConfigureLauncher(WeaponConfig config)
+        {
+            config.stableId = "wpn_rl_launcher";
+            config.displayName = "Launcher";
+            config.weaponClass = WeaponClass.Launcher;
+            config.fireMode = FireMode.Single;
+
+            config.delivery = DeliveryMode.Projectile;
+            // VfxBuilder assigns projectilePrefab — every projectile weapon on
+            // disk gets Fx_Rocket, unconditionally, because a launcher pointing at
+            // nothing fires nothing and the gun gives no sign of it.
+            config.projectileSpeed = 34f;
+            config.projectileLifetime = 6f;
+            config.projectileSpawnOffset = 0.9f;
+
+            config.roundsPerMinute = 55f;
+            config.bodyDamage = 100f;
+            config.headshotMultiplier = 1f;
+            config.magazineSize = 1;
+            config.reserveAmmo = 8;
+
+            config.adsTime = 0.45f;
+            config.sprintToFireTime = 0.35f;
+            config.reloadTime = 3.0f;
+            config.reloadEmptyTime = 3.4f;
+            config.swapTime = 1.1f;
+
+            // A warhead barely cares about range: 85 at the far wall against the
+            // AR's 15. What stops that being free is that the round takes a second
+            // to get there and the target has to still be standing where it was.
+            config.falloffRange = new Vector2(30f, 80f);
+            config.minDamageMultiplier = 0.85f;
+            config.maxRange = 200f;
+
+            // The heaviest kick in the arsenal, and it recovers nearly all of it —
+            // there is no second round to walk off target with.
+            config.verticalKickFirstShot = 3.4f;
+            config.verticalKickAtShotEight = 3.6f;
+            config.horizontalKickMax = 0.6f;
+            config.recoveryDelay = 0.12f;
+            config.recoveryDuration = 0.5f;
+            config.recoveryCompleteness = 0.92f;
+            config.recoilSeed = 1701;
+
+            // Bloom hardly matters on a weapon with a four-metre blast, so it is
+            // small and it exists only so that hipfiring is not free precision.
+            config.baseSpread = 1.2f;
+            config.spreadPerShot = 0.6f;
+            config.maxSpread = 2.6f;
+
+            config.adsFovMultiplier = 0.85f;
+            config.fovKickOnFire = 2.6f;
+            config.cameraShakeAmplitude = 1.4f;
+        }
+
+        /// <summary>
+        /// The warhead. See <see cref="RocketBlastPath"/> for why it is its own
+        /// asset rather than the shop's Effect_Explosive.
+        ///
+        /// 0.7 of a 100-damage round is 70 at the centre, falling to 24.5 at the
+        /// 4.5 m edge — so a direct hit kills its target outright and everything
+        /// within about three metres dies with it, while a near miss on a Tank
+        /// (600 HP) is a real dent and not a kill. maxDepth 0 is load-bearing:
+        /// see the path constant.
+        /// </summary>
+        private static void ConfigureRocketBlast(Explosive blast)
+        {
+            blast.maxDepth = 0;
+            blast.radius = 4.5f;
+            blast.damageFraction = 0.7f;
+            blast.minMultiplier = 0.35f;
+            blast.explosionLifetime = 1.2f;
+        }
+
+        /// <summary>
+        /// Points a blast at GreyBoxBuilder's explosion, and only into an empty
+        /// slot — AdoptHouseFeedback's rule, for AdoptHouseFeedback's reason.
+        /// A blast with no VFX is a silent, invisible 70 damage.
+        /// </summary>
+        private static void SetExplosionVfx(Explosive blast)
+        {
+            if (blast.explosionVfx != null) return;
+            GameObject? explosion = Load<GameObject>(ExplosionPrefabPath);
+            if (explosion == null) return;
+            blast.explosionVfx = explosion;
+            EditorUtility.SetDirty(blast);
+        }
+
+        /// <summary>
+        /// Puts a module on a weapon's AUTHORED list exactly once.
+        ///
+        /// This is the one place a WeaponConfig's effectModules array is written
+        /// by a builder, and it is legal because it is EDITOR-TIME authoring of an
+        /// asset — the rule it must not break is the runtime one, where purchases
+        /// append to WeaponRuntime.Modules and never to the config. Appending
+        /// rather than replacing, so a module a human added by hand survives.
+        /// </summary>
+        private static void EnsureCarriesModule(WeaponConfig weapon, EffectModule module)
+        {
+            foreach (EffectModule existing in weapon.effectModules)
+            {
+                if (existing == module) return;
+            }
+
+            var modules = new List<EffectModule>(weapon.effectModules.Length + 1);
+            foreach (EffectModule existing in weapon.effectModules)
+            {
+                // A null is the residue of a deleted asset. It costs a slot in
+                // every loop that walks this list and means nothing, so it goes.
+                if (existing != null) modules.Add(existing);
+            }
+            modules.Add(module);
+            weapon.effectModules = modules.ToArray();
+            EditorUtility.SetDirty(weapon);
         }
 
         // ---------- the registry ----------

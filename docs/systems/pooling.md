@@ -46,6 +46,15 @@ under pressure.
 
 ## Registration
 
+⚠️ **`Fx_Rocket` is the launcher's round and it is prewarmed 4 deep.** A
+one-round magazine at 55 RPM with a ~1 s flight never puts more than two in the
+air; four is the reload-cancel case plus slack. It is pooled by
+`GreyBoxBuilder.AddVfxPrewarm` even though `VfxBuilder` creates it, exactly as
+`Fx_Tracer` and the four impact prefabs are — the two builders have no run-order
+dependency in either direction, and a prefab that is not there yet is "not
+authored", never an error. The cost of missing it would be an `Instantiate` on the
+firing path, which is the precise GC hitch the pool exists to prevent.
+
 **A prefab is added to the prewarm list in the same commit that creates it.**
 Wiring lives in [GreyBoxBuilder.cs](../../Assets/_Project/Scripts/Editor/GreyBoxBuilder.cs)
 (`SetPrewarm`), currently: impact decal 48, sparks 24, muzzle flash 4, casing 24,

@@ -15,8 +15,19 @@ namespace CoD.Player
     /// </summary>
     [RequireComponent(typeof(CharacterController))]
     [DisallowMultipleComponent]
-    public sealed class PlayerMotor : MonoBehaviour
+    public sealed class PlayerMotor : MonoBehaviour, IFactionMember
     {
+        /// <summary>
+        /// The player's side, declared rather than inferred.
+        ///
+        /// It lives on the MOTOR because the motor is the one component that is
+        /// unambiguously the player and sits on the same object as the Health that
+        /// reads it. What it buys is that an enemy round never has to guess: see
+        /// <see cref="IFactionMember"/> for why "undeclared" now means unaligned
+        /// and why both sides have to say so out loud.
+        /// </summary>
+        public Faction Faction => Faction.Player;
+
         [SerializeField] private GameConfig? _config = null;
         [SerializeField] private PlayerInput? _input = null;
         [Tooltip("Optional. When present, MoveSpeed passives scale walking, sprinting and crouch-walking.")]

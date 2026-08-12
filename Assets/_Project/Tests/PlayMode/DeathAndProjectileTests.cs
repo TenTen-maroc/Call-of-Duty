@@ -122,11 +122,18 @@ namespace CoD.Tests
     }
 
     /// <summary>
-    /// A Shooter's round, in a room, with another drone in the way. The bug this
-    /// pins froze the projectile in mid-air permanently and never returned it to
-    /// the pool, so a wave of shooters leaked the pool for the rest of the run.
+    /// A round, in a room, with a body in the way — asked from BOTH sides.
+    ///
+    /// The original bug froze a Shooter's projectile in mid-air permanently and
+    /// never returned it to the pool, so a wave of shooters leaked the pool for
+    /// the rest of the run. That rule ("a hostile round passes through hostiles")
+    /// is now half of a general one: a round passes through its own SIDE and
+    /// through its OWNER, and stops on everything else. The launcher depends on
+    /// the other half — a player's rocket must detonate on the drone it hits, and
+    /// must not detonate on the player who fired it — so both directions are
+    /// asserted here rather than only the one that used to be broken.
     /// </summary>
-    public sealed class DroneProjectilePassThroughTests
+    public sealed class ProjectilePassThroughTests
     {
         // Loads the real grey box and lets it run, so a Rusher can reach the
         // player and end a run — which writes the record. See SaveFileGuard.
@@ -173,11 +180,19 @@ namespace CoD.Tests
             yield return null;
 
             PooledObject instance = pool!.Spawn(projectilePrefab, origin, Quaternion.LookRotation(Vector3.forward));
-            Assert.IsTrue(instance.TryGetComponent(out DroneProjectile projectile));
+            Assert.IsTrue(instance.TryGetComponent(out Projectile projectile));
 
             float startZ = instance.CachedTransform.position.z;
             const float speed = 18f;
-            projectile.Launch(pool, Vector3.forward * speed, 5f, lifetime: 1.5f, hitMask: ~0);
+            projectile.Launch(new ProjectileShot
+            {
+                Pool = pool,
+                Velocity = Vector3.forward * speed,
+                Damage = 5f,
+                Lifetime = 1.5f,
+                HitMask = ~0,
+                FiredBy = Faction.Hostile,
+            });
 
             // Measured in SECONDS, never in frames. A -batchmode run is uncapped
             // and pushes thousands of frames a second, so "30 frames" was about
@@ -205,6 +220,113 @@ namespace CoD.Tests
             while (Time.time - launchedAt < 2.5f && instance.IsSpawned) yield return null;
             Assert.IsFalse(instance.IsSpawned,
                 "the round must reach its lifetime and return to the pool rather than hang in the air");
+        }
+
+        /// <summary>
+        /// THE OTHER DIRECTION, and the one the launcher is built on. A round
+        /// fired by the PLAYER must stop on a drone and damage it — the same
+        /// sweep, the same prefab, the same drone, and the opposite answer.
+        ///
+        /// Without this, "passes through drones" would be a property of the
+        /// projectile rather than of the side that fired it, and the first rocket
+        /// would fly through the horde and detonate on the wall behind it.
+        /// </summary>
+        [UnityTest]
+        public IEnumerator APlayerRound_StopsOnADrone_AndDamagesIt()
+        {
+            var pool = Object.FindFirstObjectByType<ObjectPool>();
+            var spawner = Object.FindFirstObjectByType<DroneSpawner>();
+            Assert.IsNotNull(pool);
+            Assert.IsNotNull(spawner);
+            DroneConfig? drone = spawner!.DefaultDrone;
+            Assert.IsNotNull(drone?.prefab);
+
+            var origin = new Vector3(0f, 200f, 0f);
+            _stage = Object.Instantiate(drone!.prefab!, origin + Vector3.forward * 4f, Quaternion.identity);
+            yield return null;
+
+            Health? body = _stage.GetComponent<Health>();
+            Assert.IsNotNull(body, "the drone prefab must carry a Health for this test to mean anything");
+            float before = body!.Current;
+
+            PooledObject instance = pool!.Spawn(FindProjectilePrefab(), origin,
+                Quaternion.LookRotation(Vector3.forward));
+            Assert.IsTrue(instance.TryGetComponent(out Projectile projectile));
+            projectile.Launch(new ProjectileShot
+            {
+                Pool = pool,
+                Velocity = Vector3.forward * 18f,
+                Damage = 7f,
+                Lifetime = 1.5f,
+                HitMask = ~0,
+                FiredBy = Faction.Player,
+            });
+
+            // The drone is 4 m out at 18 m/s, so 0.6 s is nearly three times the
+            // flight. Seconds, never frames — a -batchmode run is uncapped.
+            float launchedAt = Time.time;
+            while (Time.time - launchedAt < 0.6f && instance.IsSpawned) yield return null;
+
+            Assert.IsFalse(instance.IsSpawned, "a player round must stop on a drone rather than pass through it");
+            Assert.Less(body.Current, before,
+                "a player round that stopped on a drone must have damaged it");
+        }
+
+        /// <summary>
+        /// The OWNER rule, isolated from the faction rule.
+        ///
+        /// Fired as the PLAYER, so the faction test alone would let it stop on this
+        /// drone — and it must not, because the drone is named as the shooter.
+        /// This is the guard that stops a rocket detonating in the player's own
+        /// face on the frame it leaves the tube, and testing it through a drone
+        /// rather than the real player is deliberate: the player capsule sits at
+        /// the arena origin, which is inside the centre bunker.
+        /// </summary>
+        [UnityTest]
+        public IEnumerator ARound_PassesThroughItsOwner_EvenOnTheOtherSide()
+        {
+            var pool = Object.FindFirstObjectByType<ObjectPool>();
+            var spawner = Object.FindFirstObjectByType<DroneSpawner>();
+            Assert.IsNotNull(pool);
+            Assert.IsNotNull(spawner);
+            DroneConfig? drone = spawner!.DefaultDrone;
+            Assert.IsNotNull(drone?.prefab);
+
+            var origin = new Vector3(0f, 200f, 0f);
+            _stage = Object.Instantiate(drone!.prefab!, origin + Vector3.forward * 4f, Quaternion.identity);
+            yield return null;
+
+            Health? owner = _stage.GetComponent<Health>();
+            Assert.IsNotNull(owner);
+
+            PooledObject instance = pool!.Spawn(FindProjectilePrefab(), origin,
+                Quaternion.LookRotation(Vector3.forward));
+            Assert.IsTrue(instance.TryGetComponent(out Projectile projectile));
+
+            float startZ = instance.CachedTransform.position.z;
+            projectile.Launch(new ProjectileShot
+            {
+                Pool = pool,
+                Velocity = Vector3.forward * 18f,
+                Damage = 7f,
+                Lifetime = 1.5f,
+                HitMask = ~0,
+                FiredBy = Faction.Player,
+                Owner = owner,
+            });
+
+            float launchedAt = Time.time;
+            float furthest = startZ;
+            while (Time.time - launchedAt < 0.4f)
+            {
+                if (instance.IsSpawned) furthest = Mathf.Max(furthest, instance.CachedTransform.position.z);
+                yield return null;
+            }
+
+            Assert.Greater(furthest - startZ, 4.5f,
+                "a round must pass through the body that fired it, whatever side that body is on");
+            Assert.AreEqual(owner!.Max, owner.Current, 0.01f,
+                "a round must never damage its own shooter");
         }
 
         private static GameObject FindProjectilePrefab()

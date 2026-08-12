@@ -75,6 +75,7 @@ namespace CoD.EditorTools
             InteractionConfig? interaction = Load<InteractionConfig>(
                 "Assets/_Project/Data/Game/Interaction_Default.asset");
             MissionCatalog? missionCatalog = Load<MissionCatalog>(MissionCatalogPath);
+            WeaponRegistry? arsenal = Load<WeaponRegistry>("Assets/_Project/Data/Weapons/Weapons.asset");
 
             foreach (GameObject root in scene.GetRootGameObjects())
             {
@@ -104,7 +105,14 @@ namespace CoD.EditorTools
                         : Ensure(h, "_config", health, report, ref missing);
                 }
                 foreach (CheatConsole console in root.GetComponentsInChildren<CheatConsole>(true))
+                {
                     repaired += Ensure(console, "_config", game, report, ref missing);
+                    // An ASSET reference in a scene, which is the exact class of
+                    // reference the gotcha at the top of this file says goes
+                    // missing in silence. Unwired, digit 0 does nothing at all and
+                    // six of the eight weapons cannot be held by anybody.
+                    repaired += Ensure(console, "_weaponRegistry", arsenal, report, ref missing);
+                }
                 foreach (PlayerDamageFeedback feedback in root.GetComponentsInChildren<PlayerDamageFeedback>(true))
                     repaired += Ensure(feedback, "_config", game, report, ref missing);
                 foreach (DroneSpawner spawner in root.GetComponentsInChildren<DroneSpawner>(true))
@@ -251,6 +259,7 @@ namespace CoD.EditorTools
                 {
                     Check(console, "_droneSpawner", stillNull);
                     Check(console, "_droneRegistry", stillNull);
+                    Check(console, "_weaponRegistry", stillNull);
                 }
                 foreach (NavMeshSurface surface in root.GetComponentsInChildren<NavMeshSurface>(true))
                     Check(surface, "m_NavMeshData", stillNull);

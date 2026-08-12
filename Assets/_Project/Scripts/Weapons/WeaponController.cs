@@ -17,7 +17,7 @@ namespace CoD.Weapons
     /// the product.
     /// </summary>
     [DisallowMultipleComponent]
-    public sealed class WeaponController : MonoBehaviour
+    public sealed class WeaponController : MonoBehaviour, IProjectileImpactSink
     {
         [Header("Data")]
         [SerializeField] private PlayerLoadoutConfig? _loadout = null;
@@ -91,6 +91,13 @@ namespace CoD.Weapons
         /// round for the rest of the run, which is how a console stops being read.
         /// </summary>
         private bool _tracerPrefabReported;
+
+        /// <summary>
+        /// The same latch, for a projectile weapon that produced no round. See
+        /// <see cref="ReportMissingProjectile"/> for why the case is worth a line
+        /// at all: it is the only failure on the firing path with no symptom.
+        /// </summary>
+        private bool _projectilePrefabReported;
 
         // Pre-sized buffer: RaycastNonAlloc never allocates, which matters once
         // hundreds of shots per minute are flying.
@@ -493,11 +500,28 @@ namespace CoD.Weapons
             // third of Unity's voice budget on a single trigger pull.
             float spread = Mathf.Max(config.pelletSpreadDegrees, CurrentSpreadDegrees());
             int pellets = Mathf.Max(1, config.pelletsPerShot);
-            for (int pellet = 0; pellet < pellets; pellet++) CastOneRay(config, spread);
+
+            // THE ONE BRANCH DELIVERY COSTS. Everything above and below is shared:
+            // cadence, ammo, burst, bloom, the pattern, recoil, the muzzle. A
+            // launcher differs from a rifle in what leaves the barrel and in
+            // nothing else, and `pelletsPerShot` is honoured on both sides so a
+            // cluster launcher stays authorable as data.
+            if (config.delivery == DeliveryMode.Projectile)
+            {
+                for (int round = 0; round < pellets; round++) LaunchProjectile(config, spread);
+            }
+            else
+            {
+                for (int pellet = 0; pellet < pellets; pellet++) CastOneRay(config, spread);
+            }
 
             // After every pellet, never between them. Each pellet still resolved
             // its own ray and its own damage above; what happens once is the
             // aftermath.
+            //
+            // A projectile pull drains an EMPTY queue, and that is correct rather
+            // than wasteful: a rocket's effect modules run when it arrives, from
+            // OnProjectileImpact, which is its own event several frames from now.
             DrainFollowUps(config);
 
 
@@ -572,7 +596,8 @@ namespace CoD.Weapons
             int resolved = 0;
             for (int i = 0; i < count && resolved < budget; i++)
             {
-                HitOutcome outcome = ResolveHit(config, _hitBuffer[i], direction, multiplier, depth: 0);
+                HitOutcome outcome = ResolveHit(config, _hitBuffer[i], direction,
+                    _hitBuffer[i].distance, multiplier, depth: 0);
 
                 // A SECOND collider on a body this ray has already gone through.
                 // Every drone puts two on the line — the hull, which carries the
@@ -590,6 +615,128 @@ namespace CoD.Weapons
                 if (outcome != HitOutcome.Damaged) break;
                 multiplier *= pierceFalloff;
             }
+        }
+
+        /// <summary>
+        /// Puts one real round in the air, for a weapon whose delivery is
+        /// <see cref="DeliveryMode.Projectile"/>.
+        ///
+        /// BORN ON THE AIM RAY, NOT AT THE MUZZLE TRANSFORM. `_muzzle` lives on
+        /// the viewmodel, which renders on its own overlay camera at its own FOV
+        /// specifically so it can sit where it LOOKS right rather than where it
+        /// is — it is a rendering convenience, and a rocket launched from it would
+        /// leave the tube visibly off the crosshair and land somewhere the player
+        /// did not aim. The aim ray comes from CameraPivot and is the same line
+        /// every hitscan weapon in the game resolves against, so what you see is
+        /// what you get. The flash and the casing still come off the muzzle,
+        /// because those ARE presentation.
+        /// </summary>
+        private void LaunchProjectile(WeaponConfig config, float spreadDegrees)
+        {
+            if (_look == null) return;
+
+            if (_pool == null || config.projectilePrefab == null)
+            {
+                ReportMissingProjectile(config);
+                return;
+            }
+
+            Ray aim = _look.AimRay;
+            Vector3 direction = spreadDegrees <= 0f ? aim.direction : ApplyCone(aim.direction, spreadDegrees);
+            Vector3 origin = aim.origin + direction * config.projectileSpawnOffset;
+
+            PooledObject instance = _pool.Spawn(config.projectilePrefab, origin, Quaternion.LookRotation(direction));
+            if (!instance.TryGetComponent(out Projectile projectile))
+            {
+                // A prefab with no Projectile would never move and never despawn
+                // itself, so the pool would hand out a fresh instance on every
+                // shot for the rest of the run. Put it straight back.
+                _pool.Despawn(instance);
+                ReportMissingProjectile(config);
+                return;
+            }
+
+            projectile.Launch(new ProjectileShot
+            {
+                Pool = _pool,
+                Velocity = direction * config.projectileSpeed,
+                Lifetime = config.projectileLifetime,
+                HitMask = _hitMask,
+                FiredBy = Faction.Player,
+                Owner = _ownerHealth,
+                // THE CONFIG TRAVELS WITH THE ROUND. Read the current runtime at
+                // impact instead and a rocket still in the air when the player
+                // swaps to the pistol resolves with the pistol's damage, falloff
+                // and modules. See Projectile.Payload.
+                Payload = config,
+                Sink = this,
+            });
+        }
+
+        /// <summary>
+        /// Says once, per weapon, that a projectile weapon has no round to fire.
+        ///
+        /// Latched for the reason the tracer's report is: this sits on the firing
+        /// path, and an error per trigger pull is how a console stops being read.
+        /// It is worth saying at all because the symptom is otherwise invisible —
+        /// the gun consumes ammo, kicks, flashes and plays both fire layers, and
+        /// simply nothing arrives.
+        /// </summary>
+        private void ReportMissingProjectile(WeaponConfig config)
+        {
+            if (_projectilePrefabReported) return;
+            _projectilePrefabReported = true;
+            GameLog.Error(
+                $"{config.displayName} delivers by projectile and produced no round — its projectilePrefab is " +
+                "missing, carries no Projectile component, or the weapon has no object pool.", this);
+        }
+
+        /// <summary>
+        /// A round of ours arriving, several frames after the trigger pull that
+        /// sent it. <see cref="IProjectileImpactSink"/>.
+        ///
+        /// It resolves through the SAME ResolveHit and DrainFollowUps a hitscan
+        /// round does, which is the whole reason the projectile hands the impact
+        /// back instead of applying damage itself: falloff, the stat sheet, the
+        /// cheat multiplier, the weakpoint bonus, the impact VFX, the per-surface
+        /// sound, the hitmarker rule and the ordered effect-module list all
+        /// already live there, and a second copy would drift from the first.
+        ///
+        /// A ROCKET IS ITS OWN TRIGGER PULL, and the buffers are cleared here to
+        /// say so. They were cleared for the pull that launched it and have long
+        /// since been reused; without this, a rocket landing after a burst of
+        /// rifle fire would find that burst's already-hit set and refuse to damage
+        /// everything it had touched. There is no re-entrancy risk in clearing
+        /// them: FireOneShot resolves a pull end to end inside one call, and this
+        /// runs from a projectile's Update, never inside one.
+        /// </summary>
+        void IProjectileImpactSink.OnProjectileImpact(Projectile projectile, in RaycastHit hit, Vector3 direction)
+        {
+            // The config that FIRED it, never the one currently held. A cast
+            // rather than an assumption, and a refusal rather than a guess: a
+            // payload that is not a WeaponConfig means somebody launched this
+            // round from somewhere new, and resolving it with the wrong asset
+            // would be worse than not resolving it at all.
+            if (projectile.Payload is not WeaponConfig config)
+            {
+                GameLog.Error("A projectile arrived at the weapon carrying no WeaponConfig — " +
+                              "its impact cannot be resolved and was dropped.", this);
+                return;
+            }
+
+            _followUps.Clear();
+            _alreadyHit.Clear();
+            _announcedThisPull.Clear();
+            _oncePerPullSpent.Clear();
+            // One round, one ray: this set only ever exists to skip the SECOND
+            // collider of a body the same ray already went through, and a rocket
+            // resolves exactly one. Cleared anyway, because a stale entry left by
+            // the last pull would make the rocket's own target read as already
+            // pierced and pass through the thing it just hit.
+            _piercedThisRay.Clear();
+
+            ResolveHit(config, in hit, direction, projectile.DistanceTravelled, pierceMultiplier: 1f, depth: 0);
+            DrainFollowUps(config);
         }
 
         /// <summary>Insertion sort over the live part of the buffer. In-place, so it never allocates, and n is at most the buffer length.</summary>
@@ -635,14 +782,24 @@ namespace CoD.Weapons
             AlreadyPierced,
         }
 
-        /// <summary>Resolves one impact along a ray. See <see cref="HitOutcome"/> for what the caller does with each answer.</summary>
+        /// <summary>
+        /// Resolves one impact. See <see cref="HitOutcome"/> for what the caller
+        /// does with each answer.
+        ///
+        /// `rangeMetres` is passed rather than read off the hit, and that is not
+        /// tidiness. For a ray it IS `hit.distance` — but a projectile's hit is
+        /// the result of a sweep across ONE FRAME, so its `distance` is a few
+        /// centimetres however far the rocket flew. Reading it here would have
+        /// made every launcher round point blank at every range in the arena,
+        /// silently, since falloff has no other symptom.
+        /// </summary>
         private HitOutcome ResolveHit(WeaponConfig config, in RaycastHit hit, Vector3 direction,
-            float pierceMultiplier, int depth)
+            float rangeMetres, float pierceMultiplier, int depth)
         {
             // Four multipliers, four owners: falloff is the weapon, the stat sheet
             // is what the player bought, DamageMultiplier is the cheat, and pierce
             // falloff is how many bodies this round has already passed through.
-            float damage = config.DamageAtDistance(hit.distance) * DamageMultiplier
+            float damage = config.DamageAtDistance(rangeMetres) * DamageMultiplier
                            * _statDamageMultiplier * pierceMultiplier;
 
             // A weakpoint collider relays to its owner's Health, and the bonus is
@@ -1184,6 +1341,13 @@ namespace CoD.Weapons
         private void SpawnTracer(WeaponConfig config)
         {
             if (_pool == null || _muzzle == null || config.tracerPrefab == null) return;
+
+            // A projectile weapon's round IS the visible line, and it is the real
+            // one. A tracer here would draw a second streak, instantly, to a point
+            // no ray was ever cast at — `_tracerEnd` is only resolved by a hitscan
+            // pull, so it would still hold the far end of the aim ray — while the
+            // rocket that matters is a metre out of the tube.
+            if (config.delivery == DeliveryMode.Projectile) return;
 
             // Counted down only when a tracer could actually be produced, so a
             // weapon with no tracer prefab never silently burns through the

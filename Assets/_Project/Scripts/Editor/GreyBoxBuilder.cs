@@ -1450,9 +1450,15 @@ namespace CoD.EditorTools
         }
 
         /// <summary>
-        /// The Shooter's round. No collider — DroneProjectile sweeps a ray between
-        /// frames instead, because a small fast trigger tunnels through walls at
-        /// any sane physics step.
+        /// The Shooter's round. No collider — CoD.Core.Projectile sweeps a ray
+        /// between frames instead, because a small fast trigger tunnels through
+        /// walls at any sane physics step.
+        ///
+        /// The component used to be CoD.Enemies.DroneProjectile and was promoted
+        /// to Core so the player's launcher could fire the same object. The prefab
+        /// keeps its path and its guid: the SCRIPT file kept the old .meta through
+        /// the move, so this prefab's script reference resolved to the new type
+        /// without a repair pass and without a scene touching it.
         /// </summary>
         private static GameObject BuildDroneProjectilePrefab(Material material)
         {
@@ -1463,7 +1469,7 @@ namespace CoD.EditorTools
             Object.DestroyImmediate(root.GetComponent<Collider>());
 
             root.AddComponent<PooledObject>();
-            DroneProjectile projectile = root.AddComponent<DroneProjectile>();
+            Projectile projectile = root.AddComponent<Projectile>();
             SetRef(projectile, "_pooled", root.GetComponent<PooledObject>());
 
             return SavePrefab(root, Prefabs + "/Fx_DroneProjectile.prefab");
@@ -2711,6 +2717,22 @@ namespace CoD.EditorTools
             SetRef(console, "_waveRunner", runner);
             SetRef(console, "_run", run);
             SetRef(console, "_pause", canvasObject.GetComponent<PausePanel>());
+
+            // The arsenal, so digit 0 can walk it. LOADED, NOT CREATED, and
+            // missing is a warning rather than a failure: ArsenalBuilder owns
+            // Weapons.asset and runs AFTER this builder, so on a first-ever build
+            // of an empty project it genuinely is not there yet. Re-running the
+            // grey box once the arsenal exists picks it up, which is the same
+            // no-run-order-dependency rule AddVfxPrewarm follows.
+            var arsenal = AssetDatabase.LoadAssetAtPath<WeaponRegistry>(DataWeapons + "/Weapons.asset");
+            if (arsenal == null)
+            {
+                Debug.LogWarning(
+                    "No weapon registry at " + DataWeapons + "/Weapons.asset — the sandbox console will have " +
+                    "no weapon to cycle to, so six of the eight guns stay unreachable. Run CoD -> Build Arsenal, " +
+                    "then run this builder again.");
+            }
+            SetRef(console, "_weaponRegistry", arsenal);
         }
 
         /// <summary>
@@ -3972,6 +3994,10 @@ namespace CoD.EditorTools
             {
                 // One in three rounds at 900 rpm, alive for its flight time.
                 ("Fx_Tracer", 24),
+                // A one-round magazine at 55 RPM with a ~1 s flight never puts
+                // more than two in the air. Four is the reload-cancel case plus
+                // slack, and a rocket is one cube and one trail.
+                ("Fx_Rocket", 4),
                 ("Fx_MuzzleFlash_Wide", 4),
                 ("Fx_MuzzleSmoke", 4),
                 // Sized like the decal entry: the shotgun puts twelve impacts on

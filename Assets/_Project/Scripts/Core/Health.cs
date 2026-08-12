@@ -19,6 +19,18 @@ namespace CoD.Core
         /// <summary>Set from DroneConfig at spawn. Negative means "no override".</summary>
         private float _maxOverride = -1f;
 
+        /// <summary>
+        /// Resolved once in Awake and never again — see <see cref="Faction"/>.
+        ///
+        /// Cached rather than asked per query because the caller is
+        /// <see cref="Projectile"/>'s sweep, which runs every frame for every
+        /// round in the air and tests every collider along the step. An interface
+        /// lookup does not take Unity's fast path, and a wave of Shooters would
+        /// pay for it dozens of times a frame; the answer is a constant per body,
+        /// so it is read once and stored.
+        /// </summary>
+        private Faction _faction = Faction.Unaligned;
+
         /// <summary>Instance event, not static — a static one would keep last Play session's subscribers.</summary>
         public event Action<Health, DamageInfo>? Damaged;
         public event Action<Health, DamageInfo>? Died;
@@ -33,7 +45,22 @@ namespace CoD.Core
         /// <summary>Godmode. State flipped by the sandbox console, never saved.</summary>
         public bool Invulnerable { get; set; }
 
-        private void Awake() => ResetHealth();
+        /// <summary>
+        /// Which side this body is on. <see cref="Faction.Unaligned"/> unless a
+        /// component on the same object declares one through
+        /// <see cref="IFactionMember"/> — read that interface's header for why
+        /// nothing is inferred, in either direction.
+        /// </summary>
+        public Faction Faction => _faction;
+
+        private void Awake()
+        {
+            // Resolved here rather than in the property, and once rather than per
+            // call. A drone's controller answers with a constant, so there is no
+            // ordering hazard: the interface is implemented, not initialised.
+            if (TryGetComponent(out IFactionMember member)) _faction = member.Faction;
+            ResetHealth();
+        }
 
         private void OnEnable() => ResetHealth();
 

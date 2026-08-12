@@ -49,7 +49,7 @@ namespace CoD.Enemies
         [Tooltip("Slow enough to sidestep once seen. Hitscan enemies are unreadable and unavoidable at the same time.")]
         [Range(4f, 60f)] public float projectileSpeed = 18f;
         [Range(0.5f, 10f)] public float projectileLifetime = 3f;
-        [Tooltip("Pooled prefab carrying DroneProjectile.")]
+        [Tooltip("Pooled prefab carrying Projectile.")]
         public GameObject? projectilePrefab;
         [Tooltip("Physics.DefaultRaycastLayers, not Everything: it excludes Ignore Raycast, which is where spent shell casings live. Everything let the player's own brass absorb incoming fire and eat blast slots.")]
         public LayerMask hitMask = Physics.DefaultRaycastLayers;
@@ -135,13 +135,26 @@ namespace CoD.Enemies
 
             PooledObject instance = pool.Spawn(projectilePrefab, origin + direction * 0.6f,
                 Quaternion.LookRotation(direction));
-            if (instance.TryGetComponent(out DroneProjectile projectile))
+            if (instance.TryGetComponent(out Projectile projectile))
             {
-                projectile.Launch(pool, direction * projectileSpeed, damage, projectileLifetime, hitMask);
+                // No sink and no payload: a drone's round is simple enough to
+                // resolve itself, and carrying its own damage number is the whole
+                // of its damage model. The player's launcher is the case that
+                // needs the other half — see IProjectileImpactSink.
+                projectile.Launch(new ProjectileShot
+                {
+                    Pool = pool,
+                    Velocity = direction * projectileSpeed,
+                    Damage = damage,
+                    Lifetime = projectileLifetime,
+                    HitMask = hitMask,
+                    FiredBy = Faction.Hostile,
+                    Owner = drone.HealthComponent,
+                });
             }
             else
             {
-                GameLog.Error($"'{projectilePrefab.name}' has no DroneProjectile component.", projectilePrefab);
+                GameLog.Error($"'{projectilePrefab.name}' has no Projectile component.", projectilePrefab);
                 pool.Despawn(instance);
             }
 

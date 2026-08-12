@@ -437,6 +437,103 @@ namespace CoD.Tests
         }
 
         /// <summary>
+        /// A weapon that says it fires a projectile has one to fire, and the
+        /// prefab it points at is actually a projectile.
+        ///
+        /// THIS IS THE ONE FAILURE ON THE FIRING PATH WITH NO SYMPTOM. Every other
+        /// way a weapon can be mis-authored shows itself: a missing muzzle flash
+        /// is a dark gun, a missing clip is a silent one, a bad falloff is a
+        /// weapon that will not kill. A launcher with a null `projectilePrefab`
+        /// consumes a round, kicks the camera, lights the muzzle, plays both fire
+        /// layers, starts its cadence — and puts nothing whatsoever in the air. It
+        /// looks exactly like a working gun aimed at nothing.
+        ///
+        /// The prefab is loaded and its COMPONENT checked, not just its
+        /// non-nullness, because the pool would otherwise hand out an instance
+        /// that never moves and never returns itself: one leaked instance per
+        /// trigger pull for the rest of the run.
+        /// </summary>
+        [Test]
+        public void EveryProjectileWeapon_HasARoundToFire()
+        {
+            foreach (WeaponConfig config in AllWeapons())
+            {
+                if (config.delivery != DeliveryMode.Projectile) continue;
+
+                Assert.IsNotNull(config.projectilePrefab,
+                    $"{config.displayName} delivers by projectile and has no projectilePrefab — it fires, kicks, " +
+                    "flashes and produces no round at all, and nothing on the firing path can notice");
+
+                Assert.IsNotNull(config.projectilePrefab!.GetComponent<Projectile>(),
+                    $"{config.displayName}'s round '{config.projectilePrefab.name}' carries no Projectile " +
+                    "component, so it would never move and never return itself to the pool");
+                Assert.IsNotNull(config.projectilePrefab.GetComponent<PooledObject>(),
+                    $"{config.displayName}'s round '{config.projectilePrefab.name}' carries no PooledObject — " +
+                    "everything that spawns in this game goes through the pool");
+
+                Assert.Greater(config.projectileSpeed, 0f,
+                    $"{config.displayName}'s round has no speed and would hang at the muzzle");
+            }
+        }
+
+        /// <summary>
+        /// A round can reach the range its own weapon claims.
+        ///
+        /// `maxRange` is the weapon's stated reach and `projectileSpeed x
+        /// projectileLifetime` is the reach it actually has. When the second is
+        /// smaller the config lies, and it lies quietly: the round simply
+        /// evaporates in mid-air at the distance nobody wrote down, which reads as
+        /// a shot that was never fired rather than as a range limit.
+        ///
+        /// A hitscan weapon is exempt because `maxRange` IS its reach — the cast
+        /// is bounded by it directly.
+        /// </summary>
+        [Test]
+        public void EveryProjectileWeapon_CanReachItsOwnStatedRange()
+        {
+            foreach (WeaponConfig config in AllWeapons())
+            {
+                if (config.delivery != DeliveryMode.Projectile) continue;
+
+                float reach = config.projectileSpeed * config.projectileLifetime;
+                Assert.GreaterOrEqual(reach, config.maxRange,
+                    $"{config.displayName} claims {config.maxRange:F0} m of range but its round only flies " +
+                    $"{reach:F0} m before it expires ({config.projectileSpeed:F0} m/s for " +
+                    $"{config.projectileLifetime:F1} s) — past that the shot vanishes with no impact and no sound");
+            }
+        }
+
+        /// <summary>
+        /// A HITSCAN weapon carries no projectile prefab.
+        ///
+        /// Not tidiness. `projectilePrefab` is the field
+        /// <c>WeaponConfig.OnValidate</c> reads to decide whether a projectile
+        /// weapon is finished being authored, so a rifle carrying one for no
+        /// reason is how that warning becomes unreachable for the weapon that
+        /// needs it — and a builder that stamps the round onto every weapon on
+        /// disk is exactly the shortcut somebody reaches for. VfxBuilder assigns
+        /// it only where `delivery` asks for it; this is what keeps that true.
+        /// </summary>
+        [Test]
+        public void AHitscanWeapon_CarriesNoProjectilePrefab()
+        {
+            foreach (WeaponConfig config in AllWeapons())
+            {
+                if (config.delivery == DeliveryMode.Projectile) continue;
+                // Checked and returned rather than asserted with a message, because
+                // NUnit builds the message BEFORE it evaluates the condition — and
+                // reading `.name` off the unassigned reference this test exists to
+                // find throws before the assertion it belongs to can fail.
+                if (config.projectilePrefab == null) continue;
+
+                Assert.Fail(
+                    $"{config.displayName} resolves as hitscan but carries '{config.projectilePrefab.name}' as a " +
+                    "round it will never fire — and while it does, OnValidate can never warn about a real " +
+                    "launcher that is missing one");
+            }
+        }
+
+        /// <summary>
         /// The weapon the player starts holding is a weapon the arsenal contains.
         ///
         /// `PlayerLoadoutConfig.startingWeapon` is a direct object reference, so

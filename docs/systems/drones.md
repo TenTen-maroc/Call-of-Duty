@@ -69,8 +69,13 @@ the player's speed and this one has to move with it.
   Shooter's. Reaction delay, deliberate opening miss, accuracy cone, burst, cooldown.
 - **[HeavySlam.cs](../../Assets/_Project/Scripts/Enemies/HeavySlam.cs)** — the
   Tank's. Long telegraph at near-zero speed, then a wide radial hit.
-- **[DroneProjectile.cs](../../Assets/_Project/Scripts/Enemies/DroneProjectile.cs)** —
-  the Shooter's round. Pooled, ray-swept between frames.
+- **[Projectile.cs](../../Assets/_Project/Scripts/Core/Projectile.cs)** — the
+  Shooter's round. Pooled, ray-swept between frames. ⚠️ **It lives in CoD.Core
+  now**, not here: it was `Enemies/DroneProjectile.cs` until W4 promoted it so the
+  player's launcher could fire the identical object rather than a second copy of
+  it with a different set of bugs. The prefab is unchanged and still
+  `Fx_DroneProjectile` — the script file kept its old `.meta` through the move, so
+  every existing reference resolved to the new type with no repair pass.
 - **[Blast.cs](../../Assets/_Project/Scripts/Enemies/Blast.cs)** — radial damage,
   shared by the detonation and the slam so they can never drift apart.
 - **[DroneController.cs](../../Assets/_Project/Scripts/Enemies/DroneController.cs)** —
@@ -150,7 +155,7 @@ the player's speed and this one has to move with it.
 
 ## Audit fixes (2026-08-11)
 
-- **A Shooter's round could hang in the air forever.** `DroneProjectile` treated a
+- **A Shooter's round could hang in the air forever.** The projectile treated a
   drone as a hit, and `Resolve` returned early for its own kind WITHOUT despawning
   and without advancing — so the sweep restarted from the same point every frame.
   The round never moved, never expired, and never released its pooled instance; a
@@ -239,6 +244,30 @@ this runs per enemy per frame.
 **No rigged prefab exists yet**, so every call site is currently a null check
 that does nothing. That is deliberate: the seam lands before the art, so the art
 drops into a slot instead of causing a refactor.
+
+## Which side a body is on (2026-08-12)
+
+`DroneController` implements `CoD.Core.IFactionMember` and answers
+`Faction.Hostile`. It is one line and it exists because
+[Projectile](../../Assets/_Project/Scripts/Core/Projectile.cs) moved to
+`CoD.Core`, which references nothing and must keep referencing nothing — the old
+`health.TryGetComponent(out DroneController _)` was no longer reachable from
+there.
+
+The rule the sweep actually wants was never "is it a drone" but "**is it on my
+side**", which is the same rule the player's launcher needs pointing the other
+way. `Health` resolves the interface once in `Awake` and caches the answer,
+because the sweep tests every collider along the step for every round in the air.
+
+⚠️ **Three values, and nothing is inferred.** `Faction.Unaligned` is the default
+and no round passes through it. An earlier version defaulted an undeclared body to
+`Player` on the argument that the failure fell safely — a hostile that forgot the
+interface would only *block* friendly fire. That was half the picture: it also
+made every prop, every training dummy and every future neutral object with a
+`Health` permanently transparent to the player's own rockets, and the launcher's
+first test fired point blank into the sandbox dummy and watched the round sail
+through it. `PlayerMotor` now declares `Faction.Player` explicitly, exactly as
+`DroneController` declares `Hostile`.
 
 ## Related Systems
 

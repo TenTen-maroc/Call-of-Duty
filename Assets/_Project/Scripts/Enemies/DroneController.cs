@@ -20,8 +20,20 @@ namespace CoD.Enemies
     /// it, warps it onto the mesh, and clears the path.
     /// </summary>
     [DisallowMultipleComponent]
-    public sealed class DroneController : MonoBehaviour
+    public sealed class DroneController : MonoBehaviour, IFactionMember
     {
+        /// <summary>
+        /// Every body this controller drives is hostile — the drones today and
+        /// the Meridian soldiers that will share it, which is exactly why the
+        /// answer lives here rather than on a per-archetype config.
+        ///
+        /// What reads it is <see cref="Projectile"/>: an enemy round must pass
+        /// THROUGH other enemies rather than stop on them. It used to ask for this
+        /// component by type, which stopped being possible when the projectile
+        /// moved into CoD.Core — see <see cref="IFactionMember"/>.
+        /// </summary>
+        public Faction Faction => Faction.Hostile;
+
         [SerializeField] private NavMeshAgent? _agent = null;
         [Tooltip("Present on a rigged humanoid, null on a drone. Every call site is null-checked, so a cube pays nothing for it.")]
         [SerializeField] private EnemyAnimator? _animator = null;

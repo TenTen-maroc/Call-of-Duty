@@ -225,3 +225,48 @@ work in the repo.** They compile, they hold under 108 tests, and nobody has felt
 any of them. Treat a play report that contradicts one of them as authoritative
 over the design intent recorded in the commit message, and expect to move their
 numbers rather than defend them.
+
+## 2026-08-12 — W4, projectiles and the launcher
+
+**What landed.** `Enemies/DroneProjectile.cs` was PROMOTED to
+`Core/Projectile.cs` rather than copied, so both the Shooter drone and the
+player's launcher fly the same object; `RL_Launcher` is the first weapon in the
+game whose shot does not resolve on the frame the trigger is pulled. Full detail
+in [docs/systems/weapons.md](systems/weapons.md).
+
+**Three things a future session should not have to rediscover.**
+
+1. **Moving a script FILE while keeping its `.meta` keeps every prefab
+   reference.** `Fx_DroneProjectile.prefab` binds its component by the script's
+   guid, so `git mv` of the `.meta` alone made a cross-assembly rename cost zero
+   repair passes and zero scene churn. Deleting the `.meta` and letting Unity mint
+   a new one would have left a missing script on a committed prefab.
+2. **A rebuild of the grey box silently drops what other builders added.**
+   `GreyBoxBuilder` writes a brand-new scene over the top, so `SceneWiring`'s
+   footsteps and ambience were gone and nothing errored. The scene came back
+   whole and quiet, five objects short. Diff the OBJECT COUNT and the set of
+   `m_Name:` values against HEAD after every rebuild — the fileID churn hides it
+   completely in a normal diff.
+3. **The full build order is four passes, not three:** Grey Box → Arsenal → VFX →
+   Grey Box → SceneWiring → GreyBoxVerify. Arsenal creates the launcher, VFX
+   creates the round and assigns it, and the SECOND grey box pass is what puts
+   `Fx_Rocket` in the pool prewarm and the weapon registry on the cheat console.
+
+**One design decision was reversed mid-session by a failing test**, and it is
+worth recording because the reasoning that produced the wrong answer was good.
+An undeclared body defaulted to `Faction.Player` on the argument that the failure
+fell safely — a hostile that forgot the interface would only BLOCK friendly fire.
+True, and half the picture: it also made every prop and every training dummy
+transparent to the player's own rockets. The launcher's first test fired point
+blank into the sandbox dummy and watched the round sail through it. The fix was a
+third value, `Unaligned`, and making BOTH sides declare. A default that reads
+safely in one direction is not safe; it is untested in the other.
+
+**Also worth knowing for the next Track G phase:** `Tools/screenshot.mjs` cannot
+photograph any weapon work at all. `BuildSmokeTest` lives in `CoD.Core`, which
+references nothing, so it can never reach `WeaponController` — no frame it has
+ever rendered contains a shot, a tracer, an impact or a rocket. The way to
+compare a render change against a baseline today is `git stash -u`, rebuild,
+look, pop. That was done for this commit: the frames are byte-comparable in
+content to HEAD's, which is what makes "no visual regression" a claim rather than
+a hope.

@@ -29,6 +29,11 @@ MonoBehaviour:
   reserveAmmo: 48
   pelletsPerShot: 12
   pelletSpreadDegrees: 0
+  delivery: 0
+  projectilePrefab: {fileID: 0}
+  projectileSpeed: 34
+  projectileLifetime: 6
+  projectileSpawnOffset: 0.9
   adsTime: 0.28
   sprintToFireTime: 0.18
   reloadTime: 3.4

@@ -50,6 +50,22 @@ namespace CoD.Weapons
         [Tooltip("Shotgun PATTERN, in degrees — the fixed spread of the shell itself, which is not bloom. Bloom (baseSpread and friends) grows as you fire and collapses to ZERO while aiming; a pattern never does, because a shell does not tighten because you aimed. 0 for anything with one pellet.")]
         [Range(0f, 15f)] public float pelletSpreadDegrees;
 
+        [Header("Delivery")]
+        [Tooltip("Hitscan resolves on the frame the trigger is pulled. Projectile puts a real object in the air, which is the only honest way to build a launcher — a rocket the player cannot see coming is a rocket that reads as a random explosion.")]
+        public DeliveryMode delivery = DeliveryMode.Hitscan;
+
+        [Tooltip("Pooled prefab carrying CoD.Core.Projectile. REQUIRED when delivery is Projectile — without it the gun consumes ammo, kicks, flashes and fires nothing at all.")]
+        public GameObject? projectilePrefab;
+
+        [Tooltip("Metres per second. Slow enough to be seen leaving the tube and fast enough to lead a rusher: 34 crosses the arena's longest lane in about a second.")]
+        [Range(5f, 200f)] public float projectileSpeed = 34f;
+
+        [Tooltip("Seconds before an unspent round retires. Only reached by a shot fired at open sky — anything aimed into the arena meets a wall first.")]
+        [Range(0.5f, 30f)] public float projectileLifetime = 6f;
+
+        [Tooltip("How far down the AIM RAY the round is born, in metres. Far enough clear of the player's own capsule to be obvious, close enough that a muzzle pressed against a wall still detonates on that wall rather than behind it.")]
+        [Range(0f, 3f)] public float projectileSpawnOffset = 0.9f;
+
         [Header("Handling (seconds)")]
         [Tooltip("Hip to fully aimed. AR 0.25, SMG 0.20, sniper 0.40.")]
         [Range(0.05f, 1f)] public float adsTime = 0.25f;
@@ -269,6 +285,17 @@ namespace CoD.Weapons
             if (reserveAmmo < 0) reserveAmmo = 0;
             if (pelletsPerShot < 1) pelletsPerShot = 1;
 
+            // A launcher with no round is the quietest failure a weapon can have:
+            // it consumes ammo, kicks, flashes, plays its fire layers and puts
+            // nothing in the air. Nothing else in the fire path can notice —
+            // there is no ray to miss and no impact to be absent.
+            if (delivery == DeliveryMode.Projectile && projectilePrefab == null)
+            {
+                Debug.LogWarning(
+                    $"[{name}] delivers by projectile and has no projectilePrefab — it will fire, kick, flash and " +
+                    "produce no round at all. Assign the pooled prefab carrying CoD.Core.Projectile.", this);
+            }
+
             switch (Law)
             {
                 case BalanceLaw.ArcadeTtkWindow:
@@ -389,4 +416,26 @@ namespace CoD.Weapons
         ReEngagementCost,
     }
     public enum FireMode { Single, Burst, FullAuto }
+
+    /// <summary>
+    /// How a shot gets from the barrel to the target.
+    ///
+    /// APPEND ONLY, for <see cref="WeaponClass"/>'s reason: Unity serialises an
+    /// enum as its integer value, and inserting a member here would turn every
+    /// hitscan weapon authored after it into a launcher with no projectile
+    /// prefab — a gun that consumes ammo and fires nothing.
+    /// </summary>
+    public enum DeliveryMode
+    {
+        /// <summary>A ray, resolved on the frame the trigger is pulled. Every weapon in the game but the launcher.</summary>
+        Hitscan,
+
+        /// <summary>
+        /// A real object in the air, resolved when it arrives. Slower to hit and
+        /// dodgeable, which is the trade a one-shot weapon pays — and the reason
+        /// the rocket carries its own config: it OUTLIVES A WEAPON SWAP. See
+        /// <c>CoD.Core.Projectile.Payload</c>.
+        /// </summary>
+        Projectile,
+    }
 }

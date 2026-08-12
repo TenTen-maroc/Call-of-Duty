@@ -23,6 +23,8 @@ namespace CoD.UI
 #if UNITY_EDITOR || DEVELOPMENT_BUILD
         [SerializeField] private GameConfig? _config = null;
         [SerializeField] private WeaponController? _weapon = null;
+        [Tooltip("Every weapon the game ships. Digit 0 walks it. Without this the arsenal is authored, gated, tested and unreachable — only the rifle you start with and the SMG the shop sells can ever be held.")]
+        [SerializeField] private WeaponRegistry? _weaponRegistry = null;
         [SerializeField] private Health? _playerHealth = null;
         [SerializeField] private ObjectPool? _pool = null;
         [Tooltip("Spawned by the 'spawn dummy' cheat. Must be registered in the pool.")]
@@ -87,6 +89,7 @@ namespace CoD.UI
             if (keyboard[Key.Digit7].wasPressedThisFrame) DespawnDrones();
             if (keyboard[Key.Digit8].wasPressedThisFrame) SkipWave();
             if (keyboard[Key.Digit9].wasPressedThisFrame) GiveMoney();
+            if (keyboard[Key.Digit0].wasPressedThisFrame) CycleWeapon();
         }
 
         private void Toggle()
@@ -166,6 +169,58 @@ namespace CoD.UI
             GameLog.Info("money: " + _run.State.Money, this);
         }
 
+        /// <summary>
+        /// Hands over the next weapon in the registry, wrapping at the end.
+        ///
+        /// WHY THIS IS A FEATURE AND NOT A CONVENIENCE. The arsenal is eight
+        /// weapons; the game could only ever put TWO of them in the player's
+        /// hands — the rifle the loadout starts with, and the SMG the shop sells.
+        /// The pistol, the marksman rifle, the LMG, the shotgun and now the
+        /// launcher were authored, balance-gated, covered by tests, and
+        /// unreachable by any human being. A weapon nobody can hold cannot be
+        /// judged, which is the one thing this project still needs from a person.
+        ///
+        /// It goes through EquipWeapon, the same call the shop makes, so bought
+        /// effect modules carry across exactly as they do in a real run — and so
+        /// this cheat exercises the shipping path rather than a private one.
+        /// </summary>
+        private void CycleWeapon()
+        {
+            if (_weapon == null || _weaponRegistry == null) return;
+
+            WeaponConfig[] all = _weaponRegistry.allWeapons;
+            if (all.Length == 0)
+            {
+                GameLog.Warn("The weapon registry is empty — run CoD -> Build Arsenal.", this);
+                return;
+            }
+
+            // Where to start looking: one past whatever is held. A weapon that is
+            // not in the registry (nothing ships like that, but a test can build
+            // one) simply starts the walk at zero.
+            WeaponConfig? held = _weapon.Runtime?.Config;
+            int start = 0;
+            for (int i = 0; i < all.Length; i++)
+            {
+                if (all[i] != held) continue;
+                start = i + 1;
+                break;
+            }
+
+            // Walks past nulls rather than stopping on one: an empty slot is the
+            // residue of a deleted asset, and it must not be able to jam the cycle
+            // on the weapon before it.
+            for (int step = 0; step < all.Length; step++)
+            {
+                WeaponConfig next = all[(start + step) % all.Length];
+                if (next == null) continue;
+                _weapon.EquipWeapon(next);
+                return;
+            }
+
+            GameLog.Warn("Every entry in the weapon registry is empty.", this);
+        }
+
         private void CycleDamageMultiplier()
         {
             if (_weapon == null) return;
@@ -191,6 +246,8 @@ namespace CoD.UI
             GUILayout.Label("7  clear drones     " + (_droneRegistry != null ? _droneRegistry.AliveCount : 0) + " alive");
             GUILayout.Label("8  skip wave        " + (_waveRunner != null ? _waveRunner.Phase.ToString() : "-"));
             GUILayout.Label("9  +1000 money      " + (_run != null ? _run.State.Money : 0));
+            GUILayout.Label("0  next weapon      " +
+                (_weapon?.Runtime != null ? _weapon.Runtime.Config.displayName : "-"));
             // The two caps, live. Both are the kind of rule that silently stops
             // working: this is how you SEE that 40-alive and 3-attackers hold.
             GUILayout.Label("alive / cap        " + (_droneRegistry != null ? _droneRegistry.AliveCount : 0));

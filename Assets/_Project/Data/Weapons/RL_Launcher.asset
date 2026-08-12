@@ -10,56 +10,57 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 562f233c3d4d60408284231b35233590, type: 3}
-  m_Name: DMR_Marksman
+  m_Name: RL_Launcher
   m_EditorClassIdentifier: 
-  stableId: wpn_dmr_marksman
-  displayName: Marksman Rifle
-  weaponClass: 3
-  effectModules: []
-  bodyDamage: 55
-  headshotMultiplier: 2
-  falloffRange: {x: 40, y: 90}
+  stableId: wpn_rl_launcher
+  displayName: Launcher
+  weaponClass: 7
+  effectModules:
+  - {fileID: 11400000, guid: df801e0dd633c4a4db698fc53166a448, type: 2}
+  bodyDamage: 100
+  headshotMultiplier: 1
+  falloffRange: {x: 30, y: 80}
   minDamageMultiplier: 0.85
   maxRange: 200
-  roundsPerMinute: 240
+  roundsPerMinute: 55
   fireMode: 0
   burstCount: 3
   burstPause: 0.12
-  magazineSize: 10
-  reserveAmmo: 60
+  magazineSize: 1
+  reserveAmmo: 8
   pelletsPerShot: 1
   pelletSpreadDegrees: 0
-  delivery: 0
-  projectilePrefab: {fileID: 0}
+  delivery: 1
+  projectilePrefab: {fileID: 1315791883111975154, guid: 26ce69a099bb34347a31f2c168b10c1e, type: 3}
   projectileSpeed: 34
   projectileLifetime: 6
   projectileSpawnOffset: 0.9
-  adsTime: 0.32
-  sprintToFireTime: 0.28
-  reloadTime: 2.4
-  reloadEmptyTime: 3
-  swapTime: 0.75
+  adsTime: 0.45
+  sprintToFireTime: 0.35
+  reloadTime: 3
+  reloadEmptyTime: 3.4
+  swapTime: 1.1
   reloadCommitPoint: 0.75
   dryFireCooldown: 0.25
-  verticalKickFirstShot: 1.6
-  verticalKickAtShotEight: 1.9
-  horizontalKickMax: 0.25
-  recoilSeed: 2718
-  recoveryDelay: 0.05
-  recoveryDuration: 0.28
-  recoveryCompleteness: 0.95
-  adsRecoilMultiplier: 0.5
+  verticalKickFirstShot: 3.4
+  verticalKickAtShotEight: 3.6
+  horizontalKickMax: 0.6
+  recoilSeed: 1701
+  recoveryDelay: 0.12
+  recoveryDuration: 0.5
+  recoveryCompleteness: 0.92
+  adsRecoilMultiplier: 0.6
   crouchRecoilMultiplier: 0.8
-  baseSpread: 5.5
-  spreadPerShot: 1.2
-  maxSpread: 9
+  baseSpread: 1.2
+  spreadPerShot: 0.6
+  maxSpread: 2.6
   spreadDecayRate: 4
   movingMultiplier: 1.4
   crouchedMultiplier: 0.7
   airborneMultiplier: 2
-  adsFovMultiplier: 0.45
-  adsSensitivityMultiplier: 0.45
-  fovKickOnFire: 2.2
+  adsFovMultiplier: 0.85
+  adsSensitivityMultiplier: 0.75
+  fovKickOnFire: 2.6
   fovKickDuration: 0.06
   muzzleFlashPrefab: {fileID: 1871256265865384523, guid: 32d55e14ae42b8944a52013d93a9f603, type: 3}
   shellCasingPrefab: {fileID: 1743636020095211714, guid: b5a65d9b89880a04d93713921dedf92f, type: 3}
@@ -72,7 +73,7 @@ MonoBehaviour:
   dryFireClip: {fileID: 8300000, guid: d4eb67c03035d1cf3a420a3329ffadc1, type: 3}
   reloadClip: {fileID: 8300000, guid: 21c305d77a740d3a605152777a6a7c57, type: 3}
   muzzleFlashLifetime: 0.08
-  cameraShakeAmplitude: 0.9
+  cameraShakeAmplitude: 1.4
   muzzleLightDuration: 0.03
   muzzleLightIntensity: 12
   viewmodelMuzzleLightIntensity: 2.2
