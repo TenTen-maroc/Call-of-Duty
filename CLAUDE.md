@@ -53,40 +53,98 @@ errors, and the release binary contains no cheat-console code at all.
 overrode the content gate below. They are the least proven work in the project:
 they compile, they are covered by tests, and nobody has ever felt them.
 
-Two things remain, and neither is something a machine can answer:
+The full plan lives in [docs/PLAN-CAMPAIGN.md](docs/PLAN-CAMPAIGN.md). The
+shape of it, in dependency order, because the order is the load-bearing part:
 
-1. **Is it fun.** Phases 4-7 have still never been *played*, and neither has any
-   of R1-R2 or G1-G5. The tuning card at the top of
+| | Track | Lands |
+| --- | --- | --- |
+| 1 | **G0-G2** measurement, the six confirmed graphics defects, the viewmodel camera | the image transforms before a dollar is spent |
+| 2 | **W1-W2** the pellet-scoping bug, then the TTK model and per-class laws | correctness before arsenal |
+| 3 | **C1-C3** campaign as a second save axis, schema 4, the seven additive `WaveRunner` methods | the seam a director drives |
+| 4 | **C4-C7** objectives, director, zones, mission UI, campaign menu | a campaign on the existing arena |
+| 5 | **missions 1-2** SHAKEDOWN and HARD CONTACT — **then stop and play them** | the gate, honoured |
+| 6 | **G8** the art seam, then the first purchase | money lands on a prepared surface |
+| 7 | **E1-E5** the `EnemyAnimator` seam, hitbox rig, telegraph re-channel, AI, death | humans |
+| 8 | **W3-W5, C8, G3-G6** the arsenal, data-driven arenas, impacts, light, audio | the rest |
+
+**The content gate still stands, and this plan is ~10x the content it was
+written for.** Missions 1 and 2 ship and get *played* before 3-12 are authored.
+Everything in steps 1-5 proves out on `10_GreyBox` alone, so a campaign that
+turns out not to be fun costs one arena's work, not four.
+
+Two things remain that no machine can answer, unchanged from before:
+
+1. **Is it fun.** Phases 4-7, R1-R2 and G1-G5 have still never been *played*.
+   The tuning card at the top of
    [docs/NEXT-SESSION-PROMPT.md](docs/NEXT-SESSION-PROMPT.md) is the list, each
    item naming the asset field to move.
 2. **Does it hold frame time on the 3050.** Headless runs have no GPU work, so
-   no automated gate can answer this. Item 9 on the card.
+   no automated gate can answer this. Item 9 on the card, and now also: 18
+   soldiers in the worst-case arena corner, target <= 8 ms CPU main thread and
+   <= 10 ms GPU at 1080p.
 
-Do not start the content list (damage numbers, a run summary, a second arena)
-before the tuning pass says the core is fun. **This gate was overridden once, on
-2026-08-11, at the user's explicit instruction** — wave identity, shop
-consumables, the skip-the-break gamble, the repair beacon and sandbox module
-depth all shipped ahead of the play session. That is why they carry ⚠️ above and
-sit in Part C of the tuning card. The rule still stands for everything else:
-content on an unfun core is content that gets rebuilt. How autopilot operates between
-those sessions is [docs/AUTOPILOT-PLAN.md](docs/AUTOPILOT-PLAN.md).
+**This gate was overridden once, on 2026-08-11, at the user's explicit
+instruction** — wave identity, shop consumables, the skip-the-break gamble, the
+repair beacon and sandbox module depth all shipped ahead of the play session.
+That is why they carry ⚠️ above and sit in Part C of the tuning card. How
+autopilot operates between sessions is
+[docs/AUTOPILOT-PLAN.md](docs/AUTOPILOT-PLAN.md).
 
 ## The game
 
-A fixed-arena horde-survival FPS. Offline single-player, PC.
+A mission-based military FPS with a horde-survival core. Offline single-player, PC.
 
-You are a lone operator in a compromised facility. Waves of malfunctioning
-military drones escalate every round. Between waves, a shop sells weapons,
-effect modules, and passive upgrades. Permadeath; the meta-goal is the highest
-round reached. A separate sandbox mode unlocks everything for pure play.
+**The fiction.** Vantage Dynamics builds autonomous weapons. Its fleet has gone
+rogue in a way the company will not admit, because admitting it voids the
+contract. Meridian PMC — human soldiers, professionally — has been paid to
+contain the *story* rather than the machines. You fight the people covering for
+the machines, and the machines.
 
-The feel target is grounded-military (heavy weapons, tight ADS, punchy audio,
-grey/red tactical palette) — the *mood* of a modern military shooter, on
-non-human enemies so a solo dev never touches humanoid animation.
+**Two ways to play, one engine.**
 
-> The name is a working title. Enemies are drones, deliberately: humanoid
-> animation is the single largest art-cost sink in a solo FPS, and skipping it
-> is what makes this project finishable.
+- **Campaign** — twelve missions across four arenas. Ordered objectives,
+  checkpoints, comms-delivered story. This is the headline mode.
+- **Endless** — the original wave loop. Timed waves → shop → next wave,
+  permadeath, best round recorded. Unchanged, and still the tuning ground for
+  every combat number in the game.
+
+Sandbox crosses both: everything unlocked, cheat console on, nothing recorded.
+
+The feel target is grounded-military — heavy weapons, tight ADS, punchy audio,
+a grey/red tactical palette. The reachable art tier is **stylised-realistic**,
+not photoreal: coherent shapes, a disciplined HDR grade, strong VFX and audio.
+Chasing photorealism on a 4 GB laptop produces mismatched fidelity, which looks
+worse than an honest grey box. Commit to one visual language and buy only
+inside it.
+
+> The name is a working title and must change before anything with a story is
+> shown to anyone — "Call of Duty" is Activision's trademark.
+
+### Why there are humans now, and what that reversed
+
+This file used to say enemies were drones *deliberately*, because "humanoid
+animation is the single largest art-cost sink in a solo FPS, and skipping it is
+what makes this project finishable". That was true when it was written. It is
+no longer true, for one specific reason: **Mixamo is free, commercially
+licensed, carries ~2500 clips and an auto-rigger, and retargets onto any Unity
+Humanoid avatar.** One shared avatar plus one Animator Controller now covers an
+entire enemy cast. The cost that justified the rule has collapsed.
+
+What did **not** collapse is the runtime cost. A skinned humanoid is roughly
+10-30x a cube in render cost, dominated by **shadow-casting skinned draws**
+(one per cascade, per soldier) — not by VRAM, and not by GC. An Animator
+evaluates in native code and does not allocate per frame. So:
+
+- **Drones stay.** A soldier is a `DroneConfig` + an `AttackModule` + a rigged
+  prefab — the *same data type*, plus one optional `EnemyAnimator` component
+  the controller null-checks. Deleting or renaming the drone layer would buy
+  tidiness and cost the ~40-alive horde, every tuned drone asset, and a
+  ~40-site rename that `GreyBoxVerify` and `LoadOrCreate` both punish silently.
+- **Humanoids cap far lower than drones.** Expect 12-18 alive against the
+  drones' 40. Use `WaveConfig.maxAliveOverride`, which `WaveRunner` and
+  `DroneSpawner` already honour — zero new code.
+- The fiction above exists precisely so both families are legitimate in the
+  same mission.
 
 ## Project facts
 
@@ -102,12 +160,29 @@ non-human enemies so a solo dev never touches humanoid animation.
 
 ## Locked design decisions
 
-- **Enemies**: 3 drone archetypes, no more, for v1.
-  - *Rusher* — fast, low HP, closes to melee, explodes on contact.
-  - *Shooter* — hovers at range, fires in bursts, holds distance.
-  - *Tank* — slow, high HP, heavy hits, forces the player to reposition.
-- **Arena**: one fixed space with cover to break line-of-sight. Enemies path to
-  the player; no large open level, no free-roam, for v1. NavMesh baked once.
+- **Enemies**: two families, one data type, one controller.
+  - **Drones** — the original three, unchanged and still the horde.
+    *Rusher* (fast, low HP, detonates on contact) · *Shooter* (hovers at range,
+    bursts) · *Tank* (slow, high HP, forces repositioning).
+  - **Meridian soldiers** — rigged humanoids driven by the same `DroneConfig`
+    + `AttackModule` pair. *Rifleman* (`RangedBurst`, keeps its deliberate
+    opening miss) · *Breacher* (`HeavySlam` at point blank) · *Bomber*
+    (`ContactDetonate`) · *Gunner* (long burst, high HP).
+  - A new enemy is still **DATA**: a config asset, an attack module asset, and
+    a prefab. The only new code humans required is the `EnemyAnimator` seam.
+- **The attack telegraph is a fairness contract, not decoration.** Every attack
+  must be readable before it lands. Drones use an emission ramp; humans use a
+  large windup pose, an enemy muzzle flash, a **spatialised voice bark** (the
+  channel emission never had — it solves the offscreen case), and a small
+  diegetic chest strobe. `SetTelegraph` keeps its name and its 0..1 contract in
+  both cases. Enemy projectile speed stays slow on purpose: hitscan enemies are
+  unreadable and unavoidable at the same time.
+- **Arenas**: four fixed spaces, each with cover that breaks line-of-sight.
+  Enemies path to the player; no large open level, no free-roam. Every arena is
+  **generated from an `ArenaConfig` asset by the builder**, and every navmesh is
+  baked to its own asset. Gameplay collision comes from the box; imported art is
+  a collider-stripped child. **Art never changes gameplay geometry**, which is
+  what keeps an art swap unable to break pathing or a hitscan test.
 - **Weapons**: ONE modular system. A "weapon" is a `WeaponConfig` asset plus an
   **ordered list** of `EffectModule` assets (explosive / pierce / ricochet /
   chain) — stacking is the point. Drones mirror the pattern with `AttackModule`
@@ -117,6 +192,12 @@ non-human enemies so a solo dev never touches humanoid animation.
   "without limits" engine.
 - **Loop**: timed waves (~45s target) → shop break → next wave. Escalating
   count and mix. Permadeath ends the run; a persistent record stores best round.
+- **Modes are two axes, never one enum.** `GameMode` keeps exactly two values
+  (`Run`, `Sandbox`) and means *rules*; a separate saved bool means *content*
+  (campaign or endless). Adding a third `GameMode` value would be a save-format
+  change with no migration hook — C# enums are not range-checked, so an
+  already-shipped build reading it gets "not Sandbox" and writes a campaign
+  mission's wave number into `bestRound`, permanently.
 - **Modes**: Run (earned power, default) and Sandbox (everything unlocked +
   cheat console). Same core scene, different starting inventory and rules.
 
