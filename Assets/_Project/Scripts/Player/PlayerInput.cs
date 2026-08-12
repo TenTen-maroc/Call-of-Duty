@@ -28,6 +28,7 @@ namespace CoD.Player
         private InputAction? _jump;
         private InputAction? _sprint;
         private InputAction? _crouch;
+        private InputAction? _interact;
 
         public Vector2 Move => _move?.ReadValue<Vector2>() ?? Vector2.zero;
         public Vector2 Look => _look?.ReadValue<Vector2>() ?? Vector2.zero;
@@ -38,6 +39,12 @@ namespace CoD.Player
         public bool JumpPressed => _jump?.WasPressedThisFrame() ?? false;
         public bool SprintHeld => _sprint?.IsPressed() ?? false;
         public bool CrouchHeld => _crouch?.IsPressed() ?? false;
+
+        /// <summary>The frame the key went down. Instant interactions only.</summary>
+        public bool InteractPressed => _interact?.WasPressedThisFrame() ?? false;
+
+        /// <summary>Still down. What a hold-to-plant reads, and why both exist.</summary>
+        public bool InteractHeld => _interact?.IsPressed() ?? false;
 
         private void Awake()
         {
@@ -62,6 +69,7 @@ namespace CoD.Player
             _jump = _map.FindAction("Jump", throwIfNotFound: false);
             _sprint = _map.FindAction("Sprint", throwIfNotFound: false);
             _crouch = _map.FindAction("Crouch", throwIfNotFound: false);
+            _interact = _map.FindAction("Interact", throwIfNotFound: false);
         }
 
         private bool _blocked;
