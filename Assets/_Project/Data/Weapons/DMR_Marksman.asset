@@ -16,6 +16,7 @@ MonoBehaviour:
   displayName: Marksman Rifle
   weaponClass: 3
   effectModules: []
+  attachments: []
   bodyDamage: 55
   headshotMultiplier: 2
   falloffRange: {x: 40, y: 90}

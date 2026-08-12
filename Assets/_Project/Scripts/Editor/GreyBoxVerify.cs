@@ -260,6 +260,13 @@ namespace CoD.EditorTools
                     Check(console, "_droneSpawner", stillNull);
                     Check(console, "_droneRegistry", stillNull);
                     Check(console, "_weaponRegistry", stillNull);
+                    // EMPTY counts as unresolved here, and that is deliberate:
+                    // the builder scans the attachments folder, so an empty array
+                    // means either the folder is gone or ArsenalBuilder never ran,
+                    // and either way the fit cheat is a dead key and five
+                    // attachments are unreachable. A null ENTRY is the residue of
+                    // a deleted asset and is caught the same way.
+                    CheckArray(console, "_attachments", stillNull);
                 }
                 foreach (NavMeshSurface surface in root.GetComponentsInChildren<NavMeshSurface>(true))
                     Check(surface, "m_NavMeshData", stillNull);

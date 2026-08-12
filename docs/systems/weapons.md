@@ -12,10 +12,11 @@
 > by test; whether any of them is *fun* is unanswered, and the shotgun has a known
 > unfixed hole in the fire path — see "Does 'a weapon is data' hold?" below.
 >
-> ⚠️ **And to seven with the launcher (W4, 2026-08-12)** — the first weapon whose
-> shot does not resolve on the frame the trigger is pulled. Its rocket, its blast
-> and the projectile seam under it are covered by five PlayMode tests that drive
-> the real fire path in the real arena, and **nobody has fired it**.
+> ⚠️ **And to eight with the launcher and the sniper (W4-W5, 2026-08-12)** — the
+> launcher is the first weapon whose shot does not resolve on the frame the
+> trigger is pulled; the sniper is the first weapon that is not finished until
+> something is bolted to it. Both are covered by tests that drive the real fire
+> path, and **nobody has fired either**.
 >
 > Every asset named here is generated: run `CoD → Build Grey Box`, then
 > `CoD → Build Arsenal`, then `CoD → Build VFX`, then `CoD → Build Grey Box`
@@ -74,9 +75,10 @@ see the next section before authoring any weapon.
 
 ## The arsenal
 
-Seven weapons, all one class (`WeaponConfig`) driving one controller. Two are the
+Eight weapons, all one class (`WeaponConfig`) driving one controller. Two are the
 grey box's; four were added on 2026-08-12 to test the claim that a weapon is data,
-and the launcher was added the same day to find out where the claim stops.
+and the launcher and the sniper were added the same day to find out where the
+claim stops.
 
 | Asset | `stableId` | Class / law | Damage × pellets | RPM | Mag / reserve | Point-blank TTK | Falloff | ADS | The trade |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -87,6 +89,7 @@ and the launcher was added the same day to find out where the claim stops.
 | `LMG_Support` | `wpn_lmg_support` | LMG · arcade | 20 × 1 | 750 auto | **100** / 300 | **320 ms** (5 pulls) | 20→55 @ 0.55 | 0.42 s | 8 s of continuous fire; 5.4 s empty reload, 70% recoil recovery |
 | `SG_Breacher` | `wpn_sg_breacher` | Shotgun · **contact burst** | 10 × **12** | 70 single | 6 / 48 | **one pull** at contact, **two** at 10 m | 6→16 @ 0.3 | 0.28 s | owns the first six metres and nothing after |
 | `RL_Launcher` | `wpn_rl_launcher` | Launcher · **re-engagement** | 100 × 1 **+ blast** | 55 single | **1** / 8 | **one pull**, after a ~1 s flight | 30→80 @ 0.85 | 0.45 s | one round in the tube, and the shot has to be led |
+| `SR_Longshot` | `wpn_sr_longshot` | Sniper · **re-engagement** | 100 × 1 | 50 single | 5 / 40 | **one pull** | 60→140 @ **0.9** | 0.44 s (**0.55 scoped**) | 1.20 s bolt cycle, 5x optic, and hipfire is not an option |
 
 Built by [ArsenalBuilder.cs](../../Assets/_Project/Scripts/Editor/ArsenalBuilder.cs)
 (`CoD → Build Arsenal`, or `-executeMethod CoD.EditorTools.ArsenalBuilder.BuildArsenalHeadless`).
@@ -625,6 +628,115 @@ collider-less bystander, and asserts one payment, one hitmarker, a sticky kill
 flag, and twelve pellets' worth of damage on the primary target. It drives
 `FireOneShot` by reflection because a headless run has no input device to press.
 
+## Attachments — the second data pattern, and why it is not the first
+
+An attachment is a `AttachmentConfig` asset composed into `WeaponConfig`, and it
+is **deliberately not an `EffectModule`**. That distinction is the whole design:
+
+| | `EffectModule` | `AttachmentConfig` |
+| --- | --- | --- |
+| What it is | a **behaviour hook** — code that runs on an impact | a **stat delta** — numbers |
+| Adding one | a new C# class with a new `Resolve` | an asset |
+| Stacks | yes, ordered, with depth rules | one per slot, replaced not stacked |
+| Where it lands | the follow-up queue | `WeaponRuntime.Stats` |
+
+Routing attachments through the module pattern would have meant a class per
+attachment, and seven slots × a handful of options each is exactly the
+combinatorial mess this project exists to avoid.
+
+**Slots**: `Optic · Muzzle · Barrel · Underbarrel · Magazine · Stock · Ammo`.
+One per slot; fitting a second optic replaces the first rather than folding in
+underneath it.
+
+**`allowedClasses` is `weaponClass`'s second real reader.** Before this, the
+field decided which balance law a weapon answered to and nothing else. `TryFit`
+**refuses** an attachment that does not suit the class rather than fitting it and
+doing nothing — so a shop can decline the sale instead of charging for an optic
+the player will never see work.
+
+### The shipped set
+
+| Asset | Slot | Fits | What it does | What it costs |
+| --- | --- | --- | --- | --- |
+| `Attach_Scope_Long` | Optic | **Sniper only** | ADS FOV ×0.42 (0.48 → **0.20**, ~5x), sensitivity ×0.45 | ADS time ×1.25 |
+| `Attach_Grip_Angled` | Underbarrel | any | hip bloom ×0.82, horizontal recoil ×0.75 | ADS time ×1.08 |
+| `Attach_Mag_Extended` | Magazine | any | magazine ×1.5 | reload speed ×0.85 |
+| `Attach_Suppressor` | Muzzle | any | vertical recoil ×0.9 | range ×0.85 **and** damage ×0.95 |
+| `Attach_Stock_Heavy` | Stock | any | vertical recoil ×0.7 | ADS time ×1.15, sprint-to-fire ×1.2 |
+
+Not one of them is a straight upgrade. An attachment with no downside is not a
+build decision, it is a patch note.
+
+Only the scope ships fitted, on the sniper. The other four are fitted to nothing
+on purpose — bolting them to guns nobody has fired would retune those guns before
+anyone has judged them. They are reachable from the sandbox console instead
+(see below).
+
+### `WeaponStat` is not `Stat`, and that is the most important line
+
+`CoD.Core.Stat` is the **passive** sheet: five values describing the player, whose
+`StatExtensions.Count` sizes two arrays inside `StatSheet` that `RunContext`
+rebuilds on every purchase and that `PlayerMotor` and `WeaponController` read
+every frame. Adding eleven weapon values to it would resize those arrays, widen
+the shop's modifier surface to numbers no passive should reach, and put the whole
+passive pipeline in the blast radius of a scope's zoom level.
+
+So: two enums, two sheets, same pipeline — `(base + flats) × mults`, rebuilt from
+scratch whenever the fitted set changes. They meet in exactly two places on
+purpose: **reload speed** and **damage** are multiplied by both, because "the
+player reloads faster" and "this magazine reloads faster" are different claims
+that genuinely compose.
+
+⚠️ **`WeaponStat` has no fire-rate entry and must never grow one.** Cadence is
+scheduled off `Config.SecondsPerShot` — the AUTHORED number — and
+`WeaponCadenceRegressionTests` pins the overshoot arithmetic that keeps a 700 RPM
+rifle firing at 700 RPM rather than at whatever the player's monitor rounds it
+to. A `FireRate` attachment stat would move that schedule onto a runtime value
+the regression test does not exercise, and rate of fire is one half of the
+time-to-kill the whole game is tuned around. `AttachmentTests` asserts the enum
+never grows one; a weapon that should fire faster is a new weapon.
+
+### What reads the runtime instead of the config
+
+Every effective value lives on `WeaponRuntime` and gameplay reads it there. The
+config keeps the authored answer, which is what `OnValidate`, `WeaponDataTests`
+and `ArsenalBuilder`'s gate are written against — a balance law measured against
+a scope somebody fitted would not be a law.
+
+`Damage` · `AdsTime` · `ReloadSpeedMultiplier` · `RecoilVerticalMultiplier` ·
+`RecoilHorizontalMultiplier` · `HipSpreadMultiplier` · `MagazineSize` ·
+`AdsFovMultiplier` · `AdsSensitivityMultiplier` · `SprintToFireTime` ·
+`DamageAtDistance(m)`.
+
+Three of those have a floor or a clamp at the read site rather than in the sheet,
+because the unit is only known there: ADS time floors at 0.03 s (a weapon that is
+permanently aimed is broken, not fast), magazine size rounds and floors at 1, and
+the two ADS multipliers clamp to a usable band.
+
+⚠️ **The recoil multipliers are applied to the KICK, never to the pattern.**
+`RecoilPattern` is seeded and deterministic — the same seed always produces the
+same climb, which is what makes recoil learnable — so a stock that reached inside
+it would change the SHAPE of a pattern the player has memorised rather than its
+size.
+
+⚠️ **`CurrentAmmo` is seeded AFTER the authored attachments are fitted.** An
+extended magazine changes what a full magazine is; seeding first and rebuilding
+later would start every run with a 45-round magazine holding 30 rounds, which
+reads as "the gun is not reloading properly".
+
+### What W5 deliberately did not build
+
+- **A scope OVERLAY image.** The sniper's 5x is a real FOV change and a real
+  sensitivity change; the black-surround picture that would sell it is UI work
+  and belongs with G6's `Sight_Glass`. A render-texture scope stays refused —
+  it renders the world twice.
+- **Hold-breath.** It needs a new input action, a stamina float and a sway
+  multiplier, and the sway numbers are the nine serialized fields G6 is about to
+  move into a `ViewmodelConfig`. Building it now means writing it twice.
+- **A shop row.** Attachments are not for sale yet, for the same reason the five
+  new weapons are not: shop odds are one of the things the tuning card asks
+  about, and changing them would spoil that answer before it is given.
+
 ## Reaching the arsenal at all (2026-08-12)
 
 Until W4, the game could put exactly **two** of its weapons in a player's hands:
@@ -643,9 +755,14 @@ the shipping path rather than a private one. The registry reference is wired by
 warning at build time, not a failure, because `ArsenalBuilder` runs after the
 grey box and on a first-ever build the asset genuinely does not exist yet.
 
-**None of the five is in the shop**, deliberately. Shop odds are one of the
-things the tuning card asks about (item 3), and adding five weapons to the pool
-would change that answer before anyone has given it.
+**MINUS** fits the next attachment that suits the weapon in hand, wrapping and
+skipping anything the class rule refuses — so the long scope is silently passed
+over on everything but the sniper. It goes through `WeaponRuntime.TryFit`, the
+same call a shop would make.
+
+**None of the six new weapons and none of the attachments is in the shop**,
+deliberately. Shop odds are one of the things the tuning card asks about (item
+3), and adding to the pool would change that answer before anyone has given it.
 
 ## Related Systems
 

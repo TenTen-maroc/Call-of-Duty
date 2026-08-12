@@ -17,6 +17,7 @@ MonoBehaviour:
   weaponClass: 7
   effectModules:
   - {fileID: 11400000, guid: df801e0dd633c4a4db698fc53166a448, type: 2}
+  attachments: []
   bodyDamage: 100
   headshotMultiplier: 1
   falloffRange: {x: 30, y: 80}

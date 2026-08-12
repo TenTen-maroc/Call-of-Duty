@@ -1,0 +1,28 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: fa77ab767ba1b1e2425c86a23e3d803e, type: 3}
+  m_Name: Attach_Grip_Angled
+  m_EditorClassIdentifier: 
+  stableId: att_grip_angled
+  displayName: Angled Grip
+  slot: 3
+  allowedClasses: 
+  modifiers:
+  - stat: 5
+    kind: 1
+    value: 0.82
+  - stat: 4
+    kind: 1
+    value: 0.75
+  - stat: 1
+    kind: 1
+    value: 1.08

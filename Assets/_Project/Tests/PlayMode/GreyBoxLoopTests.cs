@@ -265,8 +265,27 @@ namespace CoD.Tests
             float budget = objective.BudgetRemaining;
             Assert.Greater(budget, 0f, "the beacon starts a wave with nothing to give");
 
-            yield return WaitUntil(() => objective.BudgetRemaining <= 0f || health.Current >= health.Max,
-                20f, "the beacon to spend its budget");
+            // GLUED TO THE PAD, EVERY FRAME, and this is a determinism fix rather
+            // than a convenience. Setting the position once was a race against two
+            // things the test does not control: a CharacterController resolving a
+            // capsule dropped half into the floor, and the beacon RELOCATING if a
+            // wave boundary happened to cross the wait. Either one leaves the
+            // player off the pad, the budget undrained, and the failure reported
+            // as "timed out" — which says nothing about what went wrong. Observed
+            // failing once in fifteen runs; the assertions below are unchanged.
+            yield return WaitUntil(
+                () => objective.BudgetRemaining <= 0f || health.Current >= health.Max,
+                20f, "the beacon to spend its budget",
+                () =>
+                {
+                    // The wave ending is the OTHER way this stalls: the beacon
+                    // only heals during RunPhase.Wave. Said out loud, because a
+                    // timeout here would otherwise read as a broken beacon.
+                    Assert.AreEqual(RunPhase.Wave, runner!.Phase,
+                        "the wave ended before the beacon spent its budget — it only heals during a wave, " +
+                        "so this is the test losing a race rather than the beacon failing");
+                    motor.transform.position = objective.Position + Vector3.up * 0.1f;
+                });
 
             Assert.Greater(health.Current, hurt, "standing on the beacon healed nothing");
             Assert.LessOrEqual(health.Current, health.Max, "healing went past the maximum");

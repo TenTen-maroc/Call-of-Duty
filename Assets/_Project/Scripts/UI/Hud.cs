@@ -55,7 +55,10 @@ namespace CoD.UI
 
             if (_lowAmmoTint != null)
             {
-                bool low = _lastAmmo <= Mathf.CeilToInt(runtime.Config.magazineSize * _lowAmmoFraction);
+                // The magazine AS BUILT. Read off the config, an extended
+                // magazine would tint low at the stock threshold — a 45-round
+                // magazine going red at 6 rounds instead of 9.
+                bool low = _lastAmmo <= Mathf.CeilToInt(runtime.MagazineSize * _lowAmmoFraction);
                 _lowAmmoTint.enabled = low;
             }
         }

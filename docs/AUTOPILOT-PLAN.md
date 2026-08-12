@@ -270,3 +270,30 @@ compare a render change against a baseline today is `git stash -u`, rebuild,
 look, pop. That was done for this commit: the frames are byte-comparable in
 content to HEAD's, which is what makes "no visual regression" a claim rather than
 a hope.
+
+## 2026-08-12 — W5, attachments and the sniper
+
+**What landed.** `AttachmentConfig` composed into `WeaponConfig`, a `WeaponStat`
+enum and sheet kept strictly separate from the passive `Stat` one, five
+attachments, and `SR_Longshot` — a bolt gun whose 5x optic is an ATTACHMENT
+rather than a config field, so the weapon is still a legal weapon with the scope
+off. Detail in [docs/systems/weapons.md](systems/weapons.md).
+
+**Two pieces of W5 were deliberately not built**, and the reason is worth keeping
+because both look like omissions from the plan: the scope OVERLAY image and
+HOLD-BREATH. Both need the nine sway numbers that G6 is about to move out of
+`WeaponSway` into a `ViewmodelConfig`. Building either now means writing it
+twice, and G6 has already been reverted once. They are recorded in the DO NEXT
+list against G6 rather than left to be rediscovered.
+
+**One flake was found and fixed rather than shrugged at.**
+`TheBeacon_Relocates_AndHealsWithinItsBudget` failed once and passed on a
+re-run — the kind of result that gets waved through as "PlayMode is flaky". It
+was not: the test set the player's position ONCE and then waited up to twenty
+seconds, which is a race against both a CharacterController resolving a capsule
+dropped into the floor and the beacon RELOCATING if a wave boundary crossed the
+wait. Either leaves the player off the pad and reports "timed out", which says
+nothing. It now re-seats the player every frame and asserts the wave has not
+ended, so the two real causes fail with their own names. The assertions it exists
+for are unchanged — the test got stronger, which is the only direction a test is
+allowed to move here.

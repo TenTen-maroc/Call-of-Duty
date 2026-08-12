@@ -25,6 +25,9 @@ namespace CoD.Weapons
         [Tooltip("Ordered. Stacking IS the product: a railgun with Pierce and Chain is this list with two entries, not a new class. Purchases append to the RUNTIME copy, never here.")]
         public EffectModule[] effectModules = System.Array.Empty<EffectModule>();
 
+        [Tooltip("What this weapon SHIPS with bolted on. A different thing from effectModules: a module is a behaviour hook, an attachment is a stat delta — see AttachmentConfig for why they are not the same pattern. Fitted through the same TryFit a shop would use, so a config authored with two optics behaves like a player trying to fit two.")]
+        public AttachmentConfig[] attachments = System.Array.Empty<AttachmentConfig>();
+
         [Header("Damage")]
         [Tooltip("Against a 100 HP target. 25 = 4 shots to kill.")]
         [Range(1f, 100f)] public float bodyDamage = 25f;

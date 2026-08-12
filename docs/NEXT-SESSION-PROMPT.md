@@ -151,9 +151,14 @@ weapon. Digit 2 for infinite ammo and digit 6 to spawn drones.
 | F5 | **Cycling weapons mid-wave.** Digit 0 through all seven. Does each one feel like a different gun, or like the same gun with different numbers? This is the first time anybody has been able to answer that. | the per-weapon `Configure` methods in `ArsenalBuilder` |
 | F6 | **The shotgun, finally holdable.** `SG_Breacher` has never been fired. Twelve pellets, one pull at contact, two at ten metres. Also the D5 hitmarker case: twelve pellets into one drone must be ONE click. | `SG_Breacher.pelletSpreadDegrees` is **still 0** — an aimed shotgun puts every pellet on one point. Say whether that reads as broken before it is changed |
 
-**F3 and F6 are the two that matter.** F3 because self-damage would be the one
-launcher bug that ends runs, and F6 because the shotgun's missing pattern is a
-known unfixed hole that has now become reachable — see docs/systems/weapons.md.
+| F7 | **The sniper, scoped.** 5x, one pull, a 1.2 s bolt cycle, five rounds. Does the zoom feel usable in a 40 m room, or is it too much magnification for the space? | `Attach_Scope_Long` → `AdsFov` (×0.42) — the config's own 0.48 is the UNSCOPED number |
+| F8 | **The sniper, unscoped.** Press MINUS to fit, and note that the gun is a legal weapon without it. Is the difference obvious? That difference is the whole test of "an attachment is a stat delta". | `SR_Longshot.adsFovMultiplier` (0.48) |
+| F9 | **The other four attachments.** MINUS cycles: angled grip, extended magazine, suppressor, heavy stock. Is any one of them an obvious auto-take, or does each cost something you notice? | the `Configure*` methods in `ArsenalBuilder` |
+
+**F3, F6 and F9 are the ones that matter.** F3 because self-damage would be the
+one launcher bug that ends runs, F6 because the shotgun's missing pattern is a
+known unfixed hole that has now become reachable, and F9 because an attachment
+with no felt downside is a patch note rather than a decision.
 
 ---
 
@@ -349,16 +354,25 @@ Sandbox console digit 0 now cycles the whole registry — before that, five of t
 seven weapons could not be held by anybody. Nobody has fired any of it: see Part F
 of the tuning card above.
 
+W5 IS DONE (2026-08-12). AttachmentConfig is composed into WeaponConfig, it is
+NOT the EffectModule pattern, Stat/StatExtensions.Count is untouched and WeaponStat
+is a separate enum and sheet. Five attachments ship; SR_Longshot is a legal weapon
+whose 5x optic is an attachment rather than a field. TWO PIECES OF W5 WERE
+DELIBERATELY NOT BUILT and both belong with G6: the scope OVERLAY image (the FOV
+change is real, the black-surround picture that sells it is UI and belongs with
+G6's Sight_Glass), and HOLD-BREATH (it needs an input action, a stamina float and
+a sway multiplier — and the sway numbers are the nine serialized fields G6 is
+about to move into a ViewmodelConfig, so building it now means writing it twice).
+
 DO NEXT, in this order — each is free and worth more than the paid art that follows:
-  W5  attachments + optics -> sniper. A new AttachmentConfig SO composed into
-      WeaponConfig, NOT the EffectModule pattern (that would be a class per
-      attachment). Do NOT extend Stat/StatExtensions.Count — separate WeaponStat.
   G5b real audio: an AudioMixer must be authored BY HAND once (AudioMixerController
       is internal; no builder can generate one) plus clips for footsteps/impacts.
   G4  reflection probes and shaped lights. RETRY — a previous attempt was reverted
       for cause; read "the four ways it went wrong" below.
   G6  viewmodel feel: move WeaponSway's nine serialized numbers into a
       ViewmodelConfig, wall-lower, inspect. RETRY — also reverted; see below.
+      ALSO PICKS UP W5's two deferred pieces: the sniper's scope overlay and
+      hold-breath, both of which need the sway config this milestone creates.
   G8  the art seam. THE GATE: nothing is bought until this lands, because it is
       what makes an art swap reversible.
   E2-E5 human soldiers, C8 data-driven arenas, missions 3-12.

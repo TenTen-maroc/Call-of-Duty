@@ -38,10 +38,28 @@ namespace CoD.Weapons
         /// </summary>
         public readonly List<EffectModule> Modules = new(4);
 
+        /// <summary>
+        /// What is bolted to the gun right now. Seeded from the config's authored
+        /// defaults, then changed by <see cref="TryFit"/> and
+        /// <see cref="Remove"/> — never written back to the asset.
+        ///
+        /// A list rather than a fixed array indexed by slot, because the natural
+        /// operations are "what is fitted" (iterate) and "replace what is in this
+        /// slot" (find then swap), and there are at most seven entries.
+        /// </summary>
+        public readonly List<AttachmentConfig> Attachments = new(4);
+
+        /// <summary>
+        /// The attachments' deltas, folded. Rebuilt from scratch whenever the list
+        /// changes rather than incremented — StatSheet's rule, for StatSheet's
+        /// reason: a bad add can never accumulate, and there is no "un-apply"
+        /// path to get wrong.
+        /// </summary>
+        public readonly WeaponStatSheet Stats = new();
+
         public WeaponRuntime(WeaponConfig config)
         {
             Config = config;
-            CurrentAmmo = config.magazineSize;
             ReserveAmmo = config.reserveAmmo;
             CurrentSpread = config.baseSpread;
 
@@ -50,11 +68,142 @@ namespace CoD.Weapons
                 EffectModule? module = config.effectModules[i];
                 if (module != null) Modules.Add(module);
             }
+
+            for (int i = 0; i < config.attachments.Length; i++)
+            {
+                AttachmentConfig? attachment = config.attachments[i];
+                // Authored defaults still go through TryFit rather than straight
+                // into the list: the slot rule and the class rule are the same
+                // rules whoever put it there, and an asset authored with two
+                // optics should behave like a player trying to fit two.
+                if (attachment != null) TryFit(attachment);
+            }
+
+            // AFTER the attachments, because a magazine extension changes what a
+            // full magazine is. Seeding it from the config first and rebuilding
+            // later would have started every run with an extended magazine
+            // holding a stock magazine's rounds.
+            CurrentAmmo = MagazineSize;
+        }
+
+        // ---------- attachments ----------
+
+        /// <summary>
+        /// Fits an attachment, replacing whatever held its slot.
+        ///
+        /// Returns false when it does not belong on this weapon, so a shop can
+        /// refuse the sale rather than charge for nothing — the same contract
+        /// <c>WeaponController.AddEffectModule</c> and <c>RefillReserve</c> keep,
+        /// and for the same reason: a purchase that silently does nothing is
+        /// indistinguishable from a broken game.
+        /// </summary>
+        public bool TryFit(AttachmentConfig attachment)
+        {
+            if (attachment == null || !attachment.FitsOn(Config)) return false;
+            if (Attachments.Contains(attachment)) return false;
+
+            for (int i = 0; i < Attachments.Count; i++)
+            {
+                if (Attachments[i].slot != attachment.slot) continue;
+                Attachments[i] = attachment;
+                RebuildStats();
+                return true;
+            }
+
+            Attachments.Add(attachment);
+            RebuildStats();
+            return true;
+        }
+
+        public bool Remove(AttachmentConfig attachment)
+        {
+            if (!Attachments.Remove(attachment)) return false;
+            RebuildStats();
+            return true;
+        }
+
+        public AttachmentConfig? InSlot(AttachmentSlot slot)
+        {
+            for (int i = 0; i < Attachments.Count; i++)
+            {
+                if (Attachments[i].slot == slot) return Attachments[i];
+            }
+            return null;
+        }
+
+        /// <summary>
+        /// From scratch, every time. Never called per frame — only when the
+        /// fitted set changes, which is a shop visit.
+        /// </summary>
+        private void RebuildStats()
+        {
+            Stats.Clear();
+            for (int i = 0; i < Attachments.Count; i++) Attachments[i].ApplyTo(Stats);
+        }
+
+        // ---------- the effective numbers ----------
+        //
+        // Every one of these is what gameplay code must read instead of the
+        // config field behind it. The config keeps the AUTHORED value, which is
+        // what the balance laws and the arsenal gate are written against; these
+        // are what the gun in the player's hands is doing right now.
+        //
+        // ⚠️ There is deliberately no effective fire rate. See WeaponStat.
+
+        /// <summary>Per-pellet body damage before falloff. Read by WeaponController.ResolveHit.</summary>
+        public float Damage => Stats.Effective(WeaponStat.Damage, Config.bodyDamage);
+
+        /// <summary>
+        /// Seconds hip-to-aimed, floored well above zero. An ADS time of 0 is a
+        /// weapon that is permanently aimed — every recoil, spread and FOV rule in
+        /// the game branches on `_adsProgress`, so collapsing it is not a fast
+        /// weapon, it is a broken one.
+        /// </summary>
+        public float AdsTime => Mathf.Max(0.03f, Stats.Effective(WeaponStat.AdsTime, Config.adsTime));
+
+        /// <summary>Multiplier, base 1. Folded WITH the player's passive reload speed rather than replacing it.</summary>
+        public float ReloadSpeedMultiplier => Mathf.Max(0.05f, Stats.Effective(WeaponStat.ReloadSpeed, 1f));
+
+        public float RecoilVerticalMultiplier => Stats.Effective(WeaponStat.RecoilVertical, 1f);
+        public float RecoilHorizontalMultiplier => Stats.Effective(WeaponStat.RecoilHorizontal, 1f);
+        public float HipSpreadMultiplier => Stats.Effective(WeaponStat.HipSpread, 1f);
+
+        /// <summary>
+        /// Rounds in the magazine, rounded and floored at one. Rounded rather than
+        /// truncated so a x1.5 on a 30-round magazine is 45 and not 44, and
+        /// floored because a zero-round magazine is a gun that can never fire and
+        /// never finish a reload.
+        /// </summary>
+        public int MagazineSize =>
+            Mathf.Max(1, Mathf.RoundToInt(Stats.Effective(WeaponStat.MagazineSize, Config.magazineSize)));
+
+        /// <summary>Aimed FOV multiplier. LOWER IS MORE ZOOM; this is what an optic is.</summary>
+        public float AdsFovMultiplier => Mathf.Clamp(
+            Stats.Effective(WeaponStat.AdsFov, Config.adsFovMultiplier), 0.1f, 1f);
+
+        public float AdsSensitivityMultiplier => Mathf.Clamp(
+            Stats.Effective(WeaponStat.AdsSensitivity, Config.adsSensitivityMultiplier), 0.05f, 1f);
+
+        public float SprintToFireTime => Mathf.Max(0f, Stats.Effective(WeaponStat.SprintToFire, Config.sprintToFireTime));
+
+        /// <summary>
+        /// The weapon's falloff, stretched by any Range attachment, and the reason
+        /// this lives here rather than on the config: `WeaponConfig.DamageAtDistance`
+        /// is what the balance laws and `ArsenalBuilder`'s gate read, and it must
+        /// keep answering for the AUTHORED weapon. This answers for the built one.
+        /// </summary>
+        public float DamageAtDistance(float distance)
+        {
+            float scale = Mathf.Max(0.1f, Stats.Effective(WeaponStat.Range, 1f));
+            float start = Config.falloffRange.x * scale;
+            float end = Mathf.Max(start + 0.01f, Config.falloffRange.y * scale);
+            float t = Mathf.Clamp01((distance - start) / (end - start));
+            return Damage * Mathf.Lerp(1f, Config.minDamageMultiplier, t);
         }
 
         public bool IsMagazineEmpty => CurrentAmmo <= 0;
         public bool HasReserve => ReserveAmmo > 0;
-        public bool IsFull => CurrentAmmo >= Config.magazineSize;
+        public bool IsFull => CurrentAmmo >= MagazineSize;
 
         /// <summary>Returns true when a reload actually started this call.</summary>
         public bool BeginReload(float now) => BeginReload(now, 1f);
@@ -98,7 +247,7 @@ namespace CoD.Weapons
         public void CompleteReload()
         {
             IsReloading = false;
-            int needed = Config.magazineSize - CurrentAmmo;
+            int needed = MagazineSize - CurrentAmmo;
             int taken = Mathf.Min(needed, ReserveAmmo);
             CurrentAmmo += taken;
             ReserveAmmo -= taken;

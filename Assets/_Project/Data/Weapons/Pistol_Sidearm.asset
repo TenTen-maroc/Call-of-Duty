@@ -16,6 +16,7 @@ MonoBehaviour:
   displayName: Sidearm
   weaponClass: 5
   effectModules: []
+  attachments: []
   bodyDamage: 34
   headshotMultiplier: 1.5
   falloffRange: {x: 12, y: 30}

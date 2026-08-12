@@ -398,7 +398,7 @@ namespace CoD.Weapons
             // shoot. Too short and the game becomes a sprint-around-corners
             // festival; 150-250 ms is the arcade sweet spot.
             if (_motor != null && _motor.IsSprinting) return;
-            if (now - _sprintReleasedAt < config.sprintToFireTime) return;
+            if (now - _sprintReleasedAt < _runtime.SprintToFireTime) return;
 
             if (_runtime.IsReloading)
             {
@@ -427,7 +427,7 @@ namespace CoD.Weapons
                     PlayDryFire(now);
                     return;
                 }
-                _runtime.CurrentAmmo = config.magazineSize;
+                _runtime.CurrentAmmo = _runtime.MagazineSize;
             }
 
             // A press starts a burst; the remaining shots run on cadence alone.
@@ -450,7 +450,7 @@ namespace CoD.Weapons
             if (InfiniteAmmo)
             {
                 // Same cadence and bloom as a real shot; only the round comes back.
-                _runtime.CurrentAmmo = Mathf.Min(config.magazineSize, _runtime.CurrentAmmo + 1);
+                _runtime.CurrentAmmo = Mathf.Min(_runtime.MagazineSize, _runtime.CurrentAmmo + 1);
             }
 
             if (config.fireMode == FireMode.Burst && _runtime.BurstShotsRemaining > 0)
@@ -539,14 +539,22 @@ namespace CoD.Weapons
             if (IsAiming) return 0f;
 
             WeaponConfig config = _runtime.Config;
-            float spread = _runtime.CurrentSpread;
+            // The attachment multiplier lands on the CONE, not on the growth
+            // rate: a grip makes the gun steadier at every point in a burst, and
+            // scaling spreadPerShot instead would leave the first shot of a burst
+            // exactly as wide as it was, which is the shot a grip is bought for.
+            float spread = _runtime.CurrentSpread * _runtime.HipSpreadMultiplier;
             if (_motor != null)
             {
                 if (!_motor.IsGrounded) spread *= config.airborneMultiplier;
                 else if (_motor.IsCrouched) spread *= config.crouchedMultiplier;
                 else if (_motor.HorizontalSpeed > 0.5f) spread *= config.movingMultiplier;
             }
-            return Mathf.Min(spread, config.maxSpread * config.airborneMultiplier);
+            // The ceiling scales too. Left at the authored value it would clamp a
+            // tightened cone straight back to the stock one under sustained fire,
+            // so the attachment would work for three shots and then stop.
+            return Mathf.Min(spread,
+                config.maxSpread * _runtime.HipSpreadMultiplier * config.airborneMultiplier);
         }
 
         private void CastOneRay(WeaponConfig config, float spreadDegrees)
@@ -739,6 +747,27 @@ namespace CoD.Weapons
             DrainFollowUps(config);
         }
 
+        /// <summary>
+        /// Damage at a distance for the gun AS BUILT.
+        ///
+        /// Routed through the runtime when there is one and through the config
+        /// when there is not, because a follow-up applied after a weapon swap and
+        /// a config arriving on a rocket both reach here without necessarily
+        /// being the weapon currently held. The config's own
+        /// <c>DamageAtDistance</c> stays the authored answer, which is what
+        /// `WeaponDataTests`, `OnValidate` and `ArsenalBuilder`'s gate read — a
+        /// balance law measured against a scope somebody fitted would not be a
+        /// law.
+        /// </summary>
+        private float DamageAtRange(WeaponConfig config, float rangeMetres) =>
+            _runtime != null && _runtime.Config == config
+                ? _runtime.DamageAtDistance(rangeMetres)
+                : config.DamageAtDistance(rangeMetres);
+
+        /// <summary>Fits an attachment to the carried weapon. Returns false when it does not belong, so a shop can refuse rather than charge.</summary>
+        public bool FitAttachment(AttachmentConfig attachment) =>
+            _runtime != null && attachment != null && _runtime.TryFit(attachment);
+
         /// <summary>Insertion sort over the live part of the buffer. In-place, so it never allocates, and n is at most the buffer length.</summary>
         private void SortHitsByDistance(int count)
         {
@@ -799,7 +828,13 @@ namespace CoD.Weapons
             // Four multipliers, four owners: falloff is the weapon, the stat sheet
             // is what the player bought, DamageMultiplier is the cheat, and pierce
             // falloff is how many bodies this round has already passed through.
-            float damage = config.DamageAtDistance(rangeMetres) * DamageMultiplier
+            // Five multipliers, five owners: falloff-and-attachments is the gun as
+            // BUILT (WeaponRuntime.DamageAtDistance, not the config's — the
+            // config's answers for the AUTHORED weapon, which is what the balance
+            // laws and the arsenal gate are written against), the stat sheet is
+            // what the player bought, DamageMultiplier is the cheat, and pierce
+            // falloff is how many bodies this round has already passed through.
+            float damage = DamageAtRange(config, rangeMetres) * DamageMultiplier
                            * _statDamageMultiplier * pierceMultiplier;
 
             // A weakpoint collider relays to its owner's Health, and the bonus is
@@ -1101,8 +1136,16 @@ namespace CoD.Weapons
             if (IsAiming) multiplier *= config.adsRecoilMultiplier;
             if (_motor != null && _motor.IsCrouched) multiplier *= config.crouchRecoilMultiplier;
 
-            float pitch = -RecoilPattern.VerticalKick(config, shotIndex) * multiplier;
-            float yaw = RecoilPattern.HorizontalKick(config, shotIndex) * multiplier;
+            // Applied to the KICK and never to the pattern. RecoilPattern is
+            // seeded and deterministic — the same seed always produces the same
+            // climb, which is what makes recoil learnable — so a stock that
+            // reached inside it would change the SHAPE of a pattern the player
+            // has memorised rather than its size.
+            float vertical = _runtime != null ? _runtime.RecoilVerticalMultiplier : 1f;
+            float horizontal = _runtime != null ? _runtime.RecoilHorizontalMultiplier : 1f;
+
+            float pitch = -RecoilPattern.VerticalKick(config, shotIndex) * multiplier * vertical;
+            float yaw = RecoilPattern.HorizontalKick(config, shotIndex) * multiplier * horizontal;
             _look.AddRecoil(pitch, yaw);
         }
 
@@ -1128,10 +1171,11 @@ namespace CoD.Weapons
             WeaponConfig config = _runtime.Config;
 
             bool wantsAds = _input.AimHeld && (_motor == null || !_motor.IsSprinting);
-            float rate = deltaTime / Mathf.Max(0.01f, config.adsTime);
+            float rate = deltaTime / Mathf.Max(0.01f, _runtime.AdsTime);
             _adsProgress = Mathf.MoveTowards(_adsProgress, wantsAds ? 1f : 0f, rate);
 
-            _look.SetSensitivityMultiplier(Mathf.Lerp(1f, config.adsSensitivityMultiplier, _adsProgress));
+            _look.SetSensitivityMultiplier(
+                Mathf.Lerp(1f, _runtime.AdsSensitivityMultiplier, _adsProgress));
             // The viewmodel follows the same blend, so the gun rises into the
             // sight instead of teleporting between two poses.
             if (_sway != null) _sway.SetAdsProgress(_adsProgress);
@@ -1143,7 +1187,10 @@ namespace CoD.Weapons
             WeaponConfig config = _runtime.Config;
 
             float baseFov = _look.BaseFov;
-            float adsOffset = -(1f - config.adsFovMultiplier) * baseFov * _adsProgress;
+            // THIS LINE IS WHAT AN OPTIC IS. Everything else about a scope —
+            // the sensitivity drop, the slower ADS, the sway — is a cost paid for
+            // this one number going down.
+            float adsOffset = -(1f - _runtime.AdsFovMultiplier) * baseFov * _adsProgress;
             float kick = now < _fovKickUntil ? config.fovKickOnFire : 0f;
             _look.SetFovOffset(adsOffset + kick);
         }
@@ -1157,7 +1204,11 @@ namespace CoD.Weapons
         {
             if (_runtime == null) return;
             _runtime.BurstShotsRemaining = 0;
-            if (!_runtime.BeginReload(now, _statReloadSpeed)) return;
+            // The two sheets MULTIPLY rather than one winning. "The player
+            // reloads faster" and "this magazine reloads faster" are different
+            // claims about different things, and a player who has bought both
+            // should get both.
+            if (!_runtime.BeginReload(now, _statReloadSpeed * _runtime.ReloadSpeedMultiplier)) return;
             if (_audioClose != null && _runtime.Config.reloadClip != null)
             {
                 _audioClose.PlayOneShot(_runtime.Config.reloadClip);

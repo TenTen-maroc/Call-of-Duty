@@ -1,6 +1,7 @@
 #nullable enable
 using System.Collections.Generic;
 using System.Text;
+using CoD.Core;
 using CoD.Weapons;
 using UnityEditor;
 using UnityEngine;
@@ -61,6 +62,10 @@ namespace CoD.EditorTools
         private const string LmgPath = DataWeapons + "/LMG_Support.asset";
         private const string ShotgunPath = DataWeapons + "/SG_Breacher.asset";
         private const string LauncherPath = DataWeapons + "/RL_Launcher.asset";
+        private const string SniperPath = DataWeapons + "/SR_Longshot.asset";
+
+        /// <summary>Where attachments live. Scanned by WeaponDataTests, exactly as the weapons folder is.</summary>
+        private const string DataAttachments = "Assets/_Project/Data/Attachments";
 
         /// <summary>
         /// The launcher's OWN blast, deliberately not the shop's Effect_Explosive.
@@ -125,6 +130,32 @@ namespace CoD.EditorTools
             SetExplosionVfx(rocketBlast);
             EnsureCarriesModule(launcher, rocketBlast);
 
+            // ---- attachments, and the sniper that is one ------------------
+            // The sniper is the weapon that proves the attachment system does
+            // real work: its config is a slow, hard-hitting rifle that satisfies
+            // its balance law on AUTHORED numbers, and the SCOPE is what turns it
+            // into a sniper. Take the optic off and it is still a legal weapon —
+            // which is the whole test of "an attachment is a stat delta".
+            EnsureFolder(DataAttachments);
+            AttachmentConfig scope = LoadOrCreate<AttachmentConfig>(
+                DataAttachments + "/Attach_Scope_Long.asset", ConfigureLongScope);
+            AttachmentConfig grip = LoadOrCreate<AttachmentConfig>(
+                DataAttachments + "/Attach_Grip_Angled.asset", ConfigureAngledGrip);
+            AttachmentConfig extended = LoadOrCreate<AttachmentConfig>(
+                DataAttachments + "/Attach_Mag_Extended.asset", ConfigureExtendedMag);
+            AttachmentConfig suppressor = LoadOrCreate<AttachmentConfig>(
+                DataAttachments + "/Attach_Suppressor.asset", ConfigureSuppressor);
+            AttachmentConfig heavyStock = LoadOrCreate<AttachmentConfig>(
+                DataAttachments + "/Attach_Stock_Heavy.asset", ConfigureHeavyStock);
+
+            WeaponConfig sniper = LoadOrCreate<WeaponConfig>(SniperPath, ConfigureSniper);
+            EnsureCarriesAttachment(sniper, scope);
+
+            // The other four ship on NOTHING, deliberately. Fitting them to guns
+            // nobody has fired yet would retune those guns before anyone has
+            // judged them; they are reachable from the sandbox console instead.
+            _ = grip; _ = extended; _ = suppressor; _ = heavyStock;
+
             // ---- the house feedback set ----------------------------------
             // Re-asserted every run, but ONLY into an empty slot. A null muzzle
             // flash is a gun that fires with no light and no sound, and nothing
@@ -143,7 +174,7 @@ namespace CoD.EditorTools
             AudioClip? dryFire = Load<AudioClip>(Audio + "/DryFire.wav");
             AudioClip? reload = Load<AudioClip>(Audio + "/Reload_AR.wav");
 
-            WeaponConfig[] authored = { pistol, marksman, lmg, shotgun, launcher };
+            WeaponConfig[] authored = { pistol, marksman, lmg, shotgun, launcher, sniper };
             foreach (WeaponConfig weapon in authored)
             {
                 AdoptHouseFeedback(weapon, flash, casing, fireClose, fireTail, dryFire, reload);
@@ -152,7 +183,7 @@ namespace CoD.EditorTools
             // ---- the registry --------------------------------------------
             // Every weapon, including the two this builder did not author.
             WeaponRegistry registry = LoadOrCreate<WeaponRegistry>(RegistryPath, _ => { });
-            EnsureListed(registry, rifle, smg, pistol, marksman, lmg, shotgun, launcher);
+            EnsureListed(registry, rifle, smg, pistol, marksman, lmg, shotgun, launcher, sniper);
 
             AssetDatabase.SaveAssets();
             AssetDatabase.Refresh();
@@ -549,6 +580,209 @@ namespace CoD.EditorTools
             config.adsFovMultiplier = 0.85f;
             config.fovKickOnFire = 2.6f;
             config.cameraShakeAmplitude = 1.4f;
+        }
+
+        /// <summary>
+        /// The bolt gun. Its numbers are a legal weapon WITHOUT the scope, and
+        /// that is the point of authoring it here rather than as a config with a
+        /// 5x zoom baked in.
+        ///
+        /// THE LAW, ON AUTHORED NUMBERS ONLY. Sniper maps to ReEngagementCost,
+        /// which is binary and earned: 100 damage × 1 pellet is one pull on a
+        /// 100 HP drone. Then the price of the second shot — 0.44 s to aim against
+        /// the 0.35 s floor, and 50 RPM = **1.20 s** to cycle against the 0.9 s
+        /// floor. That 1.20 s IS the bolt cycle; it is not a second field. The
+        /// plan called for a "bolt-cycle time distinct from roundsPerMinute", and
+        /// a second number meaning the same thing is the duplication this project
+        /// spends its comments avoiding: `SecondsPerShot` is already what
+        /// `OnValidate`, `WeaponDataTests` and `ArsenalBuilder`'s gate all read,
+        /// and a separate `boltCycleTime` would be a number that must agree with
+        /// it forever, with nothing checking that it does.
+        ///
+        /// WHAT THE SCOPE ADDS, AND WHY IT IS NOT IN HERE. Attach_Scope_Long
+        /// takes `adsFovMultiplier` 0.48 → **0.20** (62° vertical → 12.4°, about
+        /// 5x), the sensitivity 0.45 → 0.20, and the ADS time 0.44 s → 0.55 s.
+        /// Every one of those is a stat delta, which is exactly what an
+        /// attachment is for — and putting them on the config instead would mean
+        /// the weapon could never be un-scoped, and would mean the balance law was
+        /// being judged against a piece of kit rather than against the gun.
+        ///
+        /// It shares the marksman's 2.0x headshot. Against a 100 HP body that
+        /// changes nothing — it already one-shots — but `DifficultyConfig`
+        /// ramps drone health to 3.5x, and past that point the head is the only
+        /// thing that still one-shots. That is the sniper's late game.
+        /// </summary>
+        private static void ConfigureSniper(WeaponConfig config)
+        {
+            config.stableId = "wpn_sr_longshot";
+            config.displayName = "Sniper Rifle";
+            config.weaponClass = WeaponClass.Sniper;
+            config.fireMode = FireMode.Single;
+            config.roundsPerMinute = 50f;          // 1.20 s bolt cycle
+            config.bodyDamage = 100f;
+            config.headshotMultiplier = 2.0f;
+            config.magazineSize = 5;
+            config.reserveAmmo = 40;
+
+            config.adsTime = 0.44f;                // 0.55 s with the scope on
+            config.sprintToFireTime = 0.34f;
+            config.reloadTime = 3.2f;
+            config.reloadEmptyTime = 3.8f;
+            config.swapTime = 1.2f;
+
+            // The flattest falloff in the game and the only weapon that deserves
+            // one: 90 damage at 140 m, and the arena is 40 m across. What stops
+            // that being free is everything else on this list.
+            config.falloffRange = new Vector2(60f, 140f);
+            config.minDamageMultiplier = 0.9f;
+            config.maxRange = 200f;
+
+            config.verticalKickFirstShot = 3.0f;
+            config.verticalKickAtShotEight = 3.2f;
+            config.horizontalKickMax = 0.4f;
+            config.recoveryDelay = 0.1f;
+            config.recoveryDuration = 0.55f;
+            config.recoveryCompleteness = 0.95f;
+            config.adsRecoilMultiplier = 0.5f;
+            config.recoilSeed = 6180;
+
+            // Hipfiring a bolt gun is not an option, and the cone says so louder
+            // than the marksman's does.
+            config.baseSpread = 8f;
+            config.spreadPerShot = 2f;
+            config.maxSpread = 12f;
+
+            // The UNSCOPED optic. 0.48 is a marksman-ish 2x; the scope takes it
+            // the rest of the way. See the header.
+            config.adsFovMultiplier = 0.48f;
+            config.adsSensitivityMultiplier = 0.45f;
+            config.fovKickOnFire = 2.4f;
+            config.cameraShakeAmplitude = 1.2f;
+        }
+
+        // ---------- the attachments ----------
+        //
+        // Five, chosen so that between them they exercise every WeaponStat that
+        // has a reader, and so that not one of them is a straight upgrade. An
+        // attachment with no downside is not a build decision, it is a patch note.
+
+        /// <summary>
+        /// The long scope. Sniper only — `allowedClasses` is `weaponClass`'s
+        /// second real reader, and this is what it reads for.
+        ///
+        /// 0.48 × 0.42 ≈ 0.20 vertical FOV against the base 62°, which is 12.4°
+        /// and about 5x. The sensitivity drops by the same order (0.45 × 0.45 ≈
+        /// 0.20) because a 5x optic at hipfire sensitivity is unusable, and the
+        /// ADS time goes UP by a quarter, which is the cost.
+        /// </summary>
+        private static void ConfigureLongScope(AttachmentConfig config)
+        {
+            config.stableId = "att_scope_long";
+            config.displayName = "Long Scope";
+            config.slot = AttachmentSlot.Optic;
+            config.allowedClasses = new[] { WeaponClass.Sniper };
+            config.modifiers = new[]
+            {
+                Mult(WeaponStat.AdsFov, 0.42f),
+                Mult(WeaponStat.AdsSensitivity, 0.45f),
+                Mult(WeaponStat.AdsTime, 1.25f),
+            };
+        }
+
+        /// <summary>Steadier hipfire and a straighter climb, for a slower first shot.</summary>
+        private static void ConfigureAngledGrip(AttachmentConfig config)
+        {
+            config.stableId = "att_grip_angled";
+            config.displayName = "Angled Grip";
+            config.slot = AttachmentSlot.Underbarrel;
+            config.modifiers = new[]
+            {
+                Mult(WeaponStat.HipSpread, 0.82f),
+                Mult(WeaponStat.RecoilHorizontal, 0.75f),
+                Mult(WeaponStat.AdsTime, 1.08f),
+            };
+        }
+
+        /// <summary>
+        /// Half again as many rounds, and slower to put in. A FLAT +50% rather
+        /// than a flat add, so it means the same thing on a 12-round pistol and a
+        /// 100-round LMG — the one place a multiplier reads better than a number.
+        /// </summary>
+        private static void ConfigureExtendedMag(AttachmentConfig config)
+        {
+            config.stableId = "att_mag_extended";
+            config.displayName = "Extended Magazine";
+            config.slot = AttachmentSlot.Magazine;
+            config.modifiers = new[]
+            {
+                Mult(WeaponStat.MagazineSize, 1.5f),
+                Mult(WeaponStat.ReloadSpeed, 0.85f),
+            };
+        }
+
+        /// <summary>
+        /// The real trade in the set: quieter and steadier, at the cost of range
+        /// AND damage. Both, because either alone is a free suppressor.
+        /// </summary>
+        private static void ConfigureSuppressor(AttachmentConfig config)
+        {
+            config.stableId = "att_suppressor";
+            config.displayName = "Suppressor";
+            config.slot = AttachmentSlot.Muzzle;
+            config.modifiers = new[]
+            {
+                Mult(WeaponStat.RecoilVertical, 0.9f),
+                Mult(WeaponStat.Range, 0.85f),
+                Mult(WeaponStat.Damage, 0.95f),
+            };
+        }
+
+        /// <summary>
+        /// The heavy stock: the biggest vertical-recoil cut available, paid for at
+        /// both ends of getting the gun up. It is the one attachment that touches
+        /// `SprintToFire`, which WeaponConfig's own comment calls the most
+        /// underrated number in the file.
+        /// </summary>
+        private static void ConfigureHeavyStock(AttachmentConfig config)
+        {
+            config.stableId = "att_stock_heavy";
+            config.displayName = "Heavy Stock";
+            config.slot = AttachmentSlot.Stock;
+            config.modifiers = new[]
+            {
+                Mult(WeaponStat.RecoilVertical, 0.7f),
+                Mult(WeaponStat.AdsTime, 1.15f),
+                Mult(WeaponStat.SprintToFire, 1.2f),
+            };
+        }
+
+        private static AttachmentConfig.Modifier Mult(WeaponStat stat, float value) =>
+            new() { stat = stat, kind = StatModifierKind.Multiplier, value = value };
+
+        /// <summary>
+        /// Puts an attachment on a weapon's AUTHORED default list exactly once.
+        ///
+        /// The same shape and the same licence as <see cref="EnsureCarriesModule"/>:
+        /// editor-time authoring of an asset is legal, and it is the RUNTIME rule
+        /// — purchases append to WeaponRuntime, never to the config — that must
+        /// not be broken. Appends rather than replaces, so an attachment a human
+        /// added by hand survives a re-run.
+        /// </summary>
+        private static void EnsureCarriesAttachment(WeaponConfig weapon, AttachmentConfig attachment)
+        {
+            foreach (AttachmentConfig existing in weapon.attachments)
+            {
+                if (existing == attachment) return;
+            }
+
+            var fitted = new List<AttachmentConfig>(weapon.attachments.Length + 1);
+            foreach (AttachmentConfig existing in weapon.attachments)
+            {
+                if (existing != null) fitted.Add(existing);
+            }
+            fitted.Add(attachment);
+            weapon.attachments = fitted.ToArray();
+            EditorUtility.SetDirty(weapon);
         }
 
         /// <summary>

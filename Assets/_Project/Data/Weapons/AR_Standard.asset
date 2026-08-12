@@ -16,6 +16,7 @@ MonoBehaviour:
   displayName: Assault Rifle
   weaponClass: 0
   effectModules: []
+  attachments: []
   bodyDamage: 25
   headshotMultiplier: 1.5
   falloffRange: {x: 25, y: 60}

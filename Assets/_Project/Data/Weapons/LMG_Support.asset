@@ -16,6 +16,7 @@ MonoBehaviour:
   displayName: LMG
   weaponClass: 6
   effectModules: []
+  attachments: []
   bodyDamage: 20
   headshotMultiplier: 1.4
   falloffRange: {x: 20, y: 55}

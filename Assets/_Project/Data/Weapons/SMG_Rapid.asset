@@ -16,6 +16,7 @@ MonoBehaviour:
   displayName: SMG
   weaponClass: 1
   effectModules: []
+  attachments: []
   bodyDamage: 20
   headshotMultiplier: 1.5
   falloffRange: {x: 14, y: 34}

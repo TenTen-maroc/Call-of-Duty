@@ -1,0 +1,28 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: fa77ab767ba1b1e2425c86a23e3d803e, type: 3}
+  m_Name: Attach_Scope_Long
+  m_EditorClassIdentifier: 
+  stableId: att_scope_long
+  displayName: Long Scope
+  slot: 0
+  allowedClasses: 04000000
+  modifiers:
+  - stat: 8
+    kind: 1
+    value: 0.42
+  - stat: 9
+    kind: 1
+    value: 0.45
+  - stat: 1
+    kind: 1
+    value: 1.25

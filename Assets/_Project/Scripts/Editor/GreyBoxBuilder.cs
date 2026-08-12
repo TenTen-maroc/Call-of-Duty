@@ -35,6 +35,7 @@ namespace CoD.EditorTools
     {
         private const string DataGame = "Assets/_Project/Data/Game";
         private const string DataWeapons = "Assets/_Project/Data/Weapons";
+        private const string DataAttachments = "Assets/_Project/Data/Attachments";
         private const string DataDrones = "Assets/_Project/Data/Drones";
         private const string DataAttacks = "Assets/_Project/Data/Attacks";
         private const string DataWaves = "Assets/_Project/Data/Waves";
@@ -2733,6 +2734,12 @@ namespace CoD.EditorTools
                     "then run this builder again.");
             }
             SetRef(console, "_weaponRegistry", arsenal);
+
+            // Every attachment on disk, scanned rather than listed — the reason
+            // WeaponDataTests scans the weapons folder: a hardcoded list makes
+            // attachment number six a builder edit, and one nobody remembered to
+            // add is one nobody can ever fit.
+            SetArray(console, "_attachments", LoadAllAttachments());
         }
 
         /// <summary>
@@ -4013,6 +4020,52 @@ namespace CoD.EditorTools
                 var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(Prefabs + "/" + name + ".prefab");
                 if (prefab != null) prewarm.Add((prefab, count));
             }
+        }
+
+        /// <summary>
+        /// Every AttachmentConfig under Data/Attachments, in a stable order.
+        ///
+        /// Sorted by path rather than left in FindAssets order, which is not
+        /// specified: an unsorted array means the sandbox console's fit order —
+        /// and therefore the scene file — changes between machines for no reason,
+        /// which is a diff nobody can explain.
+        /// </summary>
+        private static AttachmentConfig[] LoadAllAttachments()
+        {
+            string[] guids = AssetDatabase.FindAssets("t:AttachmentConfig", new[] { DataAttachments });
+            var paths = new List<string>(guids.Length);
+            foreach (string guid in guids) paths.Add(AssetDatabase.GUIDToAssetPath(guid));
+            paths.Sort(System.StringComparer.Ordinal);
+
+            var found = new List<AttachmentConfig>(paths.Count);
+            foreach (string path in paths)
+            {
+                var attachment = AssetDatabase.LoadAssetAtPath<AttachmentConfig>(path);
+                if (attachment != null) found.Add(attachment);
+            }
+            return found.ToArray();
+        }
+
+        /// <summary>
+        /// Writes a [SerializeField] private ARRAY of object references. SetRef's
+        /// sibling, and it binds by the same unchecked string.
+        /// </summary>
+        private static void SetArray(Object target, string field, Object[] values)
+        {
+            SerializedObject serialized = new(target);
+            SerializedProperty property = serialized.FindProperty(field);
+            if (property == null)
+            {
+                throw new System.InvalidOperationException(
+                    $"'{target.GetType().Name}' has no serialized field '{field}'.");
+            }
+            property.arraySize = values.Length;
+            for (int i = 0; i < values.Length; i++)
+            {
+                property.GetArrayElementAtIndex(i).objectReferenceValue = values[i];
+            }
+            serialized.ApplyModifiedProperties();
+            EditorUtility.SetDirty(target);
         }
 
         private static void SetPrewarm(ObjectPool pool, params (GameObject prefab, int count)[] entries)

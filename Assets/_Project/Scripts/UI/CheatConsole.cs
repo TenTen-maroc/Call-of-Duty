@@ -25,6 +25,8 @@ namespace CoD.UI
         [SerializeField] private WeaponController? _weapon = null;
         [Tooltip("Every weapon the game ships. Digit 0 walks it. Without this the arsenal is authored, gated, tested and unreachable — only the rifle you start with and the SMG the shop sells can ever be held.")]
         [SerializeField] private WeaponRegistry? _weaponRegistry = null;
+        [Tooltip("Every attachment on disk, scanned by the builder. MINUS fits the next one that suits the held weapon. Same argument as the registry above: four of the five are authored and fitted to nothing, so without this nobody can feel one.")]
+        [SerializeField] private AttachmentConfig[] _attachments = System.Array.Empty<AttachmentConfig>();
         [SerializeField] private Health? _playerHealth = null;
         [SerializeField] private ObjectPool? _pool = null;
         [Tooltip("Spawned by the 'spawn dummy' cheat. Must be registered in the pool.")]
@@ -90,6 +92,7 @@ namespace CoD.UI
             if (keyboard[Key.Digit8].wasPressedThisFrame) SkipWave();
             if (keyboard[Key.Digit9].wasPressedThisFrame) GiveMoney();
             if (keyboard[Key.Digit0].wasPressedThisFrame) CycleWeapon();
+            if (keyboard[Key.Minus].wasPressedThisFrame) FitNextAttachment();
         }
 
         private void Toggle()
@@ -221,6 +224,39 @@ namespace CoD.UI
             GameLog.Warn("Every entry in the weapon registry is empty.", this);
         }
 
+        /// <summary>
+        /// Fits the next attachment that suits the weapon in hand, wrapping.
+        ///
+        /// Walks from just past the last one fitted rather than from zero, so
+        /// pressing MINUS repeatedly works through the set instead of toggling
+        /// the same slot forever. `TryFit` refuses an attachment that does not
+        /// belong to the weapon's class, so the long scope is silently skipped on
+        /// everything but the sniper — which is the class rule doing its job, not
+        /// a failure worth logging on a cheat key.
+        ///
+        /// It goes through the runtime's own `TryFit`, the same call a shop would
+        /// make, so this exercises the shipping path.
+        /// </summary>
+        private void FitNextAttachment()
+        {
+            if (_weapon?.Runtime == null || _attachments.Length == 0) return;
+
+            for (int step = 1; step <= _attachments.Length; step++)
+            {
+                AttachmentConfig? next = _attachments[(_lastAttachment + step) % _attachments.Length];
+                if (next == null || !_weapon.Runtime.TryFit(next)) continue;
+
+                _lastAttachment = (_lastAttachment + step) % _attachments.Length;
+                GameLog.Info($"fitted {next.displayName} ({next.slot})", this);
+                return;
+            }
+
+            GameLog.Info("nothing left that fits this weapon", this);
+        }
+
+        /// <summary>Where the attachment walk resumes. Instance state, never static — Domain Reload is off.</summary>
+        private int _lastAttachment = -1;
+
         private void CycleDamageMultiplier()
         {
             if (_weapon == null) return;
@@ -248,6 +284,8 @@ namespace CoD.UI
             GUILayout.Label("9  +1000 money      " + (_run != null ? _run.State.Money : 0));
             GUILayout.Label("0  next weapon      " +
                 (_weapon?.Runtime != null ? _weapon.Runtime.Config.displayName : "-"));
+            GUILayout.Label("-  fit attachment   " +
+                (_weapon?.Runtime != null ? _weapon.Runtime.Attachments.Count + " fitted" : "-"));
             // The two caps, live. Both are the kind of rule that silently stops
             // working: this is how you SEE that 40-alive and 3-attackers hold.
             GUILayout.Label("alive / cap        " + (_droneRegistry != null ? _droneRegistry.AliveCount : 0));
