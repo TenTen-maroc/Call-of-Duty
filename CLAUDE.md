@@ -58,6 +58,7 @@ effect modules.
 | W4 — projectiles, and the launcher | ⚠️ the drones' round promoted to `CoD.Core.Projectile` and fired by both sides, a rocket that carries its own `WeaponConfig` because it outlives a weapon swap, and `RL_Launcher` — **never fired by a human** — [docs/systems/weapons.md](docs/systems/weapons.md) |
 | W4b — the arsenal is reachable | ⚠️ sandbox console digit 0 walks the registry. Five of the seven weapons could not be held by anybody until this landed — **never used** |
 | W5 — attachments and optics | ⚠️ `AttachmentConfig` composed into `WeaponConfig`, a `WeaponStat` sheet separate from the passive one, five attachments, and `SR_Longshot` — a rifle whose 5x scope is an attachment rather than a field. **Never fired** — [docs/systems/weapons.md](docs/systems/weapons.md) |
+| G5a — the audio mixer | ✅ ten buses, four exposed parameters, footsteps and ambience routed, and a **gate** for the one asset no builder can make — [docs/systems/audio.md](docs/systems/audio.md). Groups are hand-writable as YAML; **effects are not** (the DSP needs GUIDs only the editor mints) so the Reverb bus is empty and is three editor clicks. ⚠️ Still **no clips**: the game is silent by design |
 
 **What is verified, and what is not.** Everything above compiles clean, builds
 headlessly, has every scene reference proven by a save/reload round trip, and
@@ -347,6 +348,10 @@ arena scale, and spawn distance are tuned around it. Change it deliberately.
   and the same with `-testPlatform PlayMode`. EditMode covers the maths that
   fails silently; PlayMode runs the real loop. A milestone that compiles but has
   no test running it is unverified, not done.
+- **`Unity.exe -batchmode -quit -projectPath . -executeMethod CoD.EditorTools.AudioBuilder.VerifyMixerHeadless`**
+  — the AudioMixer is the ONE asset no builder can produce (`AudioMixerController`
+  is internal to UnityEditor), which makes it the one asset with nothing watching
+  it. Required for anything touching audio routing.
 - **`node Tools/verify-build.mjs`** — builds a real Windows player and RUNS it.
   The only gate that leaves the editor, and the one that caught the settings
   block being wiped on every death. Required for anything touching scenes, Build

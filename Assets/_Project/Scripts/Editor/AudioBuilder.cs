@@ -2,6 +2,7 @@
 using CoD.Core;
 using UnityEditor;
 using UnityEngine;
+using UnityEngine.Audio;
 
 namespace CoD.EditorTools
 {
@@ -48,6 +49,44 @@ namespace CoD.EditorTools
         private const string AmbiencePath = DataGame + "/Ambience_Arena.asset";
 
         /// <summary>
+        /// The one asset in this project that no builder created and no builder
+        /// can. See the class header, and see <see cref="VerifyMixer"/> for the
+        /// gate that exists because of it.
+        /// </summary>
+        private const string MixerPath = "Assets/_Project/Audio/Master.mixer";
+
+        /// <summary>
+        /// The bus every group name is checked against, in tree order.
+        ///
+        /// Hard-coded HERE and nowhere else, and that is the point: a hand-authored
+        /// asset has no builder to describe it, so this array is the only written
+        /// statement of what the mixer is supposed to contain. Rename a group in
+        /// the editor and this fails; delete one and this fails.
+        /// </summary>
+        private static readonly string[] ExpectedGroups =
+        {
+            "Master", "SFX", "Weapons", "Impacts", "Enemies", "World",
+            "UI", "Music", "Ambience", "Reverb",
+        };
+
+        /// <summary>
+        /// The names gameplay code looks up by STRING, which is what makes them
+        /// worth a gate: <c>SettingsHub</c> calls <c>SetFloat("MasterVolume", ..)</c>
+        /// and a mixer that has been re-authored without it fails silently — the
+        /// call returns false, nothing logs, and the volume slider stops working.
+        /// </summary>
+        private static readonly string[] ExpectedParameters =
+        {
+            "MasterVolume", "SfxVolume", "MusicVolume", "AmbienceVolume",
+        };
+
+        /// <summary>Where footsteps go. See <see cref="ExpectedGroups"/>.</summary>
+        private const string FootstepGroupName = "World";
+
+        /// <summary>Where the room tone goes.</summary>
+        private const string AmbienceGroupName = "Ambience";
+
+        /// <summary>
         /// Everything is on the Default layer in this project — see
         /// FootstepConfig.ResolveSurface for why that makes physics materials the
         /// real surface mechanism and layers the coarse fallback. This is a layer
@@ -60,15 +99,164 @@ namespace CoD.EditorTools
         {
             EnsureFolder(DataGame);
 
-            LoadOrCreate<FootstepConfig>(FootstepPath, ConfigureFootsteps);
-            LoadOrCreate<AmbienceConfig>(AmbiencePath, ConfigureAmbience);
+            FootstepConfig footsteps = LoadOrCreate<FootstepConfig>(FootstepPath, ConfigureFootsteps);
+            AmbienceConfig ambience = LoadOrCreate<AmbienceConfig>(AmbiencePath, ConfigureAmbience);
+
+            // The mixer routing, RE-ASSERTED every run rather than configured on
+            // create. It is a REFERENCE, and this project's builders all draw the
+            // same line: a tuned number is a human's decision and survives, a
+            // broken reference is not a decision and is repaired. An unrouted
+            // footstep is not a quieter footstep — it bypasses the bus, ignores
+            // every send on it, and cannot be mixed against anything.
+            int routed = RouteToMixer(footsteps, ambience);
 
             AssetDatabase.SaveAssets();
             AssetDatabase.Refresh();
 
             Debug.Log(
-                $"Audio config built: {FootstepPath} and {AmbiencePath}. " +
-                "No clips and no mixer — both are human steps. See docs/systems/audio.md.");
+                $"Audio config built: {FootstepPath} and {AmbiencePath}, {routed} output group(s) routed. " +
+                "There are still no CLIPS — that one is a human step. See docs/systems/audio.md.");
+        }
+
+        /// <summary>
+        /// Points both configs at their bus on the hand-authored mixer.
+        ///
+        /// This used to be documented as "two drags in the Inspector" because no
+        /// mixer existed to drag. Now that one does, it is two lines — and doing
+        /// it here rather than by hand means the routing survives somebody
+        /// deleting and rebuilding either config, which a drag would not.
+        ///
+        /// A missing mixer is a WARNING and not a failure: this builder must keep
+        /// working on a checkout where the asset has not been authored yet, which
+        /// is exactly the state the project was in until today.
+        /// </summary>
+        private static int RouteToMixer(FootstepConfig footsteps, AmbienceConfig ambience)
+        {
+            var mixer = AssetDatabase.LoadAssetAtPath<AudioMixer>(MixerPath);
+            if (mixer == null)
+            {
+                Debug.LogWarning(
+                    $"No AudioMixer at '{MixerPath}', so footsteps and ambience play straight to the listener. " +
+                    "That is the shipped behaviour, not a bug — see docs/systems/audio.md.");
+                return 0;
+            }
+
+            int routed = 0;
+            AudioMixerGroup? world = FindGroup(mixer, FootstepGroupName);
+            if (world != null && footsteps.outputGroup != world)
+            {
+                footsteps.outputGroup = world;
+                EditorUtility.SetDirty(footsteps);
+                routed++;
+            }
+
+            AudioMixerGroup? room = FindGroup(mixer, AmbienceGroupName);
+            if (room != null && ambience.outputGroup != room)
+            {
+                ambience.outputGroup = room;
+                EditorUtility.SetDirty(ambience);
+                routed++;
+            }
+            return routed;
+        }
+
+        /// <summary>
+        /// One group, by exact name.
+        ///
+        /// `FindMatchingGroups` does a SUBSTRING match on the group's path, so
+        /// asking it for "Music" would also answer with a group called
+        /// "MusicStinger" and asking for "Master" answers with everything under
+        /// it. Every caller here wants one specific bus, so the name is compared
+        /// exactly and an ambiguous answer returns null rather than a guess.
+        /// </summary>
+        private static AudioMixerGroup? FindGroup(AudioMixer mixer, string name)
+        {
+            foreach (AudioMixerGroup group in mixer.FindMatchingGroups(string.Empty))
+            {
+                if (group != null && group.name == name) return group;
+            }
+            return null;
+        }
+
+        // ---------- the gate for the asset nobody builds ----------
+
+        /// <summary>
+        /// Checks the hand-authored mixer against what the code expects of it.
+        ///
+        /// WHY THIS EXISTS AT ALL. Every other asset in this project is generated,
+        /// which means every other asset is described by the code that generates
+        /// it and re-created if it drifts. The mixer cannot be — `AudioMixerController`
+        /// is internal to UnityEditor and has no public creation API — so it is
+        /// simultaneously the only hand-authored asset and the only one with
+        /// nothing watching it. A renamed bus or a dropped exposed parameter would
+        /// surface as "the volume slider stopped working", months later, with no
+        /// error anywhere: `AudioMixer.SetFloat` returns a bool that nobody reads
+        /// and logs nothing.
+        ///
+        /// It checks NAMES rather than structure on purpose. Whether Reverb sits
+        /// beside SFX or under it is a mixing decision a human is allowed to
+        /// change; whether a group called `World` exists is a contract with
+        /// `AudioBuilder` and `SettingsHub`.
+        /// </summary>
+        [MenuItem("CoD/Verify Audio Mixer", false, 5)]
+        public static void VerifyMixer()
+        {
+            var mixer = AssetDatabase.LoadAssetAtPath<AudioMixer>(MixerPath);
+            if (mixer == null)
+            {
+                throw new System.InvalidOperationException(
+                    $"No AudioMixer at '{MixerPath}'. It is the one asset here that no builder can produce — " +
+                    "see docs/systems/audio.md before assuming this is a build step somebody forgot.");
+            }
+
+            var complaints = new System.Text.StringBuilder();
+
+            foreach (string expected in ExpectedGroups)
+            {
+                if (FindGroup(mixer, expected) != null) continue;
+                complaints.Append("\n  - no group named '").Append(expected).Append('\'');
+            }
+
+            var exposed = new SerializedObject(mixer).FindProperty("m_ExposedParameters");
+            var found = new System.Collections.Generic.List<string>();
+            for (int i = 0; i < exposed.arraySize; i++)
+            {
+                SerializedProperty entry = exposed.GetArrayElementAtIndex(i);
+                found.Add(entry.FindPropertyRelative("name").stringValue);
+            }
+
+            foreach (string expected in ExpectedParameters)
+            {
+                if (found.Contains(expected)) continue;
+                complaints.Append("\n  - '").Append(expected).Append("' is not exposed to script");
+            }
+
+            if (complaints.Length > 0)
+            {
+                throw new System.InvalidOperationException(
+                    "The AudioMixer does not match what the code expects of it:" + complaints +
+                    "\nIt is hand-authored — AudioMixerController is internal, so nothing can regenerate it. " +
+                    "Open it in the editor and fix it, or update AudioBuilder's expectations if the change is " +
+                    "deliberate. See docs/systems/audio.md.");
+            }
+
+            Debug.Log($"AudioMixer verified: {ExpectedGroups.Length} groups and " +
+                      $"{ExpectedParameters.Length} exposed parameter(s) present in {MixerPath}.");
+        }
+
+        /// <summary>Entry point for -executeMethod. Non-zero exit on failure, so a gate can read it.</summary>
+        public static void VerifyMixerHeadless()
+        {
+            try
+            {
+                VerifyMixer();
+                EditorApplication.Exit(0);
+            }
+            catch (System.Exception exception)
+            {
+                Debug.LogError("AudioMixer verification failed: " + exception);
+                EditorApplication.Exit(1);
+            }
         }
 
         /// <summary>Entry point for -executeMethod. Same work, non-zero exit on failure.</summary>

@@ -297,3 +297,41 @@ nothing. It now re-seats the player every frame and asserts the wave has not
 ended, so the two real causes fail with their own names. The assertions it exists
 for are unchanged — the test got stronger, which is the only direction a test is
 allowed to move here.
+
+## 2026-08-12 — G5a, the mixer, and where hand-editing stops
+
+**The one asset no builder can produce now exists**, and getting it there
+narrowed the rule it was documented under. `Assets/_Project/Audio/Master.mixer`
+was created in the editor by a human and then FINISHED AS TEXT with the editor
+closed: ten buses, four exposed parameters, and `AudioBuilder` now routing
+footsteps to `World` and ambience to `Ambience` on every run.
+
+**Groups are hand-writable. Effects are not.** A Send, a Receive and an SFX
+Reverb were written into the YAML alongside them. The file parsed, the asset
+imported, and the new `VerifyMixer` gate passed — because loading a mixer does
+not build its DSP graph. The PlayMode suite then went 60 → 57, all three failures
+reading `Assertion failed on expression: 'res == FMOD_OK'`, thrown the instant a
+routed AudioSource instantiated the mixer. A built-in effect needs a
+`m_Parameters` list of parameter GUIDs that only the editor mints; written empty,
+the effect exists on paper and its DSP cannot be constructed. Removing the three
+effects put all 60 back. The Reverb bus ships empty and finishing it is four
+clicks, listed in docs/systems/audio.md.
+
+**Two things this pass added that outlive it.**
+
+1. `AudioBuilder.VerifyMixer` / `VerifyMixerHeadless` — the mixer was the only
+   asset in the project with no builder, and therefore the only one with nothing
+   watching it. It checks NAMES rather than structure on purpose: where Reverb
+   sits is a mixing decision a human may change, but whether a group called
+   `World` exists is a contract with `AudioBuilder` and `SettingsHub`.
+2. Routing the two configs made the PlayMode suite a gate for the mixer's DSP
+   graph, which is what caught the effects. Before it, a malformed effect would
+   have been invisible until somebody pressed Play.
+
+**What was deliberately NOT done**, so a future session does not read it as an
+omission: the master volume slider still writes `AudioListener.volume`. Moving it
+onto the exposed `MasterVolume` today would be a regression, not progress — only
+footsteps and ambience are routed, so the slider would silently stop working for
+the weapons, impacts, hitmarker and every UI cue. The switch belongs to the
+moment a second bus needs balancing, which is the same moment every source gets
+an output group.

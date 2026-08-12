@@ -96,15 +96,26 @@ namespace CoD.Core
         {
             GameSettings settings = Current;
 
-            // The one setting nothing else can honour. AudioListener.volume is a
-            // single global multiplier over every AudioSource in the scene, which
-            // is the whole requirement while this game has one sound category.
+            // STILL AudioListener.volume, and now that is a decision rather than
+            // a limitation — the mixer this comment used to say could not exist
+            // now does (Assets/_Project/Audio/Master.mixer, with MasterVolume,
+            // SfxVolume, MusicVolume and AmbienceVolume already exposed to script).
             //
-            // Deliberately NOT an AudioMixer: a .mixer is opaque binary-ish YAML
-            // that the scene builder cannot generate, and this project's rule is
-            // that nothing in a scene is hand-authored. Revisit the moment there
-            // is a second bus to balance — music against SFX — because that is
-            // the first thing one line of global volume genuinely cannot do.
+            // Moving the master slider onto the mixer TODAY would be a
+            // regression, not progress. Only footsteps and ambience are routed
+            // through a bus; the weapon layers, the impacts, the hitmarker and
+            // every UI cue still play straight to the listener, because nothing
+            // has given them an output group. AudioListener.volume is applied to
+            // the final mix and therefore covers all of them AND the mixer's
+            // output; an exposed MasterVolume parameter would cover only the two
+            // that happen to be routed, and the slider would silently stop
+            // working for most of the game.
+            //
+            // The switch is worth making at exactly one moment: when there is a
+            // SECOND bus a player needs to balance — music against SFX — which
+            // is also the moment every source gets an output group. Until then
+            // this one line is complete and the exposed parameters are a seam
+            // waiting, not a seam ignored.
             AudioListener.volume = settings.MasterVolume;
 
             Changed?.Invoke(settings);

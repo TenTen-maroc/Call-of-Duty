@@ -1,52 +1,150 @@
 # Audio
 
-> Last verified: 2026-08-12
-> **Verified in play: no. Verified by machine: only by the compiler.** Everything
-> below compiles (typecheck 9/9, zero warnings) and passes the guards. Both config
-> assets are now on disk. Neither component has ever *run*: Unity has not been
-> launched for any of this work, no test covers it, and the scene wiring described
-> in [Scene wiring](#scene-wiring) was written but **never executed** — the menu
-> item exists, nobody has pressed it. Read
-> [What is not done](#what-is-not-done) before you assume the game makes any noise.
+>
+> **Verified in play: no. Verified by machine: partly.** Everything below
+> compiles, passes the guards, and — new on 2026-08-12 — the mixer is loaded and
+> checked by a real Unity run (`CoD → Verify Audio Mixer`). What no machine here
+> has done is *hear* any of it, because there are still no clips.
 
-## READ THIS FIRST: there is no AudioMixer, and no builder can make one
+## READ THIS FIRST: the mixer exists now, and nothing can regenerate it
 
-**The mixer is a human step. It must be authored by hand, once, in the Unity
-editor, and committed.** Nothing in `Tools/`, nothing in `AudioBuilder`, and
-nothing any future session writes can produce it.
+**`Assets/_Project/Audio/Master.mixer` is the only hand-authored asset in this
+project**, and it is the only one no builder can rebuild.
 
-The reason is not laziness or scope. `UnityEditor.Audio.AudioMixerController` —
-the only type that can construct a `.mixer` asset — is **internal to
-`UnityEditor.dll`**. The runtime `UnityEngine.Audio` namespace exposes
-`AudioMixer`, `AudioMixerGroup` and `AudioMixerSnapshot`, and every one of them is
-a read-only handle to an asset that already exists. There is no public creation
-API, no `ScriptableObject.CreateInstance` path, and no `-executeMethod` path. A
-builder that tried would either fail to compile or produce a corrupt asset.
+`UnityEditor.Audio.AudioMixerController` — the only type that can construct a
+`.mixer` — is **internal to `UnityEditor.dll`**. The runtime `UnityEngine.Audio`
+namespace exposes `AudioMixer`, `AudioMixerGroup` and `AudioMixerSnapshot`, and
+every one is a read-only handle to an asset that already exists. There is no
+public creation API and no `-executeMethod` path.
 
-This matters because this project's whole discipline is "nothing in a scene or an
-asset is hand-authored — a builder makes it". Audio is the one place that rule
-breaks, and a session that does not know it will spend its time writing a builder
-that cannot work, or worse, will design a settings screen around a mixer asset
-that is not there.
+That matters because this project's whole discipline is "a builder makes it, so a
+builder can remake it". Audio is the one place that rule breaks. **So the mixer
+has a gate instead of a builder** —
+[`AudioBuilder.VerifyMixer`](../../Assets/_Project/Scripts/Editor/AudioBuilder.cs)
+loads the asset and asserts every group name and every exposed parameter the code
+depends on:
 
-**When someone does author it**, the migration is already prepared and is two
-drags, not a rewrite:
+```
+Unity.exe -batchmode -quit -projectPath . \
+  -executeMethod CoD.EditorTools.AudioBuilder.VerifyMixerHeadless
+```
 
-| Field | Lives in | What to drop in |
+It checks **names, not structure**. Whether `Reverb` sits beside `SFX` or under it
+is a mixing decision a human is allowed to change; whether a group called `World`
+exists is a contract with `AudioBuilder` and `SettingsHub`. Without it, a renamed
+bus surfaces months later as "the volume slider stopped working" — `AudioMixer.SetFloat`
+returns a bool nobody reads and logs nothing.
+
+### How it was authored, and the line that text editing cannot cross
+
+It was created in the editor by hand and then **finished as text**, with the
+editor closed. The asset is ordinary Unity YAML: a group is an
+`AudioMixerGroupController` block plus an `Attenuation` `AudioMixerEffectController`,
+listed in its parent's `m_Children` and in the mixer's view guid list. The ten
+buses, their names and the four exposed parameters were all written that way and
+all verify clean.
+
+⚠️ **Unity must be closed to do it**, and `.mixer` is now listed in
+`.gitattributes` as text so the file lands with LF endings and a mergeable diff.
+
+**GROUPS CAN BE WRITTEN AS TEXT. EFFECTS CANNOT.** This was found the hard way
+and it is the most useful thing on this page.
+
+A Send, a Receive and an SFX Reverb were hand-written into the file. Everything
+looked right: the YAML parsed, the asset imported, and `VerifyMixer` passed — it
+loads the asset and reads names, and loading a mixer does not build its DSP
+graph. Then the PlayMode suite went from 60 passing to 57, with three tests
+failing on
+
+```
+Assertion failed on expression: 'res == FMOD_OK'
+```
+
+the moment a routed `AudioSource` actually instantiated the mixer. A built-in
+effect needs a `m_Parameters` list of parameter GUIDs that only the editor
+generates; written with an empty list, the effect exists on paper and its DSP
+cannot be constructed. The three effects were removed and all 60 tests passed
+again.
+
+So the rule is sharper than "no builder can make a mixer":
+
+| | Hand-writable as text | Why |
 | --- | --- | --- |
-| `FootstepConfig.outputGroup` | `Footsteps_Player.asset` | the SFX group |
-| `AmbienceConfig.outputGroup` | `Ambience_Arena.asset` | the Ambience group |
+| Groups, names, hierarchy | ✅ | plain references and strings |
+| Exposed parameters | ✅ | a guid the group already owns, plus a name |
+| Snapshot float values | ✅ | a guid → number map |
+| **Effects (Send / Receive / reverb / EQ …)** | ❌ | the DSP needs parameter GUIDs only the editor mints |
 
-Both components already assign `AudioSource.outputAudioMixerGroup` from those
-fields; both ship null, and null means "straight to the listener", which is
-exactly today's behaviour. Nothing else changes.
+**The PlayMode suite is the gate that catches this**, and only because footsteps
+and ambience are now routed through the mixer — that routing is what makes the
+arena instantiate the DSP graph on every test run. Before it, a malformed effect
+would have been invisible until someone pressed Play.
 
-Until then, **`AudioListener.volume` is the entire mix**.
-[SettingsHub.Apply](../../Assets/_Project/Scripts/Core/SettingsHub.cs) sets it from
-the player's saved master volume, and it is a single global multiplier over every
-`AudioSource` in the scene. That is genuinely sufficient while the game has one
-sound category. The first thing it cannot do is balance music against SFX — which
-is the moment the mixer stops being optional.
+### The reverb send is the one piece left, and it is three clicks
+
+The `Reverb` bus exists and is empty. To finish it in the editor:
+
+1. select **Reverb** → Add Effect → **Receive**
+2. same group → Add Effect → **SFX Reverb**
+3. select **SFX** → Add Effect → **Send**, point its Receive at `Reverb\Receive`, set the level to about **−12 dB**
+4. on the SFX Reverb, drag **Dry Level** fully left and set **Decay Time** to ~1.2 s
+
+Then re-run `VerifyMixer` and the PlayMode suite. Step 4 is a mix decision that
+needs audio playing, so it belongs with the clips rather than before them.
+
+## The buses
+
+```
+Master                       exposed: MasterVolume
+├── SFX                      exposed: SfxVolume     ── Send ──┐
+│   ├── Weapons                                               │
+│   ├── Impacts                                               │
+│   ├── Enemies                                               │
+│   └── World      ← footsteps route here                     │
+├── UI                                                        │
+├── Music                    exposed: MusicVolume             │
+├── Ambience                 exposed: AmbienceVolume          │
+│   ↑ room tone routes here                                   │
+└── Reverb         ← Receive + SFX Reverb  ←──────────────────┘
+```
+
+**Reverb is a sibling of SFX, not a child.** As a child it would feed back into
+itself. The send will sit on `SFX` at **−12 dB** and land on a `Receive` on
+`Reverb`, which carries an `SFX Reverb`. That is reverb by a mixer send rather
+than by `AudioReverbZone`s — one setting for the whole facility, and far cheaper
+and more controllable than a zone per lane.
+
+⚠️ **The Reverb bus is currently EMPTY** — no Send, no Receive, no reverb. It is
+drawn above because that is the shape it is going to have; see "Groups can be
+written as text, effects cannot" below for why the effects were removed, and for
+the three clicks that finish it.
+
+### Routing is re-asserted by the builder, not dragged
+
+`AudioBuilder.Build` now points `FootstepConfig.outputGroup` at **World** and
+`AmbienceConfig.outputGroup` at **Ambience** on every run. It is a REFERENCE, so
+it follows this project's line: a tuned number is a human's decision and survives
+a re-run, a broken reference is not a decision and is repaired. An unrouted
+footstep is not a quieter footstep — it bypasses the bus, ignores every send on
+it, and cannot be mixed against anything.
+
+A missing mixer is a warning there, not a failure, so the builder still works on a
+checkout where the asset has not been authored.
+
+### Why the master volume slider is still not on the mixer
+
+`SettingsHub.Apply` still writes `AudioListener.volume`, and moving it onto the
+exposed `MasterVolume` today would be a **regression**. Only footsteps and
+ambience are routed through a bus; the weapon layers, the impacts, the hitmarker
+and every UI cue still play straight to the listener. `AudioListener.volume` is
+applied to the final mix and covers all of them *and* the mixer's output; an
+exposed parameter would cover only the two that happen to be routed, and the
+slider would silently stop working for most of the game.
+
+The switch is worth making at exactly one moment: when there is a **second bus a
+player needs to balance** — music against SFX — which is also the moment every
+source gets an output group. The parameters are exposed and waiting so that
+moment costs no editor work.
 
 ## Overview
 

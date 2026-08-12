@@ -26,6 +26,7 @@ obvious, emphasise the non-obvious.
 | [build.md](build.md) | Producing the Windows .exe, and the smoke test that proves it runs | ✅ |
 | [campaign.md](campaign.md) | Missions, objectives, the director seam, and why campaign is a save AXIS rather than a third `GameMode` | ⚠️ under construction |
 | [performance.md](performance.md) | The two caps under load, the allocation budget, what headless cannot prove | ✅ |
+| [audio.md](audio.md) | The hand-authored mixer, its buses and its gate, footsteps and ambience — and why there is still no sound | ⚠️ no clips |
 
 ## Automated verification
 

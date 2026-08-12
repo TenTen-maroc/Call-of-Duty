@@ -154,6 +154,7 @@ weapon. Digit 2 for infinite ammo and digit 6 to spawn drones.
 | F7 | **The sniper, scoped.** 5x, one pull, a 1.2 s bolt cycle, five rounds. Does the zoom feel usable in a 40 m room, or is it too much magnification for the space? | `Attach_Scope_Long` → `AdsFov` (×0.42) — the config's own 0.48 is the UNSCOPED number |
 | F8 | **The sniper, unscoped.** Press MINUS to fit, and note that the gun is a legal weapon without it. Is the difference obvious? That difference is the whole test of "an attachment is a stat delta". | `SR_Longshot.adsFovMultiplier` (0.48) |
 | F9 | **The other four attachments.** MINUS cycles: angled grip, extended magazine, suppressor, heavy stock. Is any one of them an obvious auto-take, or does each cost something you notice? | the `Configure*` methods in `ArsenalBuilder` |
+| F10 | **The reverb, once you add it.** Four clicks in `Master.mixer` — see docs/systems/audio.md. It is the single change that makes a rifle sound like it is INSIDE a facility, and it needs both ears and clips. Nothing about it can be judged from a screenshot. | `SFX Reverb` → Dry Level, Decay Time · the Send level (−12 dB) |
 
 **F3, F6 and F9 are the ones that matter.** F3 because self-damage would be the
 one launcher bug that ends runs, F6 because the shotgun's missing pattern is a
@@ -364,9 +365,47 @@ G6's Sight_Glass), and HOLD-BREATH (it needs an input action, a stamina float an
 a sway multiplier — and the sway numbers are the nine serialized fields G6 is
 about to move into a ViewmodelConfig, so building it now means writing it twice).
 
+G5a IS DONE (2026-08-12). Assets/_Project/Audio/Master.mixer exists: ten buses,
+four exposed parameters (MasterVolume / SfxVolume / MusicVolume / AmbienceVolume),
+a -12 dB send from SFX into a Receive + SFX Reverb on a sibling Reverb bus, and
+AudioBuilder now routes footsteps -> World and ambience -> Ambience on every run.
+
+It was created in the editor and FINISHED AS TEXT with the editor closed — a
+.mixer is ordinary Unity YAML, so the "no builder can make one" rule turns out to
+be narrower than it read: nothing can make the FIRST one, but an existing one can
+be edited as text and handed back to Unity to validate. Because it is the only
+asset with no builder, it now has a gate instead:
+  Unity.exe -batchmode -quit -projectPath . -executeMethod CoD.EditorTools.AudioBuilder.VerifyMixerHeadless
+
+WHAT IS STILL MISSING IS THE SOUND ITSELF. There are no clips, and that is the
+remaining human step: Kenney (CC0) and the Sonniss GDC bundle (royalty-free) are
+the free sources, both are a download decision, and audio is the sneaky LFS
+killer at ~10 MB a minute — the repo is on 1.3 MB of a 400 MB budget. Mono for
+anything spatialised; stereo only for music and ambience.
+
+THE HARD-WON FINDING: GROUPS CAN BE HAND-WRITTEN AS TEXT, EFFECTS CANNOT. A
+Send, a Receive and an SFX Reverb were written into the YAML. The file parsed,
+the asset imported, and VerifyMixer passed — because loading a mixer does not
+build its DSP graph. Then the PlayMode suite dropped from 60 to 57, all three
+failing on `Assertion failed on expression: 'res == FMOD_OK'` the moment a routed
+AudioSource instantiated the mixer: a built-in effect needs a m_Parameters list of
+parameter GUIDs that only the editor mints. The effects were removed and all 60
+passed again. THE PLAYMODE SUITE IS THE GATE FOR THIS, and only because footsteps
+and ambience are now routed — that routing is what makes the arena build the DSP
+graph on every test run.
+
+So the Reverb bus exists and is EMPTY. Finishing it is four editor actions, and
+docs/systems/audio.md lists them. Do not hand-write them into the YAML again.
+
+ONE MORE THING DELIBERATELY LEFT ALONE: the master volume slider still writes
+AudioListener.volume rather than the exposed MasterVolume. Moving it today would
+be a REGRESSION — only footsteps and ambience are routed, so the slider would
+stop working for the weapons, impacts, hitmarker and UI. Switch it when a second
+bus needs balancing, which is the same moment every source gets an output group.
+
 DO NEXT, in this order — each is free and worth more than the paid art that follows:
-  G5b real audio: an AudioMixer must be authored BY HAND once (AudioMixerController
-      is internal; no builder can generate one) plus clips for footsteps/impacts.
+  G5b clips for footsteps, impacts and weapon layers. The mixer they route
+      through already exists (G5a above); this is the download-and-trim step.
   G4  reflection probes and shaped lights. RETRY — a previous attempt was reverted
       for cause; read "the four ways it went wrong" below.
   G6  viewmodel feel: move WeaponSway's nine serialized numbers into a

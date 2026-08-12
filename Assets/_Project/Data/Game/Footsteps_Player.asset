@@ -51,4 +51,4 @@ MonoBehaviour:
     volumeScale: 1.15
     pitchScale: 1.12
   defaultSurface: 0
-  outputGroup: {fileID: 0}
+  outputGroup: {fileID: 637639045088156147, guid: 65e9bcccdaba3984287abac88343eef0, type: 2}
