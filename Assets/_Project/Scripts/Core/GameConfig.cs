@@ -44,6 +44,18 @@ namespace CoD.Core
         public float landingDipDegrees = 2f;
         [Range(0.02f, 0.5f)] public float landingDipTime = 0.12f;
 
+        [Header("Viewmodel")]
+        [Tooltip("The gun's OWN vertical FOV, rendered by the overlay camera. Deliberately independent " +
+                 "of baseFovVertical: the world camera lerps its FOV for the sprint bonus and the ADS/kick " +
+                 "offset, and while the gun was a child of that camera it stretched on every sprint and " +
+                 "every aim. Shipped equal to the default baseFovVertical so the framing the viewmodel " +
+                 "was posed against does not move — but the player's FOV slider no longer warps it.")]
+        [Range(30f, 90f)] public float viewmodelFovVertical = 62f;
+        [Tooltip("Added to viewmodelFovVertical at full ADS, and nothing else — no sprint bonus, no fire " +
+                 "kick. Negative pulls the gun in slightly as the sights come up. Keep it SMALL: the " +
+                 "whole point of the separate camera is that the gun stops changing shape.")]
+        [Range(-15f, 5f)] public float viewmodelAdsFovDelta = -4f;
+
         [Header("Damage feedback")]
         [Tooltip("How long the red hit flash stays up, in seconds.")]
         [Range(0.05f, 1f)] public float damageFlashDuration = 0.18f;

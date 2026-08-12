@@ -10,7 +10,7 @@ GameObject:
   m_Component:
   - component: {fileID: 476044269800779574}
   - component: {fileID: 7474009513688969659}
-  m_Layer: 0
+  m_Layer: 8
   m_Name: Fx_MuzzleFlash
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -56,7 +56,7 @@ GameObject:
   - component: {fileID: 6800597086754684570}
   - component: {fileID: 5548362156210757692}
   - component: {fileID: 6056191747494771515}
-  m_Layer: 0
+  m_Layer: 8
   m_Name: Quad
   m_TagString: Untagged
   m_Icon: {fileID: 0}

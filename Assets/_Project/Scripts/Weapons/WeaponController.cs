@@ -36,6 +36,8 @@ namespace CoD.Weapons
         [SerializeField] private Transform? _muzzle = null;
         [SerializeField] private Transform? _casingEject = null;
         [SerializeField] private Light? _muzzleLight = null;
+        [Tooltip("The second muzzle light, on the Viewmodel layer. A camera culls lights by layer, so the world light cannot reach the gun and this one cannot reach the room.")]
+        [SerializeField] private Light? _viewmodelMuzzleLight = null;
         [SerializeField] private AudioSource? _audioClose = null;
         [SerializeField] private AudioSource? _audioTail = null;
         [Tooltip("The shooter's own Health, so effect modules never damage the player who fired.")]
@@ -257,6 +259,7 @@ namespace CoD.Weapons
             }
             _runtime = new WeaponRuntime(config);
             if (_muzzleLight != null) _muzzleLight.enabled = false;
+            if (_viewmodelMuzzleLight != null) _viewmodelMuzzleLight.enabled = false;
         }
 
         private void Start()
@@ -896,21 +899,42 @@ namespace CoD.Weapons
             }
         }
 
+        /// <summary>
+        /// Both halves of the muzzle flash, on ONE clock.
+        ///
+        /// There have to be two lights because a camera culls lights by the
+        /// light's layer: the world light cannot reach a gun drawn by the
+        /// overlay camera, and a viewmodel light cannot light the room. They
+        /// must not, however, be two TIMERS. The gun's light first shipped on
+        /// the pooled flash prefab, so it lived for muzzleFlashLifetime (0.08 s)
+        /// while the room light lived for muzzleLightDuration (0.03 s) — and at
+        /// the SMG's 900 rpm, 0.0667 s between shots, an 0.08 s light never
+        /// finished before the next one began. Sustained fire put the viewmodel
+        /// under a continuous glow while the room strobed correctly. A flash
+        /// that does not go out is not a flash.
+        /// </summary>
         private void UpdateMuzzleLight(float now)
         {
-            if (_muzzleLight == null) return;
             bool shouldBeOn = now < _muzzleLightUntil;
-            if (_muzzleLight.enabled != shouldBeOn) _muzzleLight.enabled = shouldBeOn;
+            if (_muzzleLight != null && _muzzleLight.enabled != shouldBeOn) _muzzleLight.enabled = shouldBeOn;
+            if (_viewmodelMuzzleLight != null && _viewmodelMuzzleLight.enabled != shouldBeOn) _viewmodelMuzzleLight.enabled = shouldBeOn;
         }
 
         private void SpawnMuzzleEffects(WeaponConfig config, float now)
         {
             _fovKickUntil = now + config.fovKickDuration;
 
+            // The clock is set unconditionally: it drives BOTH lights, so hanging
+            // it off the world light existing would silently disable the gun's
+            // flash on any rig that happens not to have one.
+            _muzzleLightUntil = now + config.muzzleLightDuration;
+            if (_viewmodelMuzzleLight != null)
+            {
+                _viewmodelMuzzleLight.intensity = config.viewmodelMuzzleLightIntensity;
+            }
             if (_muzzleLight != null)
             {
                 _muzzleLight.intensity = config.muzzleLightIntensity;
-                _muzzleLightUntil = now + config.muzzleLightDuration;
             }
 
             if (_pool != null && _muzzle != null && config.muzzleFlashPrefab != null)

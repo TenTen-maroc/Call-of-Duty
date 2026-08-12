@@ -113,12 +113,67 @@ namespace CoD.Weapons
         [Range(0f, 0.2f)] public float muzzleLightDuration = 0.03f;
         public float muzzleLightIntensity = 12f;
 
-        // Derived — never stored, never duplicated in a MonoBehaviour.
+        [Tooltip("The gun's own flash light, which sits centimetres from the barrel instead of metres from a wall. Same duration, far lower intensity — the room number would blow the viewmodel out completely.")]
+        [Range(0f, 20f)] public float viewmodelMuzzleLightIntensity = 2.2f;
+
+        // ---------- The time-to-kill model ----------
+        // Derived, never stored, never duplicated in a MonoBehaviour. The first
+        // version of this got four things wrong, and every one of them reads as a
+        // balance bug rather than as an arithmetic one: a one-shot weapon reported
+        // a TTK of 0 and so could never satisfy a 200 ms floor, a shotgun's pull
+        // was scored as a single pellet, a burst weapon was scored as if the pause
+        // between bursts were free, and range did not exist at all.
+
         public float SecondsPerShot => 60f / Mathf.Max(1f, roundsPerMinute);
+
+        /// <summary>
+        /// What ONE TRIGGER PULL puts on a body at point blank — every pellet it
+        /// throws, because one pull is one shot however many rays it casts.
+        /// Scoring a 12x11 shotgun as 11 damage said it needed nine pulls to kill
+        /// a 100 HP drone, when it in fact needs one.
+        /// </summary>
+        public float DamagePerShot => Mathf.Max(0.01f, bodyDamage) * Mathf.Max(1, pelletsPerShot);
+
         public int ShotsToKill(float targetHealth = 100f) =>
-            Mathf.CeilToInt(targetHealth / Mathf.Max(0.01f, bodyDamage));
+            ShotsFor(targetHealth, DamagePerShot);
+
+        /// <summary>Pulls to kill at a distance, charged for falloff.</summary>
+        public int ShotsToKillAtRange(float targetHealth, float metres) =>
+            ShotsFor(targetHealth, DamageAtDistance(metres) * Mathf.Max(1, pelletsPerShot));
+
         public float TimeToKill(float targetHealth = 100f) =>
-            (ShotsToKill(targetHealth) - 1) * SecondsPerShot;
+            TimeForShots(ShotsToKill(targetHealth));
+
+        /// <summary>
+        /// The same model, charged for the falloff at that range. The arcade
+        /// window is a point-blank law; this is what the shotgun law is written
+        /// against, because a shotgun's identity IS the gap between the two.
+        /// </summary>
+        public float TimeToKillAtRange(float targetHealth, float metres) =>
+            TimeForShots(ShotsToKillAtRange(targetHealth, metres));
+
+        /// <summary>
+        /// Wall-clock seconds from the first round leaving the barrel to the Nth:
+        /// N-1 cadence gaps, plus one burstPause for every burst boundary crossed.
+        /// WeaponController adds burstPause ON TOP of the cadence after the last
+        /// round of a burst (see FireOneShot), so this mirrors the gun that ships
+        /// rather than an idealised one that fires its bursts for free.
+        /// </summary>
+        public float TimeForShots(int shots)
+        {
+            int gaps = Mathf.Max(0, shots - 1);
+            float time = gaps * SecondsPerShot;
+            if (fireMode == FireMode.Burst) time += (gaps / Mathf.Max(1, burstCount)) * burstPause;
+            return time;
+        }
+
+        /// <summary>
+        /// Floored at one. A weapon that kills in a single pull needs ONE shot,
+        /// not zero, and that difference is the entire reason a sniper could never
+        /// pass a window written for rifles.
+        /// </summary>
+        private static int ShotsFor(float targetHealth, float damagePerShot) =>
+            Mathf.Max(1, Mathf.CeilToInt(targetHealth / Mathf.Max(0.01f, damagePerShot)));
 
         /// <summary>Damage at a distance, after falloff. Used by the controller and by tests.</summary>
         public float DamageAtDistance(float distance)
@@ -129,8 +184,57 @@ namespace CoD.Weapons
             return bodyDamage * Mathf.Lerp(1f, minDamageMultiplier, t);
         }
 
+        // ---------- The balance laws ----------
+        // Boundaries, not dials. These are what an authored asset is checked
+        // AGAINST — the same kind of number as MAX_FOLLOW_UPS_PER_PULL, a ceiling
+        // rather than a knob — so they are const rather than a ScriptableObject
+        // field. They live here, in one place, because OnValidate and
+        // WeaponDataTests both read them: a law with two copies is a law that gets
+        // edited on one side to make a test go green.
+
+        /// <summary>The arcade window, in milliseconds. The defining choice of the whole game.</summary>
+        public const float ARCADE_TTK_MIN_MS = 200f;
+        public const float ARCADE_TTK_MAX_MS = 400f;
+
+        /// <summary>
+        /// The Inspector warns wider than the test fails, so a weapon half-way
+        /// through being authored does not scream on every keystroke.
+        /// </summary>
+        public const float ARCADE_TTK_WARN_MIN_MS = 150f;
+        public const float ARCADE_TTK_WARN_MAX_MS = 500f;
+
+        /// <summary>The range by which a shotgun must have stopped being a one-pull weapon.</summary>
+        public const float SHOTGUN_TWO_PULL_METRES = 10f;
+
+        /// <summary>
+        /// What a one-shot weapon pays for the privilege. Killing instantly is
+        /// only a trade if lining up the NEXT one costs more than the rifle's
+        /// entire time-to-kill: 0.35 s to aim plus 0.9 s to cycle is ~1.25 s
+        /// against the AR's 0.257 s. That gap IS the balance — not TTK, which for
+        /// a sniper is zero by design and therefore says nothing at all.
+        /// </summary>
+        public const float ONE_SHOT_MIN_ADS_SECONDS = 0.35f;
+        public const float ONE_SHOT_MIN_CYCLE_SECONDS = 0.9f;
+
+        /// <summary>Which law this weapon answers to. weaponClass's first real reader.</summary>
+        public BalanceLaw Law => LawFor(weaponClass);
+
+        public static BalanceLaw LawFor(WeaponClass forClass) => forClass switch
+        {
+            WeaponClass.Shotgun => BalanceLaw.ContactBurst,
+            WeaponClass.Sniper => BalanceLaw.ReEngagementCost,
+            WeaponClass.Launcher => BalanceLaw.ReEngagementCost,
+            // Anything that has not argued its way out answers to the game's
+            // identity. Defaulting the other way would let a new weapon class opt
+            // out of the only balance rule this project has, simply by existing.
+            _ => BalanceLaw.ArcadeTtkWindow,
+        };
+
 #if UNITY_EDITOR
-        // Surfaces the number that actually defines the game, right in the Inspector.
+        // Surfaces the number that actually defines the game, right in the
+        // Inspector — but the number differs by class. Judging a sniper by TTK
+        // warned on every correctly authored sniper asset forever, which is the
+        // fastest way to teach a developer to ignore the console.
         private void OnValidate()
         {
             if (roundsPerMinute <= 0f) roundsPerMinute = 1f;
@@ -140,18 +244,124 @@ namespace CoD.Weapons
             if (reserveAmmo < 0) reserveAmmo = 0;
             if (pelletsPerShot < 1) pelletsPerShot = 1;
 
-            float ttk = TimeToKill() * 1000f;
-            if (ttk > 0f && (ttk < 150f || ttk > 500f))
+            switch (Law)
             {
-                Debug.LogWarning(
-                    $"[{name}] TTK is {ttk:F0} ms — outside the 200-400 ms arcade target. " +
-                    "Intentional? TTK is the defining choice of the whole game; change it deliberately, not by accident.",
-                    this);
+                case BalanceLaw.ArcadeTtkWindow:
+                {
+                    // No `ttk > 0` escape any more: a rifle-class weapon that
+                    // one-shots reports 0 ms, and that is precisely the mistake
+                    // worth shouting about rather than the one worth excusing.
+                    float ttk = TimeToKill() * 1000f;
+                    if (ttk < ARCADE_TTK_WARN_MIN_MS || ttk > ARCADE_TTK_WARN_MAX_MS)
+                    {
+                        Debug.LogWarning(
+                            $"[{name}] TTK is {ttk:F0} ms — outside the {ARCADE_TTK_MIN_MS:F0}-{ARCADE_TTK_MAX_MS:F0} ms arcade target. " +
+                            "Intentional? TTK is the defining choice of the whole game; change it deliberately, not by accident.",
+                            this);
+                    }
+                    break;
+                }
+
+                case BalanceLaw.ContactBurst:
+                {
+                    // A shotgun IS the gap between these two numbers. One pull at
+                    // every range is a sniper without a scope; two pulls at
+                    // contact is just a bad rifle.
+                    int contact = ShotsToKill();
+                    if (contact > 1)
+                    {
+                        Debug.LogWarning(
+                            $"[{name}] needs {contact} pulls to kill at contact — a shotgun that does not " +
+                            $"one-pull point blank has no identity. bodyDamage x pelletsPerShot is {DamagePerShot:F0}.",
+                            this);
+                    }
+                    else if (ShotsToKillAtRange(100f, SHOTGUN_TWO_PULL_METRES) <= 1)
+                    {
+                        Debug.LogWarning(
+                            $"[{name}] still one-pulls at {SHOTGUN_TWO_PULL_METRES:F0} m — falloffRange and " +
+                            "minDamageMultiplier are the only things stopping a shotgun from being the best rifle in the game.",
+                            this);
+                    }
+                    break;
+                }
+
+                case BalanceLaw.ReEngagementCost:
+                {
+                    // The exemption from the arcade window is EARNED BY THE ASSET,
+                    // never granted by the enum. Without this first check,
+                    // `weaponClass = Sniper` is a blanket exemption from every TTK
+                    // bound in the project: 25 damage at 60 RPM takes four pulls
+                    // and three full seconds to kill a 100 HP drone, answers to no
+                    // TTK bound at all, and nothing anywhere says a word. That is
+                    // the exact failure the split was written to prevent — a
+                    // 99-damage sniper that does not one-shot — with the gate that
+                    // caught it removed rather than replaced.
+                    //
+                    // Binary, so there is no wider warn band to author inside: a
+                    // weapon either one-pulls or it is in the wrong class. The
+                    // ContactBurst case above warns on the same terms.
+                    int pulls = ShotsToKill();
+                    if (pulls > 1)
+                    {
+                        Debug.LogWarning(
+                            $"[{name}] needs {pulls} pulls to kill ({DamagePerShot:F0} damage per pull, {TimeToKill() * 1000f:F0} ms) — " +
+                            $"it is exempt from the {ARCADE_TTK_MIN_MS:F0}-{ARCADE_TTK_MAX_MS:F0} ms arcade window on a " +
+                            "one-shot premise it does not meet, so it currently answers to no time-to-kill bound at all. " +
+                            "Raise bodyDamage x pelletsPerShot to 100, or give it a class whose law it can actually pass.",
+                            this);
+                    }
+
+                    // One shot, one kill is the design, so TTK is not the axis at
+                    // all. What keeps it honest is the cost of the SECOND shot.
+                    if (adsTime < ONE_SHOT_MIN_ADS_SECONDS || SecondsPerShot < ONE_SHOT_MIN_CYCLE_SECONDS)
+                    {
+                        Debug.LogWarning(
+                            $"[{name}] re-engages in {adsTime + SecondsPerShot:F2}s (ads {adsTime:F2}s + cycle {SecondsPerShot:F2}s) — " +
+                            $"below the {ONE_SHOT_MIN_ADS_SECONDS:F2}s / {ONE_SHOT_MIN_CYCLE_SECONDS:F2}s floor a one-shot weapon is " +
+                            "strictly better than the rifle at every range.",
+                            this);
+                    }
+                    break;
+                }
             }
         }
 #endif
     }
 
-    public enum WeaponClass { AssaultRifle, SMG, Shotgun, Marksman, Sniper, Pistol, LMG }
+    /// <summary>
+    /// The shape of a weapon, and the only thing that decides which balance law it
+    /// answers to. APPEND ONLY: Unity serialises an enum as its integer value, so
+    /// inserting a member silently re-classes every asset authored after it — an
+    /// AR that quietly becomes a shotgun changes which law it is held to and
+    /// leaves no import error behind.
+    /// </summary>
+    public enum WeaponClass { AssaultRifle, SMG, Shotgun, Marksman, Sniper, Pistol, LMG, Launcher }
+
+    /// <summary>
+    /// Which balance law a weapon class answers to.
+    ///
+    /// The 200-400 ms TTK window is the game's identity for the core automatics
+    /// and it is NOT universal. Enforcing it on a sniper produces a 99-damage
+    /// rifle that does not one-shot — worse than either honest answer — and it
+    /// breaks anyway the moment DifficultyConfig.healthMultiplierByWave (ramping
+    /// to 3.5x) means nothing one-shots regardless of what was authored.
+    /// </summary>
+    public enum BalanceLaw
+    {
+        /// <summary>TTK inside the arcade window against a 100 HP body. AR, SMG, LMG, Pistol, Marksman.</summary>
+        ArcadeTtkWindow,
+
+        /// <summary>One pull at contact, two or more at ten metres. The shotgun, and only the shotgun.</summary>
+        ContactBurst,
+
+        /// <summary>
+        /// One shot, one kill — judged on the cost of lining up the next one.
+        /// Sniper, Launcher. The one-shot half is ASSERTED, not assumed: both
+        /// OnValidate and WeaponDataTests check `ShotsToKill() == 1` before the
+        /// re-engagement floors, because otherwise this enum value alone is a
+        /// blanket exemption from every TTK bound in the project.
+        /// </summary>
+        ReEngagementCost,
+    }
     public enum FireMode { Single, Burst, FullAuto }
 }

@@ -69,3 +69,4 @@ MonoBehaviour:
   cameraShakeAmplitude: 0.6
   muzzleLightDuration: 0.03
   muzzleLightIntensity: 12
+  viewmodelMuzzleLightIntensity: 2.2

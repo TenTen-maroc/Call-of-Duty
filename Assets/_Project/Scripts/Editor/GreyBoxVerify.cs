@@ -66,6 +66,8 @@ namespace CoD.EditorTools
             ObjectiveConfig? objectiveConfig = Load<ObjectiveConfig>(
                 "Assets/_Project/Data/Game/Objective_Beacon.asset");
             Explosive? explosive = Load<Explosive>("Assets/_Project/Data/Effects/Effect_Explosive.asset");
+            WeaponConfig? rifle = Load<WeaponConfig>("Assets/_Project/Data/Weapons/AR_Standard.asset");
+            WeaponConfig? smg = Load<WeaponConfig>("Assets/_Project/Data/Weapons/SMG_Rapid.asset");
 
             foreach (GameObject root in scene.GetRootGameObjects())
             {
@@ -151,6 +153,29 @@ namespace CoD.EditorTools
                     // Without this link the saved sensitivity and FOV are read,
                     // clamped, saved — and never reach the camera.
                     Check(look, "_settings", stillNull);
+                    Check(look, "_camera", stillNull);
+                    // The overlay camera that draws the gun. A null here is the
+                    // quietest failure in the rig: the world camera still gets its
+                    // sprint and ADS FOV, the gun still renders on the viewmodel
+                    // layer at whatever FOV the builder happened to leave on it,
+                    // and the only symptom is that aiming stops moving the sights.
+                    Check(look, "_viewmodelCamera", stillNull);
+                }
+                foreach (CameraGraphics graphics in root.GetComponentsInChildren<CameraGraphics>(true))
+                {
+                    // Unwired, the graphics rows in the settings menu move and
+                    // nothing on screen changes.
+                    Check(graphics, "_settings", stillNull);
+                    Check(graphics, "_camera", stillNull);
+                    // ...and unwired HERE, only half the setting lands. URP
+                    // resolves a stack's post-processing at the LAST camera in it
+                    // that has the flag on, so clearing it on the base alone
+                    // leaves the frame graded and the player's "Post-processing:
+                    // Off" row inert — while the base camera, which is all the
+                    // tests used to read, reports success. The menu's
+                    // CameraGraphics has no overlay and is deliberately NOT
+                    // checked in VerifyMenuScene.
+                    Check(graphics, "_viewmodelCamera", stillNull);
                 }
                 foreach (SettingsHub service in root.GetComponentsInChildren<SettingsHub>(true))
                 {
@@ -165,6 +190,12 @@ namespace CoD.EditorTools
                     Check(weapon, "_input", stillNull);
                     Check(weapon, "_pool", stillNull);
                     Check(weapon, "_muzzle", stillNull);
+                    // Both muzzle lights. A camera culls lights by layer, so a
+                    // null here is not a missing light -- it is a muzzle flash
+                    // that lights the room but not the gun, or the reverse, and
+                    // either reads as a tuning problem rather than a broken ref.
+                    Check(weapon, "_muzzleLight", stillNull);
+                    Check(weapon, "_viewmodelMuzzleLight", stillNull);
                 }
                 foreach (Health h in root.GetComponentsInChildren<Health>(true))
                     Check(h, h.GetComponent<PlayerMotor>() != null ? "_playerConfig" : "_config", stillNull);
@@ -311,6 +342,16 @@ namespace CoD.EditorTools
             CheckAssetRef(rangedBurst, "projectilePrefab", stillNull);
             CheckAssetRef(heavySlam, "slamVfx", stillNull);
             CheckAssetRef(explosive, "explosionVfx", stillNull);
+            // Fx_MuzzleFlash stopped being decoration the day the viewmodel moved
+            // to its own layer: it now carries the point light that is the only
+            // thing lighting the GUN when it fires, because the world MuzzleLight
+            // sits on Default where the overlay camera cannot see it. A null here
+            // costs both the flash sprite and that light, and neither failure
+            // logs anything.
+            CheckAssetRef(rifle, "muzzleFlashPrefab", stillNull);
+            CheckAssetRef(rifle, "shellCasingPrefab", stillNull);
+            CheckAssetRef(smg, "muzzleFlashPrefab", stillNull);
+            CheckAssetRef(smg, "shellCasingPrefab", stillNull);
 
             // The menu scene gets the same save/reload treatment, and only NOW.
             // It opens other scenes, and opening a near-empty one lets Unity

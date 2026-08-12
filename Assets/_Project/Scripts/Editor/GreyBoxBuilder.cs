@@ -47,6 +47,14 @@ namespace CoD.EditorTools
         private const string Scenes = "Assets/_Project/Scenes";
         private const string Audio = "Assets/_Project/Audio";
 
+        /// <summary>
+        /// The layer the gun lives on, and the only layer the overlay camera
+        /// draws. Declared in ProjectSettings/TagManager.asset (user slot 8) —
+        /// a layer NAME is the only stable handle; the index is not, because
+        /// anyone reordering that file would silently repoint everything.
+        /// </summary>
+        private const string ViewmodelLayerName = "Viewmodel";
+
         private const string GreyBoxScenePath = Scenes + "/10_GreyBox.unity";
         private const string BootScenePath = Scenes + "/00_Boot.unity";
         private const string MainMenuScenePath = Scenes + "/20_MainMenu.unity";
@@ -1058,6 +1066,47 @@ namespace CoD.EditorTools
             return SavePrefab(root, Prefabs + "/Fx_ImpactSparks.prefab");
         }
 
+        /// <summary>
+        /// The flash belongs to the GUN, so it lives on the viewmodel layer.
+        ///
+        /// It spawns at the muzzle — 0.8 m in front of the lens, inside the wall
+        /// the player is standing against — and the world camera's 0.05 near
+        /// plane does not save it. It is also the one pooled effect whose
+        /// position is only meaningful against the viewmodel's projection: drawn
+        /// by the world camera at a different FOV it would sit off the barrel tip.
+        /// The layer goes on the PREFAB rather than at spawn time, so the pool
+        /// stays a dumb spawner and WeaponController never learns about layers.
+        ///
+        /// Fx_ShellCasing deliberately does NOT get this treatment — it has a
+        /// Rigidbody and has to bounce off the real floor.
+        ///
+        /// IT ALSO CARRIES THE HALF OF THE MUZZLE FLASH THAT LIGHTS THE GUN.
+        /// A camera's culling mask culls LIGHTS by the light's GameObject layer,
+        /// not only renderers, and the two cameras have disjoint masks — so no
+        /// single light can reach both the room and the viewmodel. Splitting the
+        /// rig onto its own layer therefore silently cost the gun its muzzle
+        /// flash: the world MuzzleLight under the Muzzle transform stayed on
+        /// Default (correct — it lights the room and the drones) and became
+        /// invisible to the only camera that draws the weapon. On the most
+        /// repeated visual event in the game.
+        ///
+        /// WHY THE SECOND LIGHT LIVES HERE AND NOT UNDER THE MUZZLE
+        /// WeaponController drives exactly one serialized Light, by toggling
+        /// `Behaviour.enabled` — and `enabled` is per COMPONENT: it does not
+        /// cascade to children, so a second Light parented under MuzzleLight would
+        /// simply burn permanently. Giving the gun its own flash light from under
+        /// the Muzzle transform therefore needs a second serialized field on
+        /// WeaponController. The pool already provides the identical lifetime for
+        /// free: this prefab is spawned by SpawnMuzzleEffects on the same shot and
+        /// despawned by the pool after `muzzleFlashLifetime`, so the light and the
+        /// flash sprite are one object and can never desync.
+        ///
+        /// Range and intensity are scene construction, like BuildArenaLights — the
+        /// light only ever reaches eight cubes half a metre away, so a wide range
+        /// buys nothing. NOT Light.cullingMask: URP ignores per-light culling
+        /// masks (it uses rendering layers), and the camera mask above is what
+        /// actually keeps this off the world.
+        /// </summary>
         private static GameObject BuildMuzzleFlashPrefab(Material material)
         {
             GameObject root = new("Fx_MuzzleFlash");
@@ -1066,7 +1115,18 @@ namespace CoD.EditorTools
             quad.transform.localScale = Vector3.one * 0.22f;
             Object.DestroyImmediate(quad.GetComponent<Collider>());
             quad.GetComponent<MeshRenderer>().sharedMaterial = material;
+
+            // NO LIGHT ON THIS PREFAB, deliberately. It is pooled, so its
+            // lifetime is muzzleFlashLifetime — the SPRITE's number, which is
+            // allowed to be long because overlapping sprites look fine. A light
+            // inheriting it does not: at the SMG's 900 rpm there are 0.0667 s
+            // between shots and an 0.08 s light never goes out, so sustained
+            // fire put the viewmodel under a continuous glow while the room
+            // strobed correctly. The gun's flash light lives on the rig instead,
+            // on WeaponController's own muzzleLightDuration clock, beside the
+            // world one. See UpdateMuzzleLight.
             root.AddComponent<PooledObject>();
+            SetLayerRecursive(root, RequireViewmodelLayer());
             return SavePrefab(root, Prefabs + "/Fx_MuzzleFlash.prefab");
         }
 
@@ -1498,7 +1558,7 @@ namespace CoD.EditorTools
 
             (WeaponController weapon, PlayerLook look, Health playerHealth, Transform muzzle,
                 Transform playerTransform, Transform cameraTransform) =
-                BuildPlayerRig(game, loadout, impact, pool, gunmetal, gunAccent, run, settingsHub);
+                BuildPlayerRig(game, loadout, impact, pool, gunmetal, gunAccent, run, settingsHub, palette);
 
             BuildTargets(dummyPrefab, targetMat);
             (DroneSpawner spawner, DroneRegistry registry) = BuildDroneRig(drones, pool, playerTransform);
@@ -1824,9 +1884,125 @@ namespace CoD.EditorTools
             renderer.receiveShadows = false;
         }
 
+        /// <summary>
+        /// The Viewmodel layer index, or a build that stops right here.
+        ///
+        /// LayerMask.NameToLayer returns -1 for a layer that does not exist, and
+        /// Unity will cheerfully assign -1 to a GameObject: nothing throws, the
+        /// build "succeeds", and the failure surfaces as a gun that renders in no
+        /// camera at all — hours later, in play, with every gate green. A missing
+        /// row in TagManager.asset is a five-second fix and an all-afternoon
+        /// diagnosis, so it is worth failing loudly at the moment it is read.
+        /// </summary>
+        private static int RequireViewmodelLayer()
+        {
+            int layer = LayerMask.NameToLayer(ViewmodelLayerName);
+            if (layer < 0)
+            {
+                Debug.LogError($"GreyBoxBuilder: there is no '{ViewmodelLayerName}' layer. " +
+                               "Add it to ProjectSettings/TagManager.asset (first free user slot, index 8) " +
+                               "and build again — without it the viewmodel camera has nothing to draw.");
+                throw new System.InvalidOperationException(
+                    $"Missing '{ViewmodelLayerName}' layer in TagManager.asset");
+            }
+            return layer;
+        }
+
+        /// <summary>
+        /// Layers do NOT inherit down a hierarchy in Unity — reparenting the rig
+        /// under the overlay camera leaves all eight cubes on Default, where the
+        /// world camera still draws them and the overlay camera does not. Every
+        /// object in the subtree has to be moved by hand.
+        /// </summary>
+        private static void SetLayerRecursive(GameObject root, int layer)
+        {
+            root.layer = layer;
+            foreach (Transform child in root.transform) SetLayerRecursive(child.gameObject, layer);
+        }
+
+        /// <summary>
+        /// The camera that draws the gun, and nothing but the gun.
+        ///
+        /// WHY A SECOND CAMERA AT ALL
+        /// One camera cannot do both jobs. The world wants a 0.05 near plane and
+        /// an FOV that moves — the sprint bonus widens it, ADS and the fire kick
+        /// pull it in. The gun wants a near plane in front of its own muzzle and
+        /// an FOV that never moves. Sharing one camera gave us both defects at
+        /// once: the barrel intersected every wall the player backed into, and
+        /// the whole model stretched on every sprint and every shot. A URP
+        /// overlay is the cheap fix — same transform, its own projection, drawn
+        /// on top with a depth-only clear.
+        ///
+        /// ORDER MATTERS: renderType goes to Overlay BEFORE the camera joins the
+        /// stack. URP rejects a Base camera added to a stack and logs an error,
+        /// and this builder runs headlessly in CI where an error is the verdict.
+        ///
+        /// NOT tagged MainCamera and NO AudioListener. Camera.main must keep
+        /// returning the world camera — RenderingTests asserts post-processing on
+        /// whatever carries that tag — and a second listener is a permanent
+        /// console warning plus undefined 3D audio.
+        /// </summary>
+        private static Camera BuildViewmodelCamera(GameObject baseCameraObject, Camera baseCamera,
+            GameConfig game, int viewmodelLayer)
+        {
+            GameObject holder = new("ViewmodelCamera");
+            holder.transform.SetParent(baseCameraObject.transform, false);
+
+            Camera camera = holder.AddComponent<Camera>();
+            camera.clearFlags = CameraClearFlags.Depth;
+            camera.cullingMask = 1 << viewmodelLayer;
+            camera.fieldOfView = game.viewmodelFovVertical;
+            // 1 cm to 5 m. The near plane is the anti-clipping half of the fix;
+            // the far plane is free performance, because nothing on this layer is
+            // ever more than an arm's length away.
+            camera.nearClipPlane = 0.01f;
+            camera.farClipPlane = 5f;
+            camera.useOcclusionCulling = false;
+
+            UniversalAdditionalCameraData data = camera.GetUniversalAdditionalCameraData();
+            data.renderType = CameraRenderType.Overlay;
+            // Post ON for both cameras in the stack, AA only on the base. URP
+            // takes the stack's anti-aliasing from the base camera, and asking
+            // two cameras for SMAA is how you pay for it twice.
+            //
+            // This `true` is only the SHIPPED DEFAULT, exactly like the one in
+            // EnablePostProcessing. CameraGraphics owns the flag from OnEnable
+            // onwards and writes the player's saved choice to BOTH cameras — it
+            // has to, because URP resolves the stack's post at the last camera in
+            // it with the flag set, which is this one.
+            data.renderPostProcessing = true;
+            data.antialiasing = AntialiasingMode.None;
+
+            UniversalAdditionalCameraData baseData = baseCamera.GetUniversalAdditionalCameraData();
+            baseData.cameraStack.Add(camera);
+
+            // The gun needs its own light. A culling mask culls lights too, so the
+            // sun and all four arena lights are invisible to this camera and the
+            // viewmodel would render on ambient alone — near black, on a metallic
+            // 0.85 material in a bunker with a flat dark reflection. One key light
+            // parented to the camera is also the correct look: the gun stays lit
+            // identically wherever the player stands, which is what every shooter
+            // does and what makes a viewmodel read as held rather than as placed.
+            // Numbers here are scene construction, like BuildArenaLights above.
+            GameObject keyObject = new("ViewmodelKey");
+            keyObject.transform.SetParent(holder.transform, false);
+            keyObject.transform.localRotation = Quaternion.Euler(38f, -34f, 0f);
+            keyObject.layer = viewmodelLayer;
+
+            Light key = keyObject.AddComponent<Light>();
+            key.type = LightType.Directional;
+            key.intensity = 1.15f;
+            key.color = new Color(1f, 0.97f, 0.92f);
+            // Nothing on this layer casts or receives shadows — AddViewmodelPart
+            // turns both off per renderer — so a shadow map here is pure cost.
+            key.shadows = LightShadows.None;
+
+            return camera;
+        }
+
         private static (WeaponController, PlayerLook, Health, Transform, Transform, Transform) BuildPlayerRig(
             GameConfig game, PlayerLoadoutConfig loadout, ImpactConfig impact, ObjectPool pool,
-            Material gunmetal, Material gunAccent, RunContext run, SettingsHub settings)
+            Material gunmetal, Material gunAccent, RunContext run, SettingsHub settings, PaletteConfig palette)
         {
             GameObject player = new("Player");
             player.transform.position = new Vector3(0f, 0.1f, -12f);
@@ -1858,19 +2034,36 @@ namespace CoD.EditorTools
             pivot.transform.SetParent(player.transform, false);
             pivot.transform.localPosition = new Vector3(0f, game.standingHeight - 0.2f, 0f);
 
+            // Read before anything is built: a missing layer must stop the build,
+            // not produce a scene that only fails once someone plays it.
+            int viewmodelLayer = RequireViewmodelLayer();
+
             GameObject cameraObject = new("Main Camera");
             cameraObject.tag = "MainCamera";
             cameraObject.transform.SetParent(pivot.transform, false);
             Camera camera = cameraObject.AddComponent<Camera>();
             camera.fieldOfView = game.baseFovVertical;
             camera.nearClipPlane = 0.05f;
+            // The world camera must never see the gun. Everything else it sees is
+            // untouched — this clears one bit, it does not rewrite the mask.
+            camera.cullingMask &= ~(1 << viewmodelLayer);
             EnablePostProcessing(camera);
             cameraObject.AddComponent<AudioListener>();
             CameraShake shake = cameraObject.AddComponent<CameraShake>();
 
+            Camera viewmodelCamera = BuildViewmodelCamera(cameraObject, camera, game, viewmodelLayer);
+
+            // Wired AFTER the overlay exists, and it takes BOTH cameras. URP
+            // resolves the stack's post-processing at the last camera in it that
+            // has renderPostProcessing on, so a CameraGraphics holding only the
+            // base camera cannot turn post off: the player clears the setting, the
+            // base goes false, the overlay stays true, and the frame is still
+            // graded. The player-facing R2 row would be inert on the one path that
+            // ships. See CameraGraphics.Apply for why AA is base-only.
             CameraGraphics graphics = cameraObject.AddComponent<CameraGraphics>();
             SetRef(graphics, "_settings", settings);
             SetRef(graphics, "_camera", camera);
+            SetRef(graphics, "_viewmodelCamera", viewmodelCamera);
 
             PlayerLook look = player.AddComponent<PlayerLook>();
             SetRef(look, "_config", game);
@@ -1878,14 +2071,20 @@ namespace CoD.EditorTools
             SetRef(look, "_motor", motor);
             SetRef(look, "_cameraPivot", pivot.transform);
             SetRef(look, "_camera", camera);
+            SetRef(look, "_viewmodelCamera", viewmodelCamera);
             SetRef(look, "_settings", settings);   // saved sensitivity / FOV / invert
 
             // The viewmodel. There was no gun on screen at all before this, which
             // is most of why the grey box read as a tech demo rather than a
             // shooter: nothing occupies the lower-right, nothing moves when you
             // look around, and the muzzle flash spawns in empty air.
+            // Parented to the OVERLAY camera, not the world one. Same transform,
+            // same pose, different projection and a different near plane — which
+            // is the whole fix: at a 0.05 near clip on the world camera the barrel
+            // tip sits 0.53 m out and pushes straight through any wall the player
+            // stands against.
             GameObject weaponRig = new("WeaponRig");
-            weaponRig.transform.SetParent(cameraObject.transform, false);
+            weaponRig.transform.SetParent(viewmodelCamera.transform, false);
             weaponRig.transform.localPosition = new Vector3(0.145f, -0.125f, 0.28f);
 
             GameObject model = new("Viewmodel");
@@ -1920,8 +2119,42 @@ namespace CoD.EditorTools
             Light muzzleLight = lightObject.AddComponent<Light>();
             muzzleLight.type = LightType.Point;
             muzzleLight.range = 8f;
-            muzzleLight.color = new Color(1f, 0.85f, 0.55f);
+            muzzleLight.color = palette.sparkHot;
             muzzleLight.enabled = false;
+
+            // The SECOND muzzle light, and the reason there has to be one: a
+            // camera culls lights by the light's layer, so the world light above
+            // is invisible to the overlay camera that draws the gun, and this one
+            // is invisible to the world. Short range because it is centimetres
+            // from the barrel rather than metres from a wall. Both are driven off
+            // one timer in UpdateMuzzleLight, so they can never desync.
+            GameObject viewmodelLightObject = new("MuzzleLight_Viewmodel");
+            viewmodelLightObject.transform.SetParent(muzzle.transform, false);
+            Light viewmodelMuzzleLight = viewmodelLightObject.AddComponent<Light>();
+            viewmodelMuzzleLight.type = LightType.Point;
+            viewmodelMuzzleLight.range = 1.6f;
+            viewmodelMuzzleLight.color = palette.sparkHot;
+            viewmodelMuzzleLight.shadows = LightShadows.None;
+            viewmodelMuzzleLight.enabled = false;
+
+            // The whole rig moves to the viewmodel layer LAST, once every child
+            // exists — the parts, the muzzle, the eject port and the flash light.
+            SetLayerRecursive(weaponRig, viewmodelLayer);
+
+            // ...and the muzzle light comes straight back out of it. A camera's
+            // culling mask culls LIGHTS as well as renderers, so a light left on
+            // the viewmodel layer would be invisible to the world camera and the
+            // muzzle flash would stop lighting the room — the one thing this
+            // light exists to do, and the reason its duration and intensity are
+            // per-weapon numbers on WeaponConfig.
+            //
+            // The masks are disjoint, so this light cannot also light the gun: no
+            // single light can be seen by both cameras. The gun's half of the
+            // flash is a second point light on the Fx_MuzzleFlash prefab, which is
+            // spawned on the same shot and lives on the viewmodel layer — see
+            // BuildMuzzleFlashPrefab for why it cannot hang here instead. The
+            // steady key light for the gun is ViewmodelKey.
+            lightObject.layer = LayerMask.NameToLayer("Default");
 
             AudioSource closeAudio = cameraObject.AddComponent<AudioSource>();
             closeAudio.playOnAwake = false;
@@ -1943,6 +2176,7 @@ namespace CoD.EditorTools
             SetRef(weapon, "_muzzle", muzzle.transform);
             SetRef(weapon, "_casingEject", casingEject.transform);
             SetRef(weapon, "_muzzleLight", muzzleLight);
+            SetRef(weapon, "_viewmodelMuzzleLight", viewmodelMuzzleLight);
             SetRef(weapon, "_audioClose", closeAudio);
             SetRef(weapon, "_audioTail", tailAudio);
 

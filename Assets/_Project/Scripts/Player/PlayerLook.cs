@@ -11,6 +11,10 @@ namespace CoD.Player
     /// Camera work runs in LateUpdate, always: if the camera moved in Update it
     /// could be applied before the motor moved the body that frame, and the
     /// result is a subtle jitter that is very hard to diagnose later.
+    ///
+    /// TWO cameras, one rig. _camera draws the world; _viewmodelCamera is a URP
+    /// overlay stacked on top of it that draws the gun and nothing else. They
+    /// share a transform and a near/far split, never an FOV — see UpdateFov.
     /// </summary>
     [DisallowMultipleComponent]
     public sealed class PlayerLook : MonoBehaviour
@@ -21,6 +25,8 @@ namespace CoD.Player
         [Tooltip("The pitch pivot. The camera itself lives under this.")]
         [SerializeField] private Transform? _cameraPivot = null;
         [SerializeField] private Camera? _camera = null;
+        [Tooltip("The overlay camera that draws the gun and nothing else. Its FOV is held fixed on purpose.")]
+        [SerializeField] private Camera? _viewmodelCamera = null;
         [Tooltip("Optional. When present, the player's saved sensitivity/FOV/invert override the config defaults.")]
         [SerializeField] private SettingsHub? _settings = null;
 
@@ -40,14 +46,27 @@ namespace CoD.Player
         private float _recoilPitch;
         private float _recoilYaw;
         private float _fovOffset;
+        private float _adsProgress;
         private float _dipDegrees;
         private float _dipVelocity;
 
         /// <summary>Set by the weapon while aiming, so ADS slows the crosshair.</summary>
         public void SetSensitivityMultiplier(float multiplier) => _sensitivityMultiplier = multiplier;
 
-        /// <summary>Additive FOV from the weapon (ADS zoom, fire kick).</summary>
+        /// <summary>Additive FOV from the weapon (ADS zoom, fire kick). WORLD camera only.</summary>
         public void SetFovOffset(float offset) => _fovOffset = offset;
+
+        /// <summary>
+        /// 0 hip, 1 fully aimed. The viewmodel camera is the only thing that reads
+        /// it, and it reads it INSTEAD of the world FOV offset: that offset also
+        /// carries the per-shot fire kick, and a gun that changes shape every time
+        /// it fires is the exact defect the second camera exists to remove.
+        ///
+        /// Pushed in rather than pulled, because CoD.Weapons references CoD.Player
+        /// and not the other way round — this component cannot see a
+        /// WeaponController without making the two assemblies circular.
+        /// </summary>
+        public void SetAdsProgress(float progress) => _adsProgress = Mathf.Clamp01(progress);
 
         /// <summary>Called once per shot. Recoil is a camera rotation, not a crosshair effect.</summary>
         public void AddRecoil(float pitchDegrees, float yawDegrees)
@@ -147,14 +166,38 @@ namespace CoD.Player
             UpdateLandingDip();
         }
 
+        /// <summary>
+        /// Two cameras, two formulas — and the sprint bonus reaches only one.
+        ///
+        /// The sprint bonus and the weapon's ADS/kick offset belong to the scene:
+        /// widening the view while sprinting sells speed, and pulling it in while
+        /// aiming sells the zoom. Applying either to the gun sells nothing — it
+        /// stretches a model that sits 30 cm from the lens, and at a 40 degree FOV
+        /// swing that is a visible warp on every sprint and every shot. Splitting
+        /// the two cameras is what makes the sprint bonus tunable at all: it used
+        /// to be bounded by how much distortion the viewmodel could survive.
+        /// </summary>
         private void UpdateFov()
         {
-            if (_camera == null || _config == null) return;
+            if (_config == null) return;
 
-            float sprintBonus = _motor != null && _motor.IsSprinting ? _config.sprintFovBonus : 0f;
-            float target = _fovVertical + sprintBonus + _fovOffset;
-            float ease = Mathf.Max(0.01f, _config.sprintFovEaseTime);
-            _camera.fieldOfView = Mathf.Lerp(_camera.fieldOfView, target, 1f - Mathf.Exp(-Time.deltaTime / ease));
+            if (_camera != null)
+            {
+                float sprintBonus = _motor != null && _motor.IsSprinting ? _config.sprintFovBonus : 0f;
+                float target = _fovVertical + sprintBonus + _fovOffset;
+                float ease = Mathf.Max(0.01f, _config.sprintFovEaseTime);
+                _camera.fieldOfView = Mathf.Lerp(_camera.fieldOfView, target, 1f - Mathf.Exp(-Time.deltaTime / ease));
+            }
+
+            if (_viewmodelCamera != null)
+            {
+                // Fixed base plus an ADS-only delta. Not eased toward a moving
+                // target like the world camera: _adsProgress is already a ramp
+                // (WeaponController walks it with MoveTowards), so easing it again
+                // would put the sights up after the zoom had finished.
+                _viewmodelCamera.fieldOfView =
+                    _config.viewmodelFovVertical + _config.viewmodelAdsFovDelta * _adsProgress;
+            }
         }
 
         private void UpdateLandingDip()

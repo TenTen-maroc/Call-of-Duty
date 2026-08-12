@@ -113,12 +113,20 @@ namespace CoD.Tests
         }
 
         /// <summary>
-        /// The settings actually REACH the camera.
+        /// The settings actually REACH the camera — BOTH of them.
         ///
         /// CameraGraphics holds a serialized SettingsHub reference, and a null one
         /// is silent: the component sits there, the menu row moves, and nothing
         /// changes on screen. Driving the hub and reading the camera back is the
         /// only way to prove the link survived the scene build.
+        ///
+        /// The overlay half is the one that was actually broken. URP resolves a
+        /// camera stack's post-processing at the LAST camera in the stack with
+        /// renderPostProcessing enabled — the viewmodel camera. The builder pinned
+        /// that one to true, so a player choosing "Post-processing: Off" cleared
+        /// the base, the overlay stayed on, and the frame was still graded. This
+        /// test could not see it, because it only ever read the base camera. Half
+        /// a test is how a player-facing setting ships inert.
         /// </summary>
         [UnityTest]
         public IEnumerator GraphicsSettings_ReachTheCamera()
@@ -133,13 +141,23 @@ namespace CoD.Tests
             var data = Camera.main!.GetComponent<UniversalAdditionalCameraData>();
             Assert.IsNotNull(data);
 
+            Assert.AreEqual(1, data!.cameraStack.Count,
+                "the world camera's stack must hold exactly one overlay — the viewmodel camera");
+            Camera? overlay = data.cameraStack[0];
+            Assert.IsNotNull(overlay, "the stack entry is null; the overlay camera was destroyed or never wired");
+            var overlayData = overlay!.GetComponent<UniversalAdditionalCameraData>();
+            Assert.IsNotNull(overlayData, "the viewmodel camera has no UniversalAdditionalCameraData");
+
             hub!.Current.SetPostProcessing(false);
             hub.Current.SetAntiAliasing(AntiAliasingMode.Off);
             hub.Apply();
             yield return null;
 
-            Assert.IsFalse(data!.renderPostProcessing, "turning post-processing off did not reach the camera");
+            Assert.IsFalse(data.renderPostProcessing, "turning post-processing off did not reach the camera");
             Assert.AreEqual(AntialiasingMode.None, data.antialiasing);
+            Assert.IsFalse(overlayData!.renderPostProcessing,
+                "the overlay camera kept post-processing on. URP resolves the stack's post at the last camera " +
+                "that has it enabled, so the frame is still graded and the player's 'off' does nothing");
 
             hub.Current.SetPostProcessing(true);
             hub.Current.SetAntiAliasing(AntiAliasingMode.Smaa);
@@ -148,6 +166,16 @@ namespace CoD.Tests
 
             Assert.IsTrue(data.renderPostProcessing, "turning it back on did not reach the camera either");
             Assert.AreEqual(AntialiasingMode.SubpixelMorphologicalAntiAliasing, data.antialiasing);
+            Assert.IsTrue(overlayData.renderPostProcessing,
+                "the overlay camera did not follow post-processing back on");
+
+            // Anti-aliasing is base-only ON PURPOSE, and asserted so rather than
+            // merely left alone: URP takes a stack's post AA from the BASE camera,
+            // so mirroring SMAA onto the overlay is either dead weight or a second
+            // full-screen pass on the 4 GB laptop GPU this project is sized for.
+            Assert.AreEqual(AntialiasingMode.None, overlayData.antialiasing,
+                "anti-aliasing was mirrored onto the overlay; URP reads it from the base camera, so this is " +
+                "either ignored or paid for twice");
         }
 
         /// <summary>

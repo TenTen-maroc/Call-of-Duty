@@ -671,6 +671,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   _agent: {fileID: 2217934185289538718}
+  _animator: {fileID: 0}
   _health: {fileID: 7530227785680900826}
   _pooled: {fileID: 5842168856093692287}
   _audio: {fileID: 736925624389356012}
