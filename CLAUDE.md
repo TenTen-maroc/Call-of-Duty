@@ -67,7 +67,11 @@ errors, and the release binary contains no cheat-console code at all.
 overrode the content gate below. They are the least proven work in the project:
 they compile, they are covered by tests, and nobody has ever felt them.
 
-The full plan lives in [docs/PLAN-CAMPAIGN.md](docs/PLAN-CAMPAIGN.md). The
+The full plan lives in two documents:
+[docs/PLAN-CAMPAIGN.md](docs/PLAN-CAMPAIGN.md) for missions and human enemies, and
+[docs/PLAN-GRAPHICS-AND-GUNS.md](docs/PLAN-GRAPHICS-AND-GUNS.md) for the image and
+the arsenal — the latter written after the render pass, and specific enough to
+execute from. The
 shape of it, in dependency order, because the order is the load-bearing part:
 
 | | Track | Lands |
