@@ -1,0 +1,54 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: d330940934eaa2f3ceeac0efd74e214c, type: 3}
+  m_Name: Footsteps_Player
+  m_EditorClassIdentifier: 
+  strideLength: 0.85
+  minSpeed: 0.55
+  firstStepFraction: 0.55
+  groundMask:
+    serializedVersion: 2
+    m_Bits: 4294967035
+  probeStartHeight: 0.6
+  probeDistance: 1.6
+  walkVolume: 0.55
+  walkPitch: 1
+  sprintVolume: 0.85
+  sprintPitch: 0.95
+  crouchVolume: 0.22
+  crouchPitch: 1.05
+  pitchJitter: 0.07
+  volumeJitter: 0.06
+  landMinImpact: 0.12
+  landVolume: 0.8
+  landPitch: 0.9
+  surfaces:
+  - label: Concrete
+    layers:
+      serializedVersion: 2
+      m_Bits: 1
+    physicsMaterial: {fileID: 0}
+    stepClips: []
+    landClips: []
+    volumeScale: 1
+    pitchScale: 1
+  - label: Metal grating
+    layers:
+      serializedVersion: 2
+      m_Bits: 0
+    physicsMaterial: {fileID: 0}
+    stepClips: []
+    landClips: []
+    volumeScale: 1.15
+    pitchScale: 1.12
+  defaultSurface: 0
+  outputGroup: {fileID: 0}

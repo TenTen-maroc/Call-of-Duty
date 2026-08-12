@@ -10,49 +10,49 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 562f233c3d4d60408284231b35233590, type: 3}
-  m_Name: SMG_Rapid
+  m_Name: Pistol_Sidearm
   m_EditorClassIdentifier: 
-  stableId: wpn_smg_rapid
-  displayName: SMG
-  weaponClass: 1
+  stableId: wpn_pistol_sidearm
+  displayName: Sidearm
+  weaponClass: 5
   effectModules: []
-  bodyDamage: 20
+  bodyDamage: 34
   headshotMultiplier: 1.5
-  falloffRange: {x: 14, y: 34}
-  minDamageMultiplier: 0.5
-  maxRange: 200
-  roundsPerMinute: 900
-  fireMode: 2
+  falloffRange: {x: 12, y: 30}
+  minDamageMultiplier: 0.45
+  maxRange: 120
+  roundsPerMinute: 400
+  fireMode: 0
   burstCount: 3
   burstPause: 0.12
-  magazineSize: 40
-  reserveAmmo: 240
+  magazineSize: 12
+  reserveAmmo: 96
   pelletsPerShot: 1
   pelletSpreadDegrees: 0
-  adsTime: 0.2
-  sprintToFireTime: 0.15
-  reloadTime: 1.8
-  reloadEmptyTime: 2.3
-  swapTime: 0.6
+  adsTime: 0.15
+  sprintToFireTime: 0.12
+  reloadTime: 1.4
+  reloadEmptyTime: 1.9
+  swapTime: 0.35
   reloadCommitPoint: 0.75
   dryFireCooldown: 0.25
-  verticalKickFirstShot: 0.45
-  verticalKickAtShotEight: 0.95
-  horizontalKickMax: 0.45
-  recoilSeed: 4242
-  recoveryDelay: 0.09
-  recoveryDuration: 0.25
-  recoveryCompleteness: 0.85
+  verticalKickFirstShot: 0.9
+  verticalKickAtShotEight: 1.1
+  horizontalKickMax: 0.3
+  recoilSeed: 7331
+  recoveryDelay: 0.06
+  recoveryDuration: 0.18
+  recoveryCompleteness: 0.95
   adsRecoilMultiplier: 0.6
   crouchRecoilMultiplier: 0.8
-  baseSpread: 3.2
-  spreadPerShot: 0.3
-  maxSpread: 7
+  baseSpread: 2
+  spreadPerShot: 0.45
+  maxSpread: 5.5
   spreadDecayRate: 4
   movingMultiplier: 1.4
   crouchedMultiplier: 0.7
   airborneMultiplier: 2
-  adsFovMultiplier: 0.75
+  adsFovMultiplier: 0.85
   adsSensitivityMultiplier: 0.75
   fovKickOnFire: 1.5
   fovKickDuration: 0.06
@@ -67,7 +67,7 @@ MonoBehaviour:
   dryFireClip: {fileID: 8300000, guid: d4eb67c03035d1cf3a420a3329ffadc1, type: 3}
   reloadClip: {fileID: 8300000, guid: 21c305d77a740d3a605152777a6a7c57, type: 3}
   muzzleFlashLifetime: 0.08
-  cameraShakeAmplitude: 0.6
+  cameraShakeAmplitude: 0.45
   muzzleLightDuration: 0.03
   muzzleLightIntensity: 12
   viewmodelMuzzleLightIntensity: 2.2

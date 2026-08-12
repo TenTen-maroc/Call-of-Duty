@@ -40,6 +40,8 @@ namespace CoD.Weapons
         [SerializeField] private Light? _viewmodelMuzzleLight = null;
         [SerializeField] private AudioSource? _audioClose = null;
         [SerializeField] private AudioSource? _audioTail = null;
+        [Tooltip("Moved to the impact point before every surface hit, so a round into the far wall sounds like it is over there. Optional: without it the impact plays on the close layer, at the gun, which is wrong-but-audible rather than silent.")]
+        [SerializeField] private AudioSource? _audioImpact = null;
         [Tooltip("The shooter's own Health, so effect modules never damage the player who fired.")]
         [SerializeField] private Health? _ownerHealth = null;
         [Tooltip("What bullets can hit. Leave the player's own layer out of this.")]
@@ -53,6 +55,42 @@ namespace CoD.Weapons
         private bool _wasSprinting;
         private float _statDamageMultiplier = 1f;
         private float _statReloadSpeed = 1f;
+
+        /// <summary>
+        /// Cached in Awake. The impact source is REPOSITIONED per hit, and
+        /// `transform` is a property call into native code on a path that runs
+        /// once per pellet.
+        /// </summary>
+        private Transform? _audioImpactTransform;
+
+        /// <summary>
+        /// Where the round STOPPED — the point a tracer flies to.
+        ///
+        /// Recorded during the cast and consumed afterwards, because the tracer
+        /// is spawned from SpawnMuzzleEffects and by then the rays have already
+        /// resolved. Seeded every pull with the far end of the aim ray, so a shot
+        /// into open air still throws a tracer that goes somewhere: a round that
+        /// misses and produces nothing is the exact feedback hole this work
+        /// exists to close.
+        /// </summary>
+        private Vector3 _tracerEnd;
+        private bool _tracerEndResolved;
+
+        /// <summary>
+        /// Rounds still to fire before the next tracer, and before the next
+        /// smoke puff. Counters rather than `shotCount % n`, so the very first
+        /// round of a run carries a tracer and no counter can overflow into a
+        /// negative modulo after a long session.
+        /// </summary>
+        private int _roundsUntilTracer;
+        private int _roundsUntilSmoke;
+
+        /// <summary>
+        /// Set once, the first time a tracer prefab turns out to carry no Tracer
+        /// component. Without the latch the error would be logged on every third
+        /// round for the rest of the run, which is how a console stops being read.
+        /// </summary>
+        private bool _tracerPrefabReported;
 
         // Pre-sized buffer: RaycastNonAlloc never allocates, which matters once
         // hundreds of shots per minute are flying.
@@ -260,6 +298,7 @@ namespace CoD.Weapons
             _runtime = new WeaponRuntime(config);
             if (_muzzleLight != null) _muzzleLight.enabled = false;
             if (_viewmodelMuzzleLight != null) _viewmodelMuzzleLight.enabled = false;
+            if (_audioImpact != null) _audioImpactTransform = _audioImpact.transform;
         }
 
         private void Start()
@@ -435,7 +474,24 @@ namespace CoD.Weapons
             _announcedThisPull.Clear();
             _oncePerPullSpent.Clear();
 
-            float spread = CurrentSpreadDegrees();
+            // The tracer's destination, seeded before anything is cast. A pull
+            // that hits nothing keeps this value and throws its tracer down the
+            // aim ray to maximum range, which is what a miss looks like.
+            Ray aim = _look.AimRay;
+            _tracerEnd = aim.origin + aim.direction * config.maxRange;
+            _tracerEndResolved = false;
+
+            // The PATTERN floors the bloom, and this line is what makes a shotgun
+            // a shotgun rather than a very loud rifle.
+            //
+            // CurrentSpreadDegrees returns exactly 0 while aiming, deliberately —
+            // ADS is supposed to be precise. Applied to a twelve-pellet weapon
+            // that meant all twelve pellets were the SAME RAY: one impact point
+            // wearing twelve decals and twelve spark systems, and twelve
+            // PlayOneShot calls of one clip on one AudioSource in one frame, which
+            // sum phase-aligned into roughly twelve times the amplitude and eat a
+            // third of Unity's voice budget on a single trigger pull.
+            float spread = Mathf.Max(config.pelletSpreadDegrees, CurrentSpreadDegrees());
             int pellets = Mathf.Max(1, config.pelletsPerShot);
             for (int pellet = 0; pellet < pellets; pellet++) CastOneRay(config, spread);
 
@@ -500,6 +556,17 @@ namespace CoD.Weapons
             }
 
             SortHitsByDistance(count);
+
+            // ONE TRACER PER ROUND, not per pellet. A round is what leaves the
+            // barrel; twelve pellets are how it is modelled. Twelve trails from
+            // one pull would be a shotgun that fires a searchlight, so the FIRST
+            // pellet to find anything owns the line and every pellet after it
+            // leaves this alone.
+            if (!_tracerEndResolved)
+            {
+                _tracerEnd = _hitBuffer[0].point;
+                _tracerEndResolved = true;
+            }
 
             float multiplier = 1f;
             int resolved = 0;
@@ -805,14 +872,68 @@ namespace CoD.Weapons
             Quaternion rotation = Quaternion.LookRotation(hit.normal);
             Vector3 point = hit.point + hit.normal * _impact.surfaceOffset;
 
-            if (!onBody && _impact.decalPrefab != null)
+            // KEYED ON THE COLLIDER'S LAYER, and that is the whole design.
+            // `Collider.gameObject.layer` is an int the physics engine already
+            // had to know: no component lookup, no allocation, and nothing here
+            // that guard-no-find-in-update would have to forgive. A SurfaceTag
+            // MonoBehaviour would have been a GetComponent per pellet on a path
+            // reached from Update, forty drones deep.
+            //
+            // A null response means no row claimed this layer; the config's
+            // fallback block answers, so an unmapped surface still sparks. A
+            // silent impact is indistinguishable from a missed shot.
+            ImpactConfig.SurfaceResponse? surface = _impact.ResponseFor(hit.collider.gameObject.layer, onBody);
+            GameObject? decal = surface != null ? surface.decalPrefab : _impact.decalPrefab;
+            GameObject? particles = surface != null ? surface.particlePrefab : _impact.particlePrefab;
+            AudioClip? sound = surface != null ? surface.impactSound : _impact.impactSound;
+            float volume = surface != null ? surface.volume : _impact.impactVolume;
+
+            if (!onBody && decal != null)
             {
-                _pool.SpawnForSeconds(_impact.decalPrefab, point, rotation, _impact.decalLifetime);
+                _pool.SpawnForSeconds(decal, point, rotation, _impact.decalLifetime);
             }
-            if (_impact.particlePrefab != null)
+            if (particles != null)
             {
-                _pool.SpawnForSeconds(_impact.particlePrefab, point, rotation, _impact.particleLifetime);
+                _pool.SpawnForSeconds(particles, point, rotation, _impact.particleLifetime);
             }
+            PlayImpactSound(sound, volume, point);
+        }
+
+        /// <summary>
+        /// The impact crack, at the impact.
+        ///
+        /// ImpactConfig has carried an `impactSound` field since the day the file
+        /// was written and NOTHING read it, so every bullet in this game has
+        /// landed in silence for the whole life of the project. The gun made a
+        /// noise; the world never answered.
+        ///
+        /// WHY A DEDICATED SOURCE IS MOVED RATHER THAN A SOURCE PER IMPACT
+        /// `AudioSource.PlayClipAtPoint` is the obvious call and it is banned
+        /// here: it Instantiates a GameObject and Destroys it per hit, which is
+        /// the GC-hitch factory the object pool exists to replace. One source
+        /// repositioned before each PlayOneShot costs a transform write.
+        ///
+        /// The trade it accepts, stated so nobody rediscovers it as a bug: a
+        /// one-shot already playing moves with the source, so two impacts a room
+        /// apart inside the same half-second both sound like they are at the
+        /// second one. At a rifle's cadence the two are milliseconds and metres
+        /// apart, which is inaudible; if it ever stops being inaudible, the fix
+        /// is a small ring of pooled sources, not a source per bullet.
+        ///
+        /// The gun's own close-layer source is the fallback and is NEVER moved —
+        /// dragging it to the far wall would take the gunshot with it.
+        /// </summary>
+        private void PlayImpactSound(AudioClip? clip, float volume, Vector3 point)
+        {
+            if (clip == null || volume <= 0f) return;
+
+            if (_audioImpact != null)
+            {
+                if (_audioImpactTransform != null) _audioImpactTransform.position = point;
+                _audioImpact.PlayOneShot(clip, volume);
+                return;
+            }
+            if (_audioClose != null) _audioClose.PlayOneShot(clip, volume);
         }
 
         private void ApplyRecoil(WeaponConfig config, int shotIndex)
@@ -942,8 +1063,27 @@ namespace CoD.Weapons
                 // Random roll so back-to-back flashes read as fire, not as the
                 // same sprite blinking.
                 Quaternion roll = _muzzle.rotation * Quaternion.Euler(0f, 0f, UnityEngine.Random.value * 360f);
-                _pool.SpawnForSeconds(config.muzzleFlashPrefab, _muzzle.position, roll, config.muzzleFlashLifetime);
+                PooledObject flash = _pool.SpawnForSeconds(config.muzzleFlashPrefab, _muzzle.position, roll,
+                    config.muzzleFlashLifetime);
+                JitterScale(flash, config.muzzleFlashScaleJitter);
             }
+
+            // THE SECOND, STRETCHED QUAD. One untextured quad rolled to a random
+            // angle is still one shape, and the eye reads a repeated shape as a
+            // repeated sprite within about three shots. A second quad at a
+            // different aspect ratio, rolled independently, produces a different
+            // silhouette every shot out of the same two flat meshes — the whole
+            // improvement, and it costs no texture and no VRAM on a 4 GB card.
+            if (_pool != null && _muzzle != null && config.muzzleFlashWidePrefab != null)
+            {
+                Quaternion roll = _muzzle.rotation * Quaternion.Euler(0f, 0f, UnityEngine.Random.value * 360f);
+                PooledObject wide = _pool.SpawnForSeconds(config.muzzleFlashWidePrefab, _muzzle.position, roll,
+                    config.muzzleFlashLifetime);
+                JitterScale(wide, config.muzzleFlashScaleJitter);
+            }
+
+            SpawnMuzzleSmoke(config);
+            SpawnTracer(config);
 
             if (_pool != null && _casingEject != null && config.shellCasingPrefab != null)
             {
@@ -976,6 +1116,106 @@ namespace CoD.Weapons
             }
 
             if (_shake != null) _shake.AddTrauma(config.cameraShakeAmplitude * 0.35f);
+        }
+
+        /// <summary>
+        /// Random scale on a pooled flash, written on EVERY spawn.
+        ///
+        /// Unconditional because the pool never resets a transform's scale: an
+        /// instance comes back carrying whatever the last shot left on it, so a
+        /// "only when jitter is non-zero" write would freeze one random size in
+        /// place forever the moment somebody turned the jitter off. Writing it
+        /// every time makes jitter 0 mean exactly scale 1, which is what an
+        /// author typing 0 expects.
+        /// </summary>
+        private static void JitterScale(PooledObject instance, float jitter)
+        {
+            float scale = 1f + (UnityEngine.Random.value - 0.5f) * 2f * Mathf.Clamp01(jitter);
+            instance.CachedTransform.localScale = new Vector3(scale, scale, scale);
+        }
+
+        /// <summary>
+        /// The puff off the barrel, on the last round of a burst and every N
+        /// rounds of sustained fire.
+        ///
+        /// Never on every shot, and the reason is not cost: smoke in front of
+        /// the sight is fog over the thing the player is aiming at. Held on a
+        /// counter rather than a probability so it is the SAME round every time
+        /// — a random puff that occasionally lands on the shot that mattered is
+        /// a feel bug nobody can reproduce.
+        /// </summary>
+        private void SpawnMuzzleSmoke(WeaponConfig config)
+        {
+            if (_pool == null || _muzzle == null || config.muzzleSmokePrefab == null) return;
+
+            // A finished burst always puffs: that is the beat the fire mode is
+            // built around, and it is what makes the burstPause read as the gun
+            // resetting rather than as input lag.
+            bool due = config.fireMode == FireMode.Burst && _runtime != null && _runtime.BurstShotsRemaining == 0;
+
+            if (config.muzzleSmokeEveryNRounds > 0)
+            {
+                if (_roundsUntilSmoke > 0) _roundsUntilSmoke--;
+                else
+                {
+                    _roundsUntilSmoke = config.muzzleSmokeEveryNRounds - 1;
+                    due = true;
+                }
+            }
+
+            if (!due) return;
+            _pool.SpawnForSeconds(config.muzzleSmokePrefab, _muzzle.position, _muzzle.rotation,
+                config.muzzleSmokeLifetime);
+        }
+
+        /// <summary>
+        /// One tracer every Nth round, muzzle to wherever the round stopped.
+        ///
+        /// The counter lives here rather than on WeaponRuntime because it is a
+        /// property of the GUN as a physical object — a belt with every third
+        /// round loaded hot — and not of the loadout: swapping weapons mid-run
+        /// must not restart the pattern, and reloading must not either.
+        ///
+        /// The prefab is fetched through the pool like everything else that
+        /// spawns. If it is not prewarmed the pool will Instantiate one on the
+        /// first shot of the run, which is the hitch pooling exists to prevent —
+        /// Fx_Tracer belongs in ObjectPool's prewarm list.
+        /// </summary>
+        private void SpawnTracer(WeaponConfig config)
+        {
+            if (_pool == null || _muzzle == null || config.tracerPrefab == null) return;
+
+            // Counted down only when a tracer could actually be produced, so a
+            // weapon with no tracer prefab never silently burns through the
+            // pattern and then starts mid-cycle the moment one is assigned.
+            if (_roundsUntilTracer > 0)
+            {
+                _roundsUntilTracer--;
+                return;
+            }
+            _roundsUntilTracer = Mathf.Max(1, config.tracerEveryNRounds) - 1;
+
+            // Spawn, not SpawnForSeconds: a tracer owns its own clock, because
+            // its lifetime is a function of how far it has to fly and only it
+            // knows how long its trail takes to fade. See Tracer.Launch, and
+            // MAX_LIFETIME_SECONDS for the backstop that stops a mis-authored
+            // speed stranding a pooled instance alive for the rest of the run.
+            Vector3 from = _muzzle.position;
+            PooledObject instance = _pool.Spawn(config.tracerPrefab, from, Quaternion.identity);
+            if (instance.TryGetComponent(out Tracer tracer))
+            {
+                tracer.Launch(_pool, from, _tracerEnd, config.tracerSpeed, config.tracerWidth);
+                return;
+            }
+
+            // A prefab with no Tracer would never despawn itself, and the pool
+            // would hand out a fresh instance on every third round for the rest
+            // of the run. Put it straight back and say so, once.
+            _pool.Despawn(instance);
+            if (_tracerPrefabReported) return;
+            _tracerPrefabReported = true;
+            GameLog.Error($"'{config.tracerPrefab.name}' is assigned as {config.displayName}'s tracer but carries " +
+                          "no Tracer component — nothing would ever return it to the pool.", this);
         }
 
         private void PlayDryFire(float now)

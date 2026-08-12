@@ -12,9 +12,43 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: dce750cbcb9c828b7b6871b3aa3ea9cc, type: 3}
   m_Name: Impact_Default
   m_EditorClassIdentifier: 
+  surfaces:
+  - surface: 0
+    layers:
+      serializedVersion: 2
+      m_Bits: 1
+    decalPrefab: {fileID: 8809702538543044335, guid: 2cab4f9b22063f04d911a09edf1816d0, type: 3}
+    particlePrefab: {fileID: 8244349368796853331, guid: 4fcafa62c4411d04c8d8d7dcd8c981f7, type: 3}
+    impactSound: {fileID: 0}
+    volume: 0.5
+  - surface: 1
+    layers:
+      serializedVersion: 2
+      m_Bits: 0
+    decalPrefab: {fileID: 8809702538543044335, guid: 2cab4f9b22063f04d911a09edf1816d0, type: 3}
+    particlePrefab: {fileID: 734582964414470361, guid: d25959689ccaa6a4194787c95cb75dab, type: 3}
+    impactSound: {fileID: 0}
+    volume: 0.6
+  - surface: 2
+    layers:
+      serializedVersion: 2
+      m_Bits: 0
+    decalPrefab: {fileID: 0}
+    particlePrefab: {fileID: 6641932800431724907, guid: 02b709996ce40ae43825f6a51270cec3, type: 3}
+    impactSound: {fileID: 0}
+    volume: 0.55
+  - surface: 3
+    layers:
+      serializedVersion: 2
+      m_Bits: 0
+    decalPrefab: {fileID: 0}
+    particlePrefab: {fileID: 1501240396153436133, guid: 2f3cdae61eadca448a24171636e3ca89, type: 3}
+    impactSound: {fileID: 0}
+    volume: 0.65
   decalPrefab: {fileID: 8809702538543044335, guid: 2cab4f9b22063f04d911a09edf1816d0, type: 3}
   particlePrefab: {fileID: 7827309126676619225, guid: 5b13a67bcc38d6b45b4ae27b75b4669c, type: 3}
   impactSound: {fileID: 0}
+  impactVolume: 0.55
   decalLifetime: 20
   particleLifetime: 2
   surfaceOffset: 0.008

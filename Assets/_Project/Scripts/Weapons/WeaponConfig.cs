@@ -47,6 +47,9 @@ namespace CoD.Weapons
         [Min(0)] public int reserveAmmo = 180;
         [Min(1)] public int pelletsPerShot = 1; // shotgun: 12
 
+        [Tooltip("Shotgun PATTERN, in degrees — the fixed spread of the shell itself, which is not bloom. Bloom (baseSpread and friends) grows as you fire and collapses to ZERO while aiming; a pattern never does, because a shell does not tighten because you aimed. 0 for anything with one pellet.")]
+        [Range(0f, 15f)] public float pelletSpreadDegrees;
+
         [Header("Handling (seconds)")]
         [Tooltip("Hip to fully aimed. AR 0.25, SMG 0.20, sniper 0.40.")]
         [Range(0.05f, 1f)] public float adsTime = 0.25f;
@@ -115,6 +118,28 @@ namespace CoD.Weapons
 
         [Tooltip("The gun's own flash light, which sits centimetres from the barrel instead of metres from a wall. Same duration, far lower intensity — the room number would blow the viewmodel out completely.")]
         [Range(0f, 20f)] public float viewmodelMuzzleLightIntensity = 2.2f;
+
+        [Header("Muzzle flash — three parts, because one quad is not a flash")]
+        [Tooltip("The second, STRETCHED quad. Spawned on the same shot and the same lifetime as the flash, with its own random roll: two overlapping shapes at different aspect ratios is what stops a repeating sprite reading as a repeating sprite, and it costs no new texture.")]
+        public GameObject? muzzleFlashWidePrefab;
+        [Tooltip("Random scale spread applied to BOTH flash quads, every spawn. Written every time rather than only when it changes — a pooled instance keeps the scale its last use left it at.")]
+        [Range(0f, 0.6f)] public float muzzleFlashScaleJitter = 0.25f;
+        [Tooltip("The puff that says the barrel has been working. Deliberately not every shot: on the last round of a burst, and every muzzleSmokeEveryNRounds under sustained fire.")]
+        public GameObject? muzzleSmokePrefab;
+        [Tooltip("0 = only at the end of a burst. Smoke on every round is fog in front of the sight, which costs the player the thing they are aiming at.")]
+        [Range(0, 30)] public int muzzleSmokeEveryNRounds = 6;
+        [Tooltip("A puff lingers far longer than a flash — it is the one part of the muzzle that is allowed to be seen.")]
+        [Range(0.05f, 3f)] public float muzzleSmokeLifetime = 0.9f;
+
+        [Header("Tracers")]
+        [Tooltip("The pooled Fx_Tracer prefab. Null = this weapon fires no tracers at all, which is a legitimate choice for a suppressed weapon.")]
+        public GameObject? tracerPrefab;
+        [Tooltip("ONE IN N ROUNDS, never every round. A tracer on every round is a continuous ribbon of light out of the barrel: it reads as a laser show rather than as gunfire, and it flattens the muzzle flash it is drawn on top of. Every third round is the real-world belt convention and it is the convention for the same reason — you get the line that tells you where the rounds went without turning the gun into a light source.")]
+        [Range(1, 10)] public int tracerEveryNRounds = 3;
+        [Tooltip("Metres per second. Real tracers travel at the bullet's speed; a hitscan game wants them SLOW enough to be seen crossing the room — 250 crosses a 30 m arena in 0.12 s, which is a streak rather than a teleport.")]
+        [Range(50f, 2000f)] public float tracerSpeed = 250f;
+        [Tooltip("Trail width in metres. Wider than a real round by an order of magnitude, because a physically correct tracer is invisible at 1080p.")]
+        [Range(0.005f, 0.15f)] public float tracerWidth = 0.02f;
 
         // ---------- The time-to-kill model ----------
         // Derived, never stored, never duplicated in a MonoBehaviour. The first

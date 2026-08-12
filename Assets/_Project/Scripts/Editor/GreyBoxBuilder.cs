@@ -1678,15 +1678,31 @@ namespace CoD.EditorTools
             // Counts are sized for a full wave, not for the demo: the pool exists
             // so the first shot of round twelve costs the same as the first shot
             // of round one.
+            //
+            // RE-SIZED FOR THE REAL ARSENAL, and the old numbers were a trap
+            // hiding behind a true statement. Adding weapons needed no new pool
+            // ENTRY KINDS, which is easy to mistake for needing no pool change at
+            // all -- but every count here was sized around one weapon: the AR at
+            // 700 rpm, a 30-round magazine, one pellet per shot.
+            //
+            // The LMG fires 750 rpm out of a 100-round magazine, so at the shipped
+            // 3 s casing lifetime it holds ~38 casings alive against 24 prewarmed.
+            // The shotgun is worse: twelve impacts PER PULL against a 20 s decal
+            // lifetime, so one six-round magazine wants ~72 decals against 48.
+            // Every instance past the prewarm is a runtime Instantiate on the
+            // firing path -- the exact GC hitch the pool exists to prevent, on the
+            // exact path it exists to protect -- and ObjectPool's leak warning
+            // sits at 512, so none of it would have reported anything.
             var prewarm = new List<(GameObject prefab, int count)>
             {
-                (decal, 48), (sparks, 24), (flash, 4), (casing, 24), (dummyPrefab, 8),
+                (decal, 96), (sparks, 32), (flash, 4), (casing, 48), (dummyPrefab, 8),
                 // Eight is a mission's worth of terminals, charges and pads with
                 // room to spare. They cost nothing in endless mode — a prewarmed
                 // instance is an inactive GameObject with no Update.
                 (missions.InteractPointPrefab, 8),
             };
             prewarm.AddRange(drones.Pooled);
+            AddVfxPrewarm(prewarm);
             SetPrewarm(pool, prewarm.ToArray());
 
             // Beside the pool, and the same shape as DroneRegistry for the same
@@ -3929,6 +3945,50 @@ namespace CoD.EditorTools
         /// silently mismatched the moment a prefab was inserted in the middle, and
         /// a mis-sized pool only ever shows up as a hitch mid-wave.
         /// </summary>
+        /// <summary>
+        /// Pools the VFX prefabs that a DIFFERENT builder creates.
+        ///
+        /// VfxBuilder owns tracers, the wide muzzle flash, the burst-end smoke and
+        /// the per-surface impacts, and this builder owns the pool. Left
+        /// unbridged that split is a straight regression: ImpactConfig would point
+        /// every wall hit at a prefab the pool has never seen, so ObjectPool.Spawn
+        /// falls through to Instantiate on the firing path -- roughly twenty-odd
+        /// allocations during the first sustained burst of every run, which is the
+        /// precise GC hitch the pool exists to prevent, on the precise path it
+        /// exists to protect. It would also leave the 24 prewarmed spark instances
+        /// as dead weight.
+        ///
+        /// Looked up BY PATH and skipped when absent, so the two builders have no
+        /// run-order dependency in either direction: run VfxBuilder first and
+        /// these are pooled, run it later and the next Grey Box pass picks them
+        /// up. A missing prefab is "not authored yet", never an error.
+        ///
+        /// Counts are per-surface impact lifetimes against fire rate, same
+        /// arithmetic as the entries above.
+        /// </summary>
+        private static void AddVfxPrewarm(List<(GameObject prefab, int count)> prewarm)
+        {
+            (string name, int count)[] optional =
+            {
+                // One in three rounds at 900 rpm, alive for its flight time.
+                ("Fx_Tracer", 24),
+                ("Fx_MuzzleFlash_Wide", 4),
+                ("Fx_MuzzleSmoke", 4),
+                // Sized like the decal entry: the shotgun puts twelve impacts on
+                // the board per pull, and a 2 s particle lifetime keeps them there.
+                ("Fx_Impact_Concrete", 32),
+                ("Fx_Impact_Metal", 32),
+                ("Fx_Impact_Grate", 16),
+                ("Fx_Impact_Flesh", 16),
+            };
+
+            foreach ((string name, int count) in optional)
+            {
+                var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(Prefabs + "/" + name + ".prefab");
+                if (prefab != null) prewarm.Add((prefab, count));
+            }
+        }
+
         private static void SetPrewarm(ObjectPool pool, params (GameObject prefab, int count)[] entries)
         {
             SerializedObject serialized = new(pool);

@@ -1,6 +1,7 @@
 #nullable enable
 using System.Collections.Generic;
 using CoD.Core;
+using CoD.Waves;
 using CoD.Weapons;
 using NUnit.Framework;
 using UnityEditor;
@@ -41,12 +42,44 @@ namespace CoD.Tests
     ///
     /// Both new checks are watched failing by their own tests. A gate nobody has
     /// seen bite is a gate nobody knows is connected.
+    ///
+    /// The arsenal then grew from two weapons to six (ArsenalBuilder), which
+    /// exposed four more gaps of the same family — a property nothing checked,
+    /// because with two weapons it was true by luck:
+    ///
+    /// - The blank-id and aliased-id checks only ran when a registry EXISTED.
+    ///   They are now unconditional, so a copy-pasted stableId fails on the scan.
+    /// - `displayName` had no gate at all: a blank one is a shop row the player
+    ///   cannot identify.
+    /// - `maxSpread` below `baseSpread` clamps the first shot below the cone the
+    ///   asset claims, and `reserveAmmo` below `magazineSize` is a gun that can
+    ///   never finish a reload. Both are copy-a-weapon-and-narrow-one-number
+    ///   mistakes; neither warns anywhere.
+    /// - The starting weapon and every Weapon-kind shop offer hold DIRECT
+    ///   references, so both work perfectly while pointing at a weapon no
+    ///   `stableId` resolves — until a save round-trips it and gets null back.
+    ///
+    /// And one gap that is recorded here rather than closed, because closing it
+    /// needs a field this file cannot add: a multi-pellet weapon has no way to
+    /// declare a fixed pattern, so an AIMED shotgun fires every pellet down one
+    /// ray. See EveryMultiPelletWeapon_ThrowsAConeRatherThanAPoint.
     /// </summary>
     public sealed class WeaponDataTests
     {
-        /// <summary>Where the builder writes the registry. Absent today — see AllWeapons.</summary>
+        /// <summary>Where ArsenalBuilder writes the registry. See AllWeapons for the absent case.</summary>
         private const string REGISTRY_PATH = "Assets/_Project/Data/Weapons/Weapons.asset";
         private const string WEAPON_FOLDER = "Assets/_Project/Data/Weapons";
+
+        /// <summary>
+        /// The shop's assets. Scanned rather than listed for the same reason the
+        /// weapons folder is: a hardcoded list makes shop entry number twelve a
+        /// test edit, and an offer nobody remembered to add is an offer with no
+        /// gate on it at all.
+        /// </summary>
+        private const string SHOP_FOLDER = "Assets/_Project/Data/Shop";
+
+        /// <summary>What the player starts a run holding. Its weapon has to be a weapon a save can name.</summary>
+        private const string LOADOUT_PATH = "Assets/_Project/Data/Weapons/Loadout_Default.asset";
 
         private static WeaponConfig Load(string path)
         {
@@ -79,10 +112,20 @@ namespace CoD.Tests
         {
             WeaponConfig[] onDisk = ScanWeaponFolder();
 
+            // UNCONDITIONAL, and it did not used to be. The blank-id and
+            // aliased-id checks lived inside the registry cross-check, which only
+            // runs when a registry exists — so before ArsenalBuilder emits
+            // Weapons.asset, two weapons sharing one stableId were caught by
+            // nothing at all. That is not a hypothetical: an arsenal is authored
+            // by copying the nearest weapon, and a copied stableId is the single
+            // easiest mistake to make. Two weapons that are one weapon for every
+            // save that names either is worth failing on whether or not anyone
+            // has run the builder yet.
+            AssertNoAliasedIdsOnDisk(onDisk);
+
             WeaponRegistry? registry = AssetDatabase.LoadAssetAtPath<WeaponRegistry>(REGISTRY_PATH);
-            // The builder does not emit the registry yet. The scan alone is the
-            // gate until it does — a graceful absence, never a PREFERENCE for the
-            // registry over the scan.
+            // No registry yet: the scan alone is the gate — a graceful absence,
+            // never a PREFERENCE for the registry over the scan.
             if (registry == null) return onDisk;
 
             AssertRegistryAndFolderDescribeTheSameArsenal(registry, onDisk);
@@ -141,24 +184,7 @@ namespace CoD.Tests
         private static void AssertRegistryAndFolderDescribeTheSameArsenal(
             WeaponRegistry registry, WeaponConfig[] onDisk)
         {
-            var byId = new Dictionary<string, WeaponConfig>();
-            foreach (WeaponConfig config in onDisk)
-            {
-                Assert.IsFalse(string.IsNullOrWhiteSpace(config.stableId),
-                    $"{config.name} in {WEAPON_FOLDER} has no stableId — it can match no registry entry, " +
-                    "and a save references weapons by that key rather than by asset name");
-
-                if (byId.TryGetValue(config.stableId, out WeaponConfig first))
-                {
-                    // Two assets sharing an id would collapse to one set entry and
-                    // make the comparison below agree about an arsenal that does
-                    // not exist.
-                    Assert.Fail(
-                        $"'{config.stableId}' is on both {first.name} and {config.name} in {WEAPON_FOLDER} — " +
-                        "two weapons are one weapon for every save that names it, and the registry can only list one");
-                }
-                byId.Add(config.stableId, config);
-            }
+            Dictionary<string, WeaponConfig> byId = AssertNoAliasedIdsOnDisk(onDisk);
 
             var listedIds = new HashSet<string>();
             for (int i = 0; i < registry.allWeapons.Length; i++)
@@ -182,6 +208,44 @@ namespace CoD.Tests
                     "this file, with nothing at runtime to report it — the exact failure the registry exists to " +
                     "prevent. Add it to the registry, or delete the asset.");
             }
+        }
+
+        /// <summary>
+        /// Every weapon on disk has an id, and no two share one. Returns the
+        /// arsenal keyed by that id, because the caller that needs the check also
+        /// needs the map.
+        ///
+        /// EXTRACTED SO IT CAN RUN WITHOUT A REGISTRY. These two assertions used
+        /// to be the opening of the registry cross-check, which meant they only
+        /// ever fired when Weapons.asset existed — and it did not exist at all
+        /// until ArsenalBuilder shipped. Two assets carrying one stableId is the
+        /// easiest mistake in the whole authoring loop (an arsenal is written by
+        /// copying the nearest weapon), it makes two weapons one weapon for every
+        /// save that names either, and nothing at runtime reports it. It is not a
+        /// failure that should wait for a registry to be built first.
+        ///
+        /// It is also load-bearing for the check that follows it: two assets
+        /// sharing an id collapse to one dictionary entry, which would make the
+        /// set comparison agree about an arsenal that does not exist.
+        /// </summary>
+        private static Dictionary<string, WeaponConfig> AssertNoAliasedIdsOnDisk(WeaponConfig[] onDisk)
+        {
+            var byId = new Dictionary<string, WeaponConfig>();
+            foreach (WeaponConfig config in onDisk)
+            {
+                Assert.IsFalse(string.IsNullOrWhiteSpace(config.stableId),
+                    $"{config.name} in {WEAPON_FOLDER} has no stableId — it can match no registry entry, " +
+                    "and a save references weapons by that key rather than by asset name");
+
+                if (byId.TryGetValue(config.stableId, out WeaponConfig first))
+                {
+                    Assert.Fail(
+                        $"'{config.stableId}' is on both {first.name} and {config.name} in {WEAPON_FOLDER} — " +
+                        "two weapons are one weapon for every save that names it, and the registry can only list one");
+                }
+                byId.Add(config.stableId, config);
+            }
+            return byId;
         }
 
         [Test]
@@ -219,6 +283,225 @@ namespace CoD.Tests
 
             Assert.IsTrue(foundRifle, "AR_Standard is not in the enumerated arsenal");
             Assert.IsTrue(foundSmg, "SMG_Rapid is not in the enumerated arsenal");
+        }
+
+        /// <summary>
+        /// The aliased-id check, watched failing WITHOUT a registry.
+        ///
+        /// It used to be the opening of AssertRegistryAndFolderDescribeTheSameArsenal
+        /// and therefore ran only when Weapons.asset existed — which, until
+        /// ArsenalBuilder, was never. AllWeapons now calls it on every scan, so
+        /// this is the test that proves the unconditional path is connected rather
+        /// than merely written.
+        /// </summary>
+        [Test]
+        public void TheFolderScan_RejectsAnAliasedId_EvenWithNoRegistry()
+        {
+            WeaponConfig first = ScriptableObject.CreateInstance<WeaponConfig>();
+            first.stableId = "wpn_alpha";
+            WeaponConfig second = ScriptableObject.CreateInstance<WeaponConfig>();
+            second.stableId = "wpn_beta";
+
+            Assert.DoesNotThrow(() => AssertNoAliasedIdsOnDisk(new[] { first, second }),
+                "two weapons with two ids must pass, or the check is simply always red");
+
+            // The copy-paste failure: an arsenal is authored by copying the
+            // nearest weapon, and the id is the field people forget.
+            WeaponConfig twin = ScriptableObject.CreateInstance<WeaponConfig>();
+            twin.stableId = "wpn_alpha";
+            Assert.Throws<AssertionException>(
+                () => AssertNoAliasedIdsOnDisk(new[] { first, twin }),
+                "two assets sharing one stableId escaped the scan — they are one weapon for every save that names either");
+
+            WeaponConfig nameless = ScriptableObject.CreateInstance<WeaponConfig>();
+            nameless.stableId = "   ";
+            Assert.Throws<AssertionException>(
+                () => AssertNoAliasedIdsOnDisk(new[] { nameless }),
+                "a weapon with no stableId escaped the scan — no save and no registry entry can ever name it");
+        }
+
+        /// <summary>
+        /// Every weapon can be named to a player and named to a save.
+        ///
+        /// `displayName` had no gate on it anywhere: it is the shop row, the HUD
+        /// label and the loadout line, and a blank one ships as an empty button
+        /// the player cannot identify. The failure is silent in exactly the way
+        /// the blank `stableId` is — nothing throws, the arsenal is the right
+        /// length, and the gun simply has no name.
+        /// </summary>
+        [Test]
+        public void EveryWeapon_IsNameableInAShopRowAndInASave()
+        {
+            foreach (WeaponConfig config in AllWeapons())
+            {
+                Assert.IsFalse(string.IsNullOrWhiteSpace(config.stableId),
+                    $"{config.name} has no stableId — a save references weapons by that key, not by asset name");
+                Assert.IsFalse(string.IsNullOrWhiteSpace(config.displayName),
+                    $"{config.name} has no displayName — it is the shop row, the HUD label and the loadout line, " +
+                    "so a blank one ships as a button the player cannot identify");
+            }
+        }
+
+        /// <summary>
+        /// Bloom can never be authored below its own floor.
+        ///
+        /// `WeaponRuntime` starts `CurrentSpread` at `baseSpread`, grows it by
+        /// `spreadPerShot` clamped to `maxSpread`, and decays it back down to
+        /// `baseSpread`. Author `maxSpread` under `baseSpread` and the clamp fires
+        /// on the very first shot: the gun is permanently TIGHTER than the cone
+        /// its own `baseSpread` claims, and the authored number is a lie that no
+        /// warning anywhere reports. It is the kind of mistake that only appears
+        /// when a weapon is written by copying another and then narrowing one of
+        /// the two numbers.
+        /// </summary>
+        [Test]
+        public void EveryWeapon_BloomCanNeverShrinkBelowItsOwnBaseline()
+        {
+            foreach (WeaponConfig config in AllWeapons())
+            {
+                Assert.GreaterOrEqual(config.maxSpread, config.baseSpread,
+                    $"{config.displayName} caps bloom at {config.maxSpread:F2}° but starts it at {config.baseSpread:F2}° — " +
+                    "the clamp fires on the first shot, so the authored baseSpread never happens");
+                Assert.GreaterOrEqual(config.spreadPerShot, 0f,
+                    $"{config.displayName} has negative spreadPerShot — firing would TIGHTEN the cone, " +
+                    "which is the opposite of every other gun in the game");
+            }
+        }
+
+        /// <summary>
+        /// A multi-pellet weapon must throw a cone rather than a point — and the
+        /// only cone this data model owns is the hipfire one.
+        ///
+        /// THIS TEST IS ALSO THE RECORD OF WHAT THE MODEL CANNOT SAY. A shotgun
+        /// pattern is GEOMETRY: a fixed cone, identical on the first pull and the
+        /// fiftieth, hip or aimed. Bloom is not that — it starts at `baseSpread`,
+        /// grows as you fire, and `WeaponController.CurrentSpreadDegrees` returns
+        /// exactly ZERO while aiming, by a deliberate design rule ("a random cone
+        /// while aiming reads as the game cheating"). `FireOneShot` then casts
+        /// every pellet through that one number, so an AIMED twelve-pellet weapon
+        /// puts all twelve on one point: 120 damage in a single ray at any range
+        /// inside the falloff, which is a sniper wearing a shotgun's name.
+        ///
+        /// So the strongest law authorable against today's fields is this one:
+        /// hipfire must at least be a cone. Closing the rest needs
+        /// `pelletSpreadDegrees` on `WeaponConfig` and a `CastOneRay` that uses
+        /// `max(pattern, bloom)` instead of bloom alone — a field and a line, both
+        /// outside the file list this arsenal was authored under. When they land,
+        /// this test should grow the assertion that the pattern is non-zero
+        /// regardless of aim, and the ContactBurst law should be read alongside
+        /// it: `ShotsToKillAtRange` charges for DISTANCE and knows nothing about
+        /// whether the pellets that carried the damage landed on one body.
+        /// </summary>
+        [Test]
+        public void EveryMultiPelletWeapon_ThrowsAConeRatherThanAPoint()
+        {
+            foreach (WeaponConfig config in AllWeapons())
+            {
+                if (config.pelletsPerShot <= 1) continue;
+
+                Assert.Greater(config.baseSpread, 0f,
+                    $"{config.displayName} throws {config.pelletsPerShot} pellets through a zero-degree cone — " +
+                    "every pellet is the same ray, so it is a single bullet dealing " +
+                    $"{config.DamagePerShot:F0} damage rather than a spread");
+                Assert.Greater(config.maxSpread, 0f,
+                    $"{config.displayName} caps its cone at zero, which cancels the baseSpread above");
+            }
+        }
+
+        /// <summary>
+        /// Every weapon can complete one reload out of its own reserve, and
+        /// running dry is never the fast way to reload.
+        ///
+        /// `reserveAmmo` below `magazineSize` is a weapon that can never refill a
+        /// magazine, and it poisons the shop besides: `RefillReserve` hands back a
+        /// FRACTION of the config reserve, so Resupply on such a gun sells the
+        /// player a handful of rounds. `reloadEmptyTime` below `reloadTime` is
+        /// worse than a wasted number — it makes emptying the magazine the optimal
+        /// play, which inverts the one habit the reload timings exist to teach.
+        /// `OnValidate` normalises the second of these, but a builder that writes
+        /// an asset in batch mode is not an Inspector edit, so the gate belongs
+        /// here too.
+        /// </summary>
+        [Test]
+        public void EveryWeapon_CanCompleteOneReloadFromItsOwnReserve()
+        {
+            foreach (WeaponConfig config in AllWeapons())
+            {
+                Assert.GreaterOrEqual(config.reserveAmmo, config.magazineSize,
+                    $"{config.displayName} carries {config.reserveAmmo} spare rounds for a {config.magazineSize}-round " +
+                    "magazine — it cannot complete a single reload, and Resupply sells a fraction of that");
+                Assert.GreaterOrEqual(config.reloadEmptyTime, config.reloadTime,
+                    $"{config.displayName} reloads FASTER from empty ({config.reloadEmptyTime:F2}s) than with a round " +
+                    $"chambered ({config.reloadTime:F2}s) — running dry becomes the optimal play");
+            }
+        }
+
+        /// <summary>
+        /// The weapon the player starts holding is a weapon the arsenal contains.
+        ///
+        /// `PlayerLoadoutConfig.startingWeapon` is a direct object reference, so
+        /// it works perfectly while pointing at an asset that no registry lists —
+        /// right up until a save round-trips it by `stableId` and gets nothing
+        /// back. That is the same class of failure as a registry entry with no
+        /// asset behind it, arriving from the other end, and nothing else in the
+        /// project checks it.
+        /// </summary>
+        [Test]
+        public void TheStartingWeapon_IsPartOfTheArsenal()
+        {
+            PlayerLoadoutConfig? loadout = AssetDatabase.LoadAssetAtPath<PlayerLoadoutConfig>(LOADOUT_PATH);
+            Assert.IsNotNull(loadout, $"missing {LOADOUT_PATH} — run CoD -> Build Grey Box");
+
+            WeaponConfig? starting = loadout!.startingWeapon;
+            Assert.IsNotNull(starting,
+                $"{LOADOUT_PATH} has no starting weapon — a run would begin holding nothing at all");
+
+            Assert.IsTrue(ArsenalIds().Contains(starting!.stableId),
+                $"the starting weapon '{starting.stableId}' ({starting.name}) is not in the arsenal enumerated by " +
+                "this file. A direct reference works until a save round-trips it by id and resolves to nothing.");
+        }
+
+        /// <summary>
+        /// Every weapon the shop sells is a weapon the arsenal contains.
+        ///
+        /// A `ShopItemConfig` of kind Weapon holds a direct reference too, so the
+        /// shop happily sells a gun that no `stableId` resolves: the player buys
+        /// it, carries it for the rest of the run, and the next save writes a key
+        /// that comes back null. The arsenal is about to grow by four, and each
+        /// one needs a shop row — this is the gate that catches a row added
+        /// without its weapon reaching the registry.
+        /// </summary>
+        [Test]
+        public void EveryWeaponTheShopSells_IsPartOfTheArsenal()
+        {
+            Assert.IsTrue(AssetDatabase.IsValidFolder(SHOP_FOLDER),
+                $"{SHOP_FOLDER} is missing — run CoD -> Build Grey Box");
+
+            HashSet<string> arsenal = ArsenalIds();
+            string[] guids = AssetDatabase.FindAssets("t:ShopItemConfig", new[] { SHOP_FOLDER });
+
+            foreach (string guid in guids)
+            {
+                string path = AssetDatabase.GUIDToAssetPath(guid);
+                ShopItemConfig? item = AssetDatabase.LoadAssetAtPath<ShopItemConfig>(path);
+                Assert.IsTrue(item != null, $"{path} matched t:ShopItemConfig but would not load");
+                if (item!.kind != ShopItemKind.Weapon) continue;
+
+                Assert.IsNotNull(item.weapon,
+                    $"{item.name} is a Weapon-kind offer with no weapon behind it — the player pays and receives nothing");
+                Assert.IsTrue(arsenal.Contains(item.weapon!.stableId),
+                    $"{item.name} sells '{item.weapon.stableId}' ({item.weapon.name}), which is not in the arsenal " +
+                    "enumerated by this file — the purchase survives the run and dies at the next save");
+            }
+        }
+
+        /// <summary>Every stableId the arsenal answers to. Built per call; this is a test, not a frame.</summary>
+        private static HashSet<string> ArsenalIds()
+        {
+            WeaponConfig[] arsenal = AllWeapons();
+            var ids = new HashSet<string>();
+            foreach (WeaponConfig config in arsenal) ids.Add(config.stableId);
+            return ids;
         }
 
         /// <summary>
@@ -308,8 +591,9 @@ namespace CoD.Tests
         }
 
         /// <summary>
-        /// The registry does not exist yet — the builder owns creating it. When it
-        /// does, these are the two ways it silently breaks the game: a null entry
+        /// The registry is ArsenalBuilder's asset and may not be on disk in a
+        /// fresh clone. When it is, these are the two ways it silently breaks the
+        /// game: a null entry
         /// drops a weapon out of every gate above while the list still looks the
         /// right length, and a duplicate stableId aliases two weapons into one for
         /// every save that names either.
@@ -343,7 +627,7 @@ namespace CoD.Tests
         /// Weapons.asset would have dropped out of every balance law above without
         /// a single test going red — TheArsenalGate_ActuallyFindsTheShippedWeapons
         /// keeps passing, because `Length >= 2` and both known stableIds are still
-        /// there. The registry does not exist on disk yet, so the only way to know
+        /// there. The registry may not be on disk at all, so the only way to know
         /// the replacement cross-check is connected is to hand it a disagreement
         /// and watch it throw.
         /// </summary>

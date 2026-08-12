@@ -101,11 +101,41 @@ Two things remain that no machine can answer, unchanged from before:
    soldiers in the worst-case arena corner, target <= 8 ms CPU main thread and
    <= 10 ms GPU at 1080p.
 
-**This gate was overridden once, on 2026-08-11, at the user's explicit
-instruction** — wave identity, shop consumables, the skip-the-break gamble, the
-repair beacon and sandbox module depth all shipped ahead of the play session.
-That is why they carry ⚠️ above and sit in Part C of the tuning card. How
-autopilot operates between sessions is
+**This gate has now been overridden TWICE, both times at the user's explicit
+instruction.**
+
+- **2026-08-11** — wave identity, shop consumables, the skip-the-break gamble,
+  the repair beacon and sandbox module depth shipped ahead of the play session.
+  They carry ⚠️ above and sit in Part C of the tuning card.
+- **2026-08-12** — the campaign, missions 1-2, and everything after them
+  ("finish everything, don't wait for me"). Parts D and E of the tuning card.
+
+Recording it rather than quietly proceeding, because the rule this suspends is
+the one the project was built around, and a suspended rule that nobody wrote
+down becomes a rule that was never there.
+
+**What actually happened in between is the interesting part, and it argues both
+ways.** A partial play session did occur on 2026-08-12 — the user opened the
+game, reached the campaign, and sent one screenshot. That single screenshot
+found two real defects (a wave banner promising a wave that never came, and a
+wave-name label so narrow the name had never rendered at all), and prompted the
+screenshot harness, which immediately found two more that were mine (a
+reflection set to "nothing", which turned every metal surface matte black, and a
+missing skybox, which left Unity's default blue sky over a sealed underground
+facility).
+
+So: four visual defects in one afternoon, none of which 200 passing tests, eight
+guards or a clean release build could see, and none of which would have been
+found by more automated work. That is the gate's argument, and it held.
+
+The counter-argument is that `Tools/screenshot.mjs` now exists and closes most
+of that gap — it renders real frames from the real player and they can be read
+directly. **Most, not all.** It cannot answer whether the game is fun, how it
+performs on the target laptop, or whether a lighting scheme reads as
+atmospheric or as blotchy while you move through it. Those three remain human
+questions, and the tuning card remains the way they get asked.
+
+How autopilot operates between sessions is
 [docs/AUTOPILOT-PLAN.md](docs/AUTOPILOT-PLAN.md).
 
 ## The game

@@ -28,6 +28,7 @@ MonoBehaviour:
   magazineSize: 30
   reserveAmmo: 180
   pelletsPerShot: 1
+  pelletSpreadDegrees: 0
   adsTime: 0.25
   sprintToFireTime: 0.2
   reloadTime: 2
@@ -70,3 +71,12 @@ MonoBehaviour:
   muzzleLightDuration: 0.03
   muzzleLightIntensity: 12
   viewmodelMuzzleLightIntensity: 2.2
+  muzzleFlashWidePrefab: {fileID: 8989490299051199688, guid: 598ac4de34cb6634591a520666c3eab5, type: 3}
+  muzzleFlashScaleJitter: 0.25
+  muzzleSmokePrefab: {fileID: 2711852751790362181, guid: c583920d0257fab498fbdb9729c09830, type: 3}
+  muzzleSmokeEveryNRounds: 6
+  muzzleSmokeLifetime: 0.9
+  tracerPrefab: {fileID: 6075801406227274470, guid: 5b0a479968a807140868347732a2dfb6, type: 3}
+  tracerEveryNRounds: 3
+  tracerSpeed: 250
+  tracerWidth: 0.02
