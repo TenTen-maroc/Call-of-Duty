@@ -80,7 +80,8 @@ namespace CoD.EditorTools
             ArenaKitConfig arenaKit = LoadOrCreate<ArenaKitConfig>(DataKits + "/Kit_Arena_Default.asset", _ => { });
             WeaponKitConfig weaponKit = LoadOrCreate<WeaponKitConfig>(DataKits + "/Kit_Weapon_Default.asset", _ => { });
             EnemyKitConfig enemyKit = LoadOrCreate<EnemyKitConfig>(DataKits + "/Kit_Enemy_Default.asset", _ => { });
-            RequireValidKits(arenaKit, weaponKit, enemyKit);
+            AudioKitConfig audioKit = LoadOrCreate<AudioKitConfig>(DataKits + "/Kit_Audio_Default.asset", _ => { });
+            RequireValidKits(arenaKit, weaponKit, enemyKit, audioKit);
             WeaponConfig rifle = LoadOrCreate<WeaponConfig>(DataWeapons + "/AR_Standard.asset", ConfigureRifle);
             WeaponConfig smg = LoadOrCreate<WeaponConfig>(DataWeapons + "/SMG_Rapid.asset", ConfigureSmg);
             PlayerLoadoutConfig loadout = LoadOrCreate<PlayerLoadoutConfig>(DataWeapons + "/Loadout_Default.asset", l =>
@@ -182,9 +183,9 @@ namespace CoD.EditorTools
             GameObject casing = BuildCasingPrefab(hot);
             GameObject dummy = BuildDummyTargetPrefab(targetMat, targetHealth);
 
-            GameObject explosion = BuildExplosionPrefab(fireFx);
-            GameObject droneDeath = BuildDroneDeathPrefab(fireFx);
-            GameObject slamVfx = BuildSlamPrefab(fireFx);
+            GameObject explosion = BuildExplosionPrefab(fireFx, audioKit);
+            GameObject droneDeath = BuildDroneDeathPrefab(fireFx, audioKit);
+            GameObject slamVfx = BuildSlamPrefab(fireFx, audioKit);
             GameObject projectile = BuildDroneProjectilePrefab(shooterCore);
 
             GameObject rusherPrefab = BuildDronePrefab("Drone_Rusher", DroneShape.Rusher, droneHull, droneCore, enemyKit);
@@ -196,19 +197,19 @@ namespace CoD.EditorTools
             ContactDetonate detonate = LoadOrCreate<ContactDetonate>(
                 DataAttacks + "/ContactDetonate_Std.asset", ConfigureContactDetonate);
             SetRef(detonate, "explosionVfx", explosion);
-            SetRef(detonate, "alertClip", LoadClip("Drone_Alert"));
+            SetRef(detonate, "alertClip", Prefer(audioKit.droneAlert, "Drone_Alert"));
             EditorUtility.SetDirty(detonate);
 
             RangedBurst rangedBurst = LoadOrCreate<RangedBurst>(
                 DataAttacks + "/RangedBurst_Std.asset", ConfigureRangedBurst);
             SetRef(rangedBurst, "projectilePrefab", projectile);
-            SetRef(rangedBurst, "fireClip", LoadClip("Drone_Shot"));
+            SetRef(rangedBurst, "fireClip", Prefer(audioKit.droneShot, "Drone_Shot"));
             EditorUtility.SetDirty(rangedBurst);
 
             HeavySlam heavySlam = LoadOrCreate<HeavySlam>(
                 DataAttacks + "/HeavySlam_Std.asset", ConfigureHeavySlam);
             SetRef(heavySlam, "slamVfx", slamVfx);
-            SetRef(heavySlam, "windupClip", LoadClip("Slam_Windup"));
+            SetRef(heavySlam, "windupClip", Prefer(audioKit.slamWindup, "Slam_Windup"));
             EditorUtility.SetDirty(heavySlam);
 
             DroneConfig rusher = LoadOrCreate<DroneConfig>(DataDrones + "/Drone_Rusher.asset", ConfigureRusher);
@@ -282,7 +283,7 @@ namespace CoD.EditorTools
             MissionCatalog missionCatalog = LoadOrCreate<MissionCatalog>(
                 DataMissions + "/Missions.asset", _ => { });
 
-            GameObject interactPoint = BuildInteractPointPrefab(beacon);
+            GameObject interactPoint = BuildInteractPointPrefab(beacon, audioKit);
             var missionAssets = new MissionAssets(missionCatalog, interaction, interactPoint);
 
             SetRef(impact, "decalPrefab", decal);
@@ -307,7 +308,7 @@ namespace CoD.EditorTools
 
             BuildGreyBoxScene(game, settings, loadout, impact, grey, wall, targetMat, gunmetal, gunAccent,
                 dummy, decal, sparks, flash, casing, drones, runAssets, missionAssets, postFx, trim, palette,
-                arenaKit, weaponKit);
+                arenaKit, weaponKit, audioKit);
             BuildMainMenuScene(game, settings, missionCatalog, postFx);
             BuildBootScene();
             RegisterScenes();
@@ -1263,7 +1264,7 @@ namespace CoD.EditorTools
         /// spawns one of these has to hand it the scene's InteractableRegistry, or
         /// it registers with nothing and the prompt never appears.
         /// </summary>
-        private static GameObject BuildInteractPointPrefab(Material material)
+        private static GameObject BuildInteractPointPrefab(Material material, AudioKitConfig audioKit)
         {
             GameObject root = new("Interact_Point");
 
@@ -1320,7 +1321,7 @@ namespace CoD.EditorTools
             // The shop's confirm blip, standing in until there is a dedicated one.
             // A silent interaction reads as a REFUSED interaction, which is the
             // one thing the feedback here has to rule out.
-            SetRef(point, "_useClip", LoadClip("Shop_Buy"));
+            SetRef(point, "_useClip", Prefer(audioKit.confirm, "Shop_Buy"));
 
             return SavePrefab(root, Prefabs + "/Interact_Point.prefab");
         }
@@ -1505,7 +1506,7 @@ namespace CoD.EditorTools
         }
 
         /// <summary>The Tank's slam landing: a flat outward burst, so the radius it covers is visible.</summary>
-        private static GameObject BuildSlamPrefab(Material material)
+        private static GameObject BuildSlamPrefab(Material material, AudioKitConfig audioKit)
         {
             GameObject root = new("Fx_Slam");
             ParticleSystem particles = root.AddComponent<ParticleSystem>();
@@ -1535,7 +1536,7 @@ namespace CoD.EditorTools
             audio.spatialBlend = 1f;
             audio.maxDistance = 45f;
             audio.rolloffMode = AudioRolloffMode.Linear;
-            audio.clip = LoadClip("Slam_Hit");
+            audio.clip = Prefer(audioKit.explosion, "Slam_Hit");
 
             root.AddComponent<PooledObject>();
             return SavePrefab(root, Prefabs + "/Fx_Slam.prefab");
@@ -1546,7 +1547,7 @@ namespace CoD.EditorTools
         /// it off deactivates in the same frame — a clip played on the drone would
         /// be cut off mid-bang.
         /// </summary>
-        private static GameObject BuildExplosionPrefab(Material material)
+        private static GameObject BuildExplosionPrefab(Material material, AudioKitConfig audioKit)
         {
             GameObject root = new("Fx_Explosion");
             ParticleSystem particles = root.AddComponent<ParticleSystem>();
@@ -1585,7 +1586,7 @@ namespace CoD.EditorTools
             audio.spatialBlend = 1f;
             audio.maxDistance = 45f;
             audio.rolloffMode = AudioRolloffMode.Linear;
-            audio.clip = LoadClip("Explosion");
+            audio.clip = Prefer(audioKit.explosion, "Explosion");
 
             root.AddComponent<PooledObject>();
             return SavePrefab(root, Prefabs + "/Fx_Explosion.prefab");
@@ -1596,7 +1597,7 @@ namespace CoD.EditorTools
         /// than the explosion so "I killed it" and "it got me" never look or sound
         /// the same.
         /// </summary>
-        private static GameObject BuildDroneDeathPrefab(Material material)
+        private static GameObject BuildDroneDeathPrefab(Material material, AudioKitConfig audioKit)
         {
             GameObject root = new("Fx_DroneDeath");
             ParticleSystem particles = root.AddComponent<ParticleSystem>();
@@ -1625,7 +1626,7 @@ namespace CoD.EditorTools
             audio.spatialBlend = 1f;
             audio.maxDistance = 35f;
             audio.rolloffMode = AudioRolloffMode.Linear;
-            audio.clip = LoadClip("Drone_Death");
+            audio.clip = Prefer(audioKit.droneDeath, "Drone_Death");
 
             root.AddComponent<PooledObject>();
             return SavePrefab(root, Prefabs + "/Fx_DroneDeath.prefab");
@@ -1638,7 +1639,8 @@ namespace CoD.EditorTools
             Material floorMat, Material wallMat, Material targetMat, Material gunmetal, Material gunAccent,
             GameObject dummyPrefab, GameObject decal, GameObject sparks, GameObject flash, GameObject casing,
             DroneAssets drones, RunAssets runAssets, MissionAssets missions, VolumeProfile postFx,
-            Material trimMat, PaletteConfig palette, ArenaKitConfig arenaKit, WeaponKitConfig weaponKit)
+            Material trimMat, PaletteConfig palette, ArenaKitConfig arenaKit, WeaponKitConfig weaponKit,
+            AudioKitConfig audioKit)
         {
             Scene scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
 
@@ -1840,7 +1842,7 @@ namespace CoD.EditorTools
             BuildObjective(runAssets, runner, playerTransform, playerHealth);
 
             BuildHud(weapon, playerHealth, game, pool, dummyPrefab, muzzle, spawner, registry, cameraTransform,
-                run, runner, settingsHub, playerInput, director, interactor);
+                run, runner, settingsHub, playerInput, director, interactor, audioKit);
 
             EditorSceneManager.MarkSceneDirty(scene);
             EditorSceneManager.SaveScene(scene, GreyBoxScenePath);
@@ -2661,7 +2663,7 @@ namespace CoD.EditorTools
             ObjectPool pool, GameObject dummyPrefab, Transform spawnOrigin,
             DroneSpawner spawner, DroneRegistry registry, Transform cameraTransform,
             RunContext run, WaveRunner runner, SettingsHub settingsHub, PlayerInput input,
-            MissionDirector director, PlayerInteractor interactor)
+            MissionDirector director, PlayerInteractor interactor, AudioKitConfig audioKit)
         {
             GameObject canvasObject = new("HUD");
             Canvas canvas = canvasObject.AddComponent<Canvas>();
@@ -2803,7 +2805,7 @@ namespace CoD.EditorTools
             BuildInteractPrompt(canvasObject, interactor);
 
             BuildDamageFeedback(canvasObject, game, playerHealth, cameraTransform, hudAudio);
-            BuildRunUi(canvasObject, run, runner, weapon, hudAudio);
+            BuildRunUi(canvasObject, run, runner, weapon, hudAudio, audioKit);
             BuildPauseUi(canvasObject, settingsHub, input, run, runner);
             BuildObjectiveHud(canvasObject, director, objectiveLabel);
 
@@ -2900,7 +2902,7 @@ namespace CoD.EditorTools
         /// every break for a four-line list.
         /// </summary>
         private static void BuildRunUi(GameObject canvasObject, RunContext run, WaveRunner runner,
-            WeaponController weapon, AudioSource audio)
+            WeaponController weapon, AudioSource audio, AudioKitConfig audioKit)
         {
             // The top-left column, top row. Widened off BuildLabel's 320
             // placeholder because "WAVE 9 — CROSSFIRE" does not fit in it: it
@@ -2959,8 +2961,8 @@ namespace CoD.EditorTools
             SetRef(shop, "_loadoutLabel", shopLoadout);
             SetRef(shop, "_weapon", weapon);
             SetRef(shop, "_audio", audio);
-            SetRef(shop, "_buyClip", LoadClip("Shop_Buy"));
-            SetRef(shop, "_refusedClip", LoadClip("Shop_Refused"));
+            SetRef(shop, "_buyClip", Prefer(audioKit.confirm, "Shop_Buy"));
+            SetRef(shop, "_refusedClip", Prefer(audioKit.refused, "Shop_Refused"));
 
             // ---- game over ----
             GameObject overRoot = new("GameOverPanel", typeof(RectTransform));
@@ -3495,12 +3497,13 @@ namespace CoD.EditorTools
         }
 
         private static void RequireValidKits(ArenaKitConfig arena, WeaponKitConfig weapon,
-            EnemyKitConfig enemy)
+            EnemyKitConfig enemy, AudioKitConfig audio)
         {
-            var invalid = new List<string>(3);
+            var invalid = new List<string>(4);
             if (!arena.IsValid) invalid.Add(arena.name);
             if (!weapon.IsValid) invalid.Add(weapon.name);
             if (!enemy.IsValid) invalid.Add(enemy.name);
+            if (!audio.IsValid) invalid.Add(audio.name);
             if (invalid.Count == 0) return;
 
             throw new System.InvalidOperationException(
@@ -3535,6 +3538,9 @@ namespace CoD.EditorTools
             }
             return clip;
         }
+
+        private static AudioClip? Prefer(AudioClip? authored, string fallbackName) =>
+            authored != null ? authored : LoadClip(fallbackName);
 
         private static T LoadOrCreate<T>(string path, System.Action<T> configure) where T : ScriptableObject
         {

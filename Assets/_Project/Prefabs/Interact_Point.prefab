@@ -335,7 +335,7 @@ MonoBehaviour:
   _repeatable: 0
   _startsLocked: 0
   _audio: {fileID: 7551675544565648047}
-  _useClip: {fileID: 8300000, guid: 349b91f40fc509c429b2b5d6205f0624, type: 3}
+  _useClip: {fileID: 8300000, guid: 8ed9c0338d4800448a3c7c6afb24b6a7, type: 3}
   _visual: {fileID: 6579868538880694100}
 --- !u!1 &6579868538880694100
 GameObject:

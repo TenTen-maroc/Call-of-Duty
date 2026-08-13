@@ -2,6 +2,7 @@
 using System.IO;
 using CoD.Core;
 using CoD.Enemies;
+using CoD.Waves;
 using CoD.Weapons;
 using NUnit.Framework;
 using UnityEditor;
@@ -15,7 +16,7 @@ namespace CoD.Tests
         private const string KitFolder = "Assets/_Project/Data/Kits";
 
         [Test]
-        public void ShippedKits_ArenaIsComplete_AndUnconvertedTracksRemainEmpty()
+        public void ShippedKits_ArenaAndAudioAreComplete_AndUnconvertedVisualTracksRemainEmpty()
         {
             ArenaKitConfig? arena = AssetDatabase.LoadAssetAtPath<ArenaKitConfig>(
                 KitFolder + "/Kit_Arena_Default.asset");
@@ -23,13 +24,17 @@ namespace CoD.Tests
                 KitFolder + "/Kit_Weapon_Default.asset");
             EnemyKitConfig? enemy = AssetDatabase.LoadAssetAtPath<EnemyKitConfig>(
                 KitFolder + "/Kit_Enemy_Default.asset");
+            AudioKitConfig? audio = AssetDatabase.LoadAssetAtPath<AudioKitConfig>(
+                KitFolder + "/Kit_Audio_Default.asset");
 
             Assert.That(arena, Is.Not.Null);
             Assert.That(weapon, Is.Not.Null);
             Assert.That(enemy, Is.Not.Null);
+            Assert.That(audio, Is.Not.Null);
             Assert.That(arena!.HasCompleteAssignments && arena.IsValid, Is.True);
             Assert.That(weapon!.HasNoAssignments && weapon.IsValid, Is.True);
             Assert.That(enemy!.HasNoAssignments && enemy.IsValid, Is.True);
+            Assert.That(audio!.HasCompleteAssignments && audio.IsValid, Is.True);
 
             Assert.That(AssetDatabase.GetAssetPath(arena.floorModule),
                 Does.StartWith("Assets/_Project/Art/Imported/AmbientCG/"));
@@ -42,6 +47,10 @@ namespace CoD.Tests
             Assert.That(AssetDatabase.GetAssetPath(arena.reflectionCubemap),
                 Does.EndWith("/PolyHaven/autoshop_01_1k.hdr"));
             Assert.That(arena.reflectionIntensity, Is.EqualTo(0.35f));
+            Assert.That(AssetDatabase.GetAssetPath(audio.roomTone),
+                Does.EndWith("/Kenney/Ambience/facility_room.ogg"));
+            Assert.That(AssetDatabase.GetAssetPath(audio.confirm),
+                Does.EndWith("/Kenney/Interface/confirm.ogg"));
         }
 
         [Test]
@@ -101,6 +110,87 @@ namespace CoD.Tests
                 Object.DestroyImmediate(weapon);
                 Object.DestroyImmediate(enemy);
             }
+        }
+
+        [Test]
+        public void AudioKit_RejectsMixedAssignments()
+        {
+            AudioKitConfig kit = ScriptableObject.CreateInstance<AudioKitConfig>();
+            AudioClip clip = AudioClip.Create("test", 32, 1, 8000, false);
+            try
+            {
+                Assert.That(kit.HasNoAssignments && kit.IsValid, Is.True);
+                kit.confirm = clip;
+                Assert.That(kit.IsValid, Is.False);
+                Assert.That(kit.HasNoAssignments, Is.False);
+                Assert.That(kit.HasCompleteAssignments, Is.False);
+            }
+            finally
+            {
+                Object.DestroyImmediate(clip);
+                Object.DestroyImmediate(kit);
+            }
+        }
+
+        [Test]
+        public void KenneyAudio_UsesLatencyAndLoopSpecificImportPolicies()
+        {
+            const string root = "Assets/_Project/Art/Imported/Kenney";
+            string[] guids = AssetDatabase.FindAssets("t:AudioClip", new[] { root });
+            Assert.That(guids, Has.Length.EqualTo(AudioKitConfig.ExpectedAssignmentCount));
+            foreach (string guid in guids)
+            {
+                string path = AssetDatabase.GUIDToAssetPath(guid);
+                var importer = AssetImporter.GetAtPath(path) as AudioImporter;
+                Assert.That(importer, Is.Not.Null, path);
+                Assert.That(importer!.forceToMono, Is.True, path);
+                AudioImporterSampleSettings settings = importer.defaultSampleSettings;
+                bool ambience = path.Contains("/Ambience/", System.StringComparison.Ordinal);
+                Assert.That(settings.loadType, Is.EqualTo(ambience
+                    ? AudioClipLoadType.CompressedInMemory
+                    : AudioClipLoadType.DecompressOnLoad), path);
+                Assert.That(settings.compressionFormat, Is.EqualTo(ambience
+                    ? AudioCompressionFormat.Vorbis
+                    : AudioCompressionFormat.PCM), path);
+            }
+        }
+
+        [Test]
+        public void KenneyAudio_IsWiredIntoEveryOwnedDataAssetAndFeedbackPrefab()
+        {
+            AudioKitConfig kit = Load<AudioKitConfig>(KitFolder + "/Kit_Audio_Default.asset");
+            FootstepConfig footsteps = Load<FootstepConfig>("Assets/_Project/Data/Game/Footsteps_Player.asset");
+            AmbienceConfig ambience = Load<AmbienceConfig>("Assets/_Project/Data/Game/Ambience_Arena.asset");
+            ImpactConfig impacts = Load<ImpactConfig>("Assets/_Project/Data/Game/Impact_Default.asset");
+            ContactDetonate detonate = Load<ContactDetonate>(
+                "Assets/_Project/Data/Attacks/ContactDetonate_Std.asset");
+            RangedBurst ranged = Load<RangedBurst>("Assets/_Project/Data/Attacks/RangedBurst_Std.asset");
+            HeavySlam slam = Load<HeavySlam>("Assets/_Project/Data/Attacks/HeavySlam_Std.asset");
+
+            Assert.That(footsteps.surfaces[0].stepClips,
+                Is.EqualTo(new[] { kit.footstepConcreteA, kit.footstepConcreteB,
+                    kit.footstepConcreteC, kit.footstepConcreteD }));
+            Assert.That(ambience.roomTone, Is.SameAs(kit.roomTone));
+            Assert.That(ambience.emitters, Has.Length.EqualTo(4));
+            for (int i = 0; i < 3; i++) Assert.That(ambience.emitters[i].clip, Is.SameAs(kit.ventLoop));
+            Assert.That(ambience.emitters[3].clip, Is.SameAs(kit.powerLoop));
+
+            Assert.That(impacts.surfaces, Has.Length.GreaterThanOrEqualTo(4));
+            Assert.That(ImpactClip(impacts, SurfaceType.Concrete), Is.SameAs(kit.impactConcrete));
+            Assert.That(ImpactClip(impacts, SurfaceType.Metal), Is.SameAs(kit.impactMetal));
+            Assert.That(ImpactClip(impacts, SurfaceType.Grate), Is.SameAs(kit.impactGrate));
+            Assert.That(ImpactClip(impacts, SurfaceType.Flesh), Is.SameAs(kit.impactFlesh));
+            Assert.That(detonate.alertClip, Is.SameAs(kit.droneAlert));
+            Assert.That(ranged.fireClip, Is.SameAs(kit.droneShot));
+            Assert.That(slam.windupClip, Is.SameAs(kit.slamWindup));
+
+            Assert.That(PrefabClip("Fx_Explosion"), Is.SameAs(kit.explosion));
+            Assert.That(PrefabClip("Fx_Slam"), Is.SameAs(kit.explosion));
+            Assert.That(PrefabClip("Fx_DroneDeath"), Is.SameAs(kit.droneDeath));
+            GameObject interact = Load<GameObject>("Assets/_Project/Prefabs/Interact_Point.prefab");
+            InteractPoint? point = interact.GetComponent<InteractPoint>();
+            Assert.That(point, Is.Not.Null);
+            Assert.That(SerializedReference(point!, "_useClip"), Is.SameAs(kit.confirm));
         }
 
         [Test]
@@ -215,6 +305,36 @@ namespace CoD.Tests
             Shader? shader = Shader.Find("Universal Render Pipeline/Lit");
             Assert.That(shader, Is.Not.Null);
             return new Material(shader!);
+        }
+
+        private static T Load<T>(string path) where T : Object
+        {
+            T? asset = AssetDatabase.LoadAssetAtPath<T>(path);
+            Assert.That(asset, Is.Not.Null, path);
+            return asset!;
+        }
+
+        private static AudioClip? ImpactClip(ImpactConfig config, SurfaceType surface)
+        {
+            foreach (ImpactConfig.SurfaceResponse row in config.surfaces)
+                if (row.surface == surface) return row.impactSound;
+            Assert.Fail("No impact row for " + surface);
+            return null;
+        }
+
+        private static AudioClip? PrefabClip(string prefabName)
+        {
+            GameObject prefab = Load<GameObject>("Assets/_Project/Prefabs/" + prefabName + ".prefab");
+            AudioSource? source = prefab.GetComponent<AudioSource>();
+            Assert.That(source, Is.Not.Null, prefabName);
+            return source!.clip;
+        }
+
+        private static Object? SerializedReference(Object owner, string field)
+        {
+            SerializedProperty? property = new SerializedObject(owner).FindProperty(field);
+            Assert.That(property, Is.Not.Null, owner.name + "." + field);
+            return property!.objectReferenceValue;
         }
 
         private static void EnsureAssetFolder(string path)

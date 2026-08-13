@@ -142,6 +142,61 @@ namespace CoD.EditorTools
             Debug.Log(report.ToString());
         }
 
+        [MenuItem("CoD/Report Audio Budget", false, 42)]
+        public static void ReportAudioBudget()
+        {
+            string[] guids = AssetDatabase.FindAssets("t:AudioClip", new[] { ProjectRoot });
+            long totalBytes = 0;
+            int count = 0;
+            var byFolder = new Dictionary<string, FolderTotal>();
+            foreach (string guid in guids)
+            {
+                string path = AssetDatabase.GUIDToAssetPath(guid);
+                AudioClip? clip = AssetDatabase.LoadAssetAtPath<AudioClip>(path);
+                if (clip is null) continue;
+
+                long bytes = UnityEngine.Profiling.Profiler.GetRuntimeMemorySizeLong(clip);
+                totalBytes += bytes;
+                count++;
+                string folder = FolderOf(path);
+                if (!byFolder.TryGetValue(folder, out FolderTotal total))
+                {
+                    total = new FolderTotal();
+                    byFolder.Add(folder, total);
+                }
+                total.Count++;
+                total.Bytes += bytes;
+            }
+
+            var folders = new List<KeyValuePair<string, FolderTotal>>(byFolder);
+            folders.Sort((a, b) => b.Value.Bytes.CompareTo(a.Value.Bytes));
+            var report = new StringBuilder(1024);
+            report.AppendLine("Audio memory — Unity runtime object estimate");
+            foreach (KeyValuePair<string, FolderTotal> pair in folders)
+            {
+                report.Append("  ").Append(Megabytes(pair.Value.Bytes).PadLeft(6)).Append(" MB  ")
+                    .Append(pair.Value.Count.ToString().PadLeft(3)).Append("  ").AppendLine(pair.Key);
+            }
+            report.Append("  TOTAL ").Append(Megabytes(totalBytes)).Append(" MB across ")
+                .Append(count).AppendLine(" clip(s)");
+            report.AppendLine("  Audio assets consume no VRAM; this is CPU/audio memory, not texture memory.");
+            Debug.Log(report.ToString());
+        }
+
+        public static void ReportAudioBudgetHeadless()
+        {
+            try
+            {
+                ReportAudioBudget();
+                EditorApplication.Exit(0);
+            }
+            catch (System.Exception exception)
+            {
+                Debug.LogError("Audio budget report failed: " + exception);
+                EditorApplication.Exit(1);
+            }
+        }
+
         /// <summary>
         /// The other half of the VRAM bill. Cheap because it never touches vertex
         /// data: <see cref="Mesh.GetIndexCount"/> reads the sub-mesh description,

@@ -39,6 +39,7 @@ namespace CoD.EditorTools
         private const string ArenaKitPath = "Assets/_Project/Data/Kits/Kit_Arena_Default.asset";
         private const string WeaponKitPath = "Assets/_Project/Data/Kits/Kit_Weapon_Default.asset";
         private const string EnemyKitPath = "Assets/_Project/Data/Kits/Kit_Enemy_Default.asset";
+        private const string AudioKitPath = "Assets/_Project/Data/Kits/Kit_Audio_Default.asset";
 
         [MenuItem("CoD/Verify and Repair Grey Box", false, 1)]
         public static void VerifyAndRepair() => VerifyAndReport();
@@ -67,6 +68,8 @@ namespace CoD.EditorTools
             DroneConfig? tank = Load<DroneConfig>("Assets/_Project/Data/Drones/Drone_Tank.asset");
             RangedBurst? rangedBurst = Load<RangedBurst>("Assets/_Project/Data/Attacks/RangedBurst_Std.asset");
             HeavySlam? heavySlam = Load<HeavySlam>("Assets/_Project/Data/Attacks/HeavySlam_Std.asset");
+            ContactDetonate? detonate = Load<ContactDetonate>("Assets/_Project/Data/Attacks/ContactDetonate_Std.asset");
+            AudioKitConfig? audioKit = Load<AudioKitConfig>(AudioKitPath);
             NavMeshData? navMesh = AssetDatabase.LoadAssetAtPath<NavMeshData>(
                 "Assets/_Project/Scenes/NavMesh_GreyBox.asset");
             ShopConfig? shop = Load<ShopConfig>("Assets/_Project/Data/Game/Shop.asset");
@@ -326,6 +329,9 @@ namespace CoD.EditorTools
                     Check(shopPanel, "_run", stillNull);
                     Check(shopPanel, "_root", stillNull);
                     Check(shopPanel, "_offersLabel", stillNull);
+                    Check(shopPanel, "_audio", stillNull);
+                    Check(shopPanel, "_buyClip", stillNull);
+                    Check(shopPanel, "_refusedClip", stillNull);
                 }
                 foreach (GameOverPanel overPanel in root.GetComponentsInChildren<GameOverPanel>(true))
                 {
@@ -445,6 +451,12 @@ namespace CoD.EditorTools
             // A Shooter with no projectile prefab aims, fires, and produces
             // nothing — the drone looks like it is working and does no damage.
             CheckAssetRef(rangedBurst, "projectilePrefab", stillNull);
+            if (audioKit != null && audioKit.HasCompleteAssignments)
+            {
+                CheckAssetRef(detonate, "alertClip", stillNull);
+                CheckAssetRef(rangedBurst, "fireClip", stillNull);
+                CheckAssetRef(heavySlam, "windupClip", stillNull);
+            }
             CheckAssetRef(heavySlam, "slamVfx", stillNull);
             CheckAssetRef(explosive, "explosionVfx", stillNull);
             // Fx_MuzzleFlash stopped being decoration the day the viewmodel moved
@@ -501,6 +513,7 @@ namespace CoD.EditorTools
             ArenaKitConfig? arena = Load<ArenaKitConfig>(ArenaKitPath);
             WeaponKitConfig? weapon = Load<WeaponKitConfig>(WeaponKitPath);
             EnemyKitConfig? enemy = Load<EnemyKitConfig>(EnemyKitPath);
+            AudioKitConfig? audio = Load<AudioKitConfig>(AudioKitPath);
 
             if (arena == null) stillNull.Add(ArenaKitPath + " (missing kit)");
             else if (!arena.IsValid) stillNull.Add(ArenaKitPath + " (mixed null/non-null references)");
@@ -510,6 +523,9 @@ namespace CoD.EditorTools
 
             if (enemy == null) stillNull.Add(EnemyKitPath + " (missing kit)");
             else if (!enemy.IsValid) stillNull.Add(EnemyKitPath + " (mixed null/non-null references)");
+
+            if (audio == null) stillNull.Add(AudioKitPath + " (missing kit)");
+            else if (!audio.IsValid) stillNull.Add(AudioKitPath + " (mixed null/non-null references)");
         }
 
         /// <summary>

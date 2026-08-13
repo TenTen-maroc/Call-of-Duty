@@ -1,10 +1,10 @@
 # Audio
 
 >
-> **Verified in play: no. Verified by machine: partly.** Everything below
-> compiles, passes the guards, and — new on 2026-08-12 — the mixer is loaded and
-> checked by a real Unity run (`CoD → Verify Audio Mixer`). What no machine here
-> has done is *hear* any of it, because there are still no clips.
+> **Verified by machine: yes. Auditioned by a human: no.** The mixer gate, 18
+> retained Kenney clips, their import policy, exact asset references, EditMode and
+> PlayMode suites, player build and screenshots all pass. A headless machine can
+> prove the graph and data; it cannot judge whether the mix sounds good.
 
 ## READ THIS FIRST: the mixer exists now, and nothing can regenerate it
 
@@ -148,21 +148,23 @@ moment costs no editor work.
 
 ## Overview
 
-Three things, none of which existed before: the player's **footsteps**, the
-arena's **room tone**, and the two config assets that hold every number for both.
-There is still no music, no weapon reverb, no occlusion and no mixer.
+The player has **footsteps**, the arena has **room tone and four placed loops**,
+and the mixer routes both. G9a adds an optional `AudioKitConfig` with 18 retained
+Kenney CC0 clips: four footsteps, four surface impacts, three facility beds, five
+enemy/explosion cues and two interface cues. There is still no music, authored
+weapon recording, reverb effect or occlusion.
 
-There are also **no audio clips**. Every clip field in both configs ships empty,
-and that is deliberate on two counts:
+The kit follows the art seam's all-null-or-all-complete contract. Complete means
+builders apply every retained clip; all-null means they clear those references
+back to silence or an existing deterministic placeholder. Mixed assignment is a
+gate failure. That fallback matters for reversibility, and every runtime path
+still treats a null clip or empty array as silence without warning spam.
 
-- **LFS.** Uncompressed WAV runs roughly 10 MB per minute. GitHub's free LFS quota
-  is 1 GB of storage and 1 GB of bandwidth per month; the repo is currently using
-  1.3 MB of a 400 MB budget (`guard-lfs-budget`). A careless drop of a folder of
-  ambience beds would eat that in one commit.
-- **Silence must be a valid state.** Both components treat an empty clip array or
-  a null clip as "not authored yet" — no log, no warning, no error. A missing WAV
-  is not a bug, and a config that shouted about one would produce an error *per
-  step*, forever.
+The three complete source archives remain outside the repo: 7,510,490 bytes
+downloaded, 578,632 bytes retained. Unity reports **0.8 MB runtime audio memory**
+for the retained set and **0 MB texture VRAM**. Short cues are mono PCM and
+decompress-on-load; the three five-second ambience loops are mono Vorbis and
+compressed-in-memory.
 
 ## Data Assets
 
@@ -181,8 +183,8 @@ Both live in `Assets/_Project/Data/Game/` and are created by
 | Crouch | `crouchVolume`, `crouchPitch` | 0.22, 1.05 |
 | Jitter | `pitchJitter`, `volumeJitter` | 0.07, 0.06 |
 | Landing | `landMinImpact`, `landVolume`, `landPitch` | 0.12, 0.80, 0.90 |
-| Surfaces | `surfaces[]`, `defaultSurface` | `Concrete` (Default layer), `Metal grating` (unreachable), index 0 |
-| Mixer | `outputGroup` | null — see above |
+| Surfaces | `surfaces[]`, `defaultSurface` | `Concrete` (Default layer), `Metal grating` (unreachable), index 0; optional kit supplies clips |
+| Mixer | `outputGroup` | `World` |
 
 Each `SurfaceSet` carries `label`, `layers`, `physicsMaterial`, `stepClips[]`,
 `landClips[]`, `volumeScale`, `pitchScale`.
@@ -191,10 +193,10 @@ Each `SurfaceSet` carries `label`, `layers`, `physicsMaterial`, `stepClips[]`,
 
 | Group | Fields | Shipped default |
 | --- | --- | --- |
-| Room tone | `roomTone`, `roomToneVolume`, `roomTonePitch` | null, 0.30, 1.00 |
+| Room tone | `roomTone`, `roomToneVolume`, `roomTonePitch` | optional-kit room tone, 0.30, 1.00 |
 | Fade | `fadeInSeconds` | 1.5 s |
 | Placed loops | `emitters[]`, `randomiseStartTime` | four emitters, true |
-| Mixer | `outputGroup` | null — see above |
+| Mixer | `outputGroup` | `Ambience` |
 
 Each `Emitter` carries `label`, `clip`, `localPosition`, `volume`, `pitch`,
 `minDistance`, `maxDistance`, `spatialBlend`, `spreadDegrees`, `rolloff`.
@@ -336,14 +338,10 @@ see [Scene wiring](#scene-wiring).
 Unity.exe -batchmode -quit -projectPath . -executeMethod CoD.EditorTools.SceneWiring.WireSceneExtrasHeadless
 ```
 
-**This is a separate step from every other builder, and it has never been run.**
-Both components, both config assets and this whole page shipped in one commit and
-the game stayed silent, because nothing put either component into a scene. Every
-gate was green the whole time: the code compiled, the guards passed over it, the
-assets were on disk with correct defaults, and the feature did not exist at
-runtime. Nothing in this project's toolchain can tell "installed" from "compiled",
-which is why the pass ends by re-opening the saved scene and proving the
-components are in it.
+**This is a separate step from every other builder and it has now run.** Both
+components are present in `10_GreyBox`; the pass ends by re-opening the saved
+scene and proving their references survived. That round trip is important:
+compilation alone cannot tell "installed" from "compiled".
 
 What it puts into `10_GreyBox`:
 
@@ -448,11 +446,10 @@ SceneWiring: added N component(s), rewired M reference(s), unresolved K  [Assets
 - **Surface index 1, `Metal grating`, matches nothing today** and that is
   intentional, not a bug: it makes the per-surface mechanism visible and one drag
   from real. Giving it a layer mask would steal every step from `Concrete`.
-- **`AudioBuilder` is idempotent the same way `MissionBuilder` is** — the configure
-  callback runs **on create only**, so tuned values and assigned clips survive a
-  re-run. The trap that comes with that is identical: renaming a path in the builder
-  does not rename the asset, it creates a fresh default one, orphans every tuned
-  value in the old file, and reports success.
+- **`AudioBuilder` preserves tuned numbers but re-asserts owned references.** The
+  configure callback runs on create only, while mixer routing and optional-kit
+  clip references are applied on every run. Nulling the kit therefore restores
+  the silent/placeholder fallback predictably instead of leaving stale imports.
 - **`ArenaAmbience.StartLoop` is deliberately not called `Start`.** A method named
   `Start` with parameters on a MonoBehaviour is a Unity magic-method signature
   mismatch and produces a console warning at runtime — invisible to typecheck.
@@ -474,7 +471,7 @@ SceneWiring: added N component(s), rewired M reference(s), unresolved K  [Assets
   either component is `Footsteps.Awake`'s one-shot warning for a missing `_config`,
   `_motor` or `_audio` — a wiring fault, fired once, never per step. **Nothing here
   can spam the console**, which is what makes it safe to wire the components in
-  before any WAV exists.
+  when the optional kit is null.
 - **A wired, clipless `Footsteps` is not free.** It stays `enabled`, so `Update`
   runs every frame and fires one `Physics.Raycast` per stride — roughly twice a
   second — to resolve a surface whose clips it will then find empty and discard.
@@ -483,33 +480,19 @@ SceneWiring: added N component(s), rewired M reference(s), unresolved K  [Assets
   CPU only and negligible. Worth knowing before anyone profiles a silent build and
   wonders what is casting rays. `ArenaAmbience` does not have this problem — it
   disables itself in `Awake` when nothing is authored.
-- **`Wire Scene Extras` is not part of any build gate.** `GreyBoxVerify` does not
-  know these two components exist, so a grey box rebuild that drops them exits 0
-  with every reference green. The wiring pass carries its own round-trip
-  verification instead. If a future session folds these into `GreyBoxBuilder`, fold
-  the checks into `GreyBoxVerify` in the same commit or the gate goes back to being
-  blind to exactly this failure.
+- **`Wire Scene Extras` owns its round-trip gate.** `GreyBoxVerify` now checks the
+  audio-kit contract and its owned cue references; `SceneWiring` separately proves
+  the player footstep and arena ambience components survived save/reload. If a
+  future session folds these into `GreyBoxBuilder`, preserve both checks.
 
 ## What is not done
 
-- **Unity has still never been launched for any of this.** No editor, no
-  `-runTests`, no `verify-build.mjs` — not for the components, not for the configs,
-  and not for the wiring pass, which was written and never executed. The gates that
-  actually ran are `node Tools/typecheck.mjs` (9/9, zero errors and zero warnings)
-  and `node Tools/check.mjs`.
-- **The two `.asset` files now exist** — `Footsteps_Player.asset` and
-  `Ambience_Arena.asset`, both under `Assets/_Project/Data/Game/`, both carrying the
-  right `m_Script` guid. `CoD → Build Audio Config` is still the way to recreate
-  them if they are ever lost, and it leaves an existing one untouched.
-- **`CoD → Wire Scene Extras` has never been run**, so `10_GreyBox` on disk still
-  contains neither component. Until somebody runs it, everything on this page is
-  code that cannot execute. See [Scene wiring](#scene-wiring) for the exact log
-  lines that prove it worked.
-- **There are no clips**, so even fully wired the game is still silent. Authoring
-  or sourcing footstep and ambience audio is the next real step, and it is the one
-  that costs LFS budget — check `guard-lfs-budget` before committing any.
-- **No test covers any of this.** An EditMode test over `FootstepConfig.ResolveSurface`
-  and `DefaultSurfaceIndex` is cheap and worth having; a PlayMode test that drives
-  the motor across the arena and counts steps against distance would be the one that
-  actually proves the accumulator.
-- **No mixer, no music, no weapon reverb, no occlusion.** All out of scope here.
+- **The clips have not been auditioned by a human.** Spectrogram and duration
+  review caught selection mistakes cheaply, but only an interactive mix pass can
+  judge cadence, repetition, loudness and whether the facility beds loop cleanly.
+- **The Reverb bus has no effects.** Receive, Send and SFX Reverb still require
+  the documented editor clicks followed by an audible tuning pass.
+- **Weapon close/tail, hitmarker, dry-fire and reload remain synthesized
+  placeholders.** Kenney deliberately does not pretend to be a recorded firearm
+  library; Sonniss is the next free-source candidate for that role.
+- **There is no music or occlusion.** Neither belongs in this source commit.

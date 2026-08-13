@@ -1,0 +1,32 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: a33b3777626191b44b481ad26ea876d6, type: 3}
+  m_Name: Kit_Audio_Default
+  m_EditorClassIdentifier: 
+  footstepConcreteA: {fileID: 8300000, guid: 404f5020ddae6444e8678a5111cbb8c0, type: 3}
+  footstepConcreteB: {fileID: 8300000, guid: 0be7e667e8b7fb54cb2dfbd578fe74f6, type: 3}
+  footstepConcreteC: {fileID: 8300000, guid: 432a230a49295d443af8799ee08ec280, type: 3}
+  footstepConcreteD: {fileID: 8300000, guid: 644a2842f18af904e834438a31b7cfcb, type: 3}
+  impactConcrete: {fileID: 8300000, guid: 47a4925e9b23ec34fade09940a5a766c, type: 3}
+  impactMetal: {fileID: 8300000, guid: c41b29e6daa31084998af2846848bb09, type: 3}
+  impactGrate: {fileID: 8300000, guid: d18fd4df9669faf4aa5631c1f0ab7fe2, type: 3}
+  impactFlesh: {fileID: 8300000, guid: f4c806e2e8312914687651b453134c82, type: 3}
+  roomTone: {fileID: 8300000, guid: 53223af0feaa3654db81e004fe46eec8, type: 3}
+  ventLoop: {fileID: 8300000, guid: d614caa3ee1374046ab7638a001e3c6c, type: 3}
+  powerLoop: {fileID: 8300000, guid: 213132013a0355645b49047a47b2985d, type: 3}
+  droneAlert: {fileID: 8300000, guid: e4ede8d39ae4a9244bdae1fd62f7f8ee, type: 3}
+  droneShot: {fileID: 8300000, guid: b092e2c13ace28149a3388b9157e1758, type: 3}
+  slamWindup: {fileID: 8300000, guid: 749a8dcd150948d4d9cc7ac293827563, type: 3}
+  explosion: {fileID: 8300000, guid: a242a2e4473dd6b43b73443b6c245f55, type: 3}
+  droneDeath: {fileID: 8300000, guid: 774f27fb564ad0744b4b20eeb46b7c67, type: 3}
+  confirm: {fileID: 8300000, guid: 8ed9c0338d4800448a3c7c6afb24b6a7, type: 3}
+  refused: {fileID: 8300000, guid: 28e3ed72a386136438686950557a65da, type: 3}

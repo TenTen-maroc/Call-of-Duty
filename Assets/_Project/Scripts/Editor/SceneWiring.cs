@@ -58,10 +58,10 @@ namespace CoD.EditorTools
     /// differs, so a second run leaves the scene byte-identical and never re-saves
     /// it.
     ///
-    /// WHAT IT DOES NOT DO. It adds no clips (there are none, and silence is the
-    /// shipped state — see docs/systems/audio.md), it creates no AudioMixer (it
-    /// cannot; that API is internal to UnityEditor), and it does not touch
-    /// 20_MainMenu. The menu has no player and no arena.
+    /// WHAT IT DOES NOT DO. It does not choose or assign clips (AudioKitConfig
+    /// owns that data), it creates no AudioMixer (it cannot; that API is internal
+    /// to UnityEditor), and it does not touch 20_MainMenu. The menu has no player
+    /// and no arena.
     /// </summary>
     public static class SceneWiring
     {
@@ -151,7 +151,7 @@ namespace CoD.EditorTools
             else
             {
                 Debug.Log("SceneWiring: footsteps and ambience are in the scene, and every reference " +
-                          "survived a save/reload round trip. There are still no clips — see docs/systems/audio.md.");
+                          "survived a save/reload round trip. Clip data is owned by AudioKitConfig.");
             }
 
             // The verified scene is deliberately left OPEN and clean rather than

@@ -30,10 +30,10 @@ namespace CoD.EditorTools
     /// to waste a session here is to design around a mixer this builder was
     /// supposed to have produced.
     ///
-    /// It also adds no CLIPS. Every clip field ships empty, because the project
-    /// has no footstep or ambience WAVs and audio is the sneaky Git-LFS killer at
-    /// roughly 10 MB a minute. Both configs and both components treat an empty
-    /// clip array as "not authored yet" — silence, no warning, no error.
+    /// It also synthesises no clips. A complete optional AudioKitConfig supplies
+    /// imported audio; a null or all-null kit clears those references back to the
+    /// valid silent fallback. Audio is a sneaky Git-LFS killer, so the imported
+    /// source stays deliberately small and measured.
     ///
     /// IDEMPOTENT, with GreyBoxBuilder's and MissionBuilder's discipline: the
     /// configure callback runs ON CREATE ONLY, so a volume a human moved in the
@@ -47,6 +47,7 @@ namespace CoD.EditorTools
         private const string DataGame = "Assets/_Project/Data/Game";
         private const string FootstepPath = DataGame + "/Footsteps_Player.asset";
         private const string AmbiencePath = DataGame + "/Ambience_Arena.asset";
+        private const string AudioKitPath = "Assets/_Project/Data/Kits/Kit_Audio_Default.asset";
 
         /// <summary>
         /// The one asset in this project that no builder created and no builder
@@ -101,6 +102,10 @@ namespace CoD.EditorTools
 
             FootstepConfig footsteps = LoadOrCreate<FootstepConfig>(FootstepPath, ConfigureFootsteps);
             AmbienceConfig ambience = LoadOrCreate<AmbienceConfig>(AmbiencePath, ConfigureAmbience);
+            AudioKitConfig? kit = AssetDatabase.LoadAssetAtPath<AudioKitConfig>(AudioKitPath);
+            if (kit != null && !kit.IsValid)
+                throw new System.InvalidOperationException(AudioKitPath + " has mixed null/non-null references.");
+            ApplyOptionalKit(footsteps, ambience, kit);
 
             // The mixer routing, RE-ASSERTED every run rather than configured on
             // create. It is a REFERENCE, and this project's builders all draw the
@@ -113,9 +118,12 @@ namespace CoD.EditorTools
             AssetDatabase.SaveAssets();
             AssetDatabase.Refresh();
 
+            string clipState = kit != null && kit.HasCompleteAssignments
+                ? $"{AudioKitConfig.ExpectedAssignmentCount}-clip optional kit applied"
+                : "silent fallback applied";
             Debug.Log(
-                $"Audio config built: {FootstepPath} and {AmbiencePath}, {routed} output group(s) routed. " +
-                "There are still no CLIPS — that one is a human step. See docs/systems/audio.md.");
+                $"Audio config built: {FootstepPath} and {AmbiencePath}, {routed} output group(s) routed, " +
+                clipState + ". See docs/systems/audio.md.");
         }
 
         /// <summary>
@@ -351,6 +359,35 @@ namespace CoD.EditorTools
 
             // Null until a human authors the mixer. See the class header.
             config.outputGroup = null;
+        }
+
+        private static void ApplyOptionalKit(FootstepConfig footsteps, AmbienceConfig ambience,
+            AudioKitConfig? kit)
+        {
+            bool complete = kit != null && kit.HasCompleteAssignments;
+            if (footsteps.surfaces.Length > 0)
+            {
+                footsteps.surfaces[0].stepClips = complete
+                    ? new[] { kit!.footstepConcreteA, kit.footstepConcreteB,
+                        kit.footstepConcreteC, kit.footstepConcreteD }
+                    : System.Array.Empty<AudioClip?>();
+            }
+            if (footsteps.surfaces.Length > 1)
+            {
+                footsteps.surfaces[1].stepClips = complete
+                    ? new[] { kit!.impactMetal, kit.impactGrate }
+                    : System.Array.Empty<AudioClip?>();
+            }
+
+            ambience.roomTone = complete ? kit!.roomTone : null;
+            for (int i = 0; i < ambience.emitters.Length; i++)
+            {
+                ambience.emitters[i].clip = complete
+                    ? (i == ambience.emitters.Length - 1 ? kit!.powerLoop : kit!.ventLoop)
+                    : null;
+            }
+            EditorUtility.SetDirty(footsteps);
+            EditorUtility.SetDirty(ambience);
         }
 
         // ---------- ambience ----------

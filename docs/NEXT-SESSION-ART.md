@@ -1,11 +1,12 @@
 # The art session — a self-contained prompt
 
 > Status 2026-08-13: G8 is complete, green, committed, and was visually neutral.
-> G9a sources 1–2 are integrated: ten 1K ambientCG CC0 surfaces plus Poly Haven
+> G9a sources 1–3 are integrated: ten 1K ambientCG CC0 surfaces plus Poly Haven
 > Autoshop 01 as a 128 px specular reflection cubemap. The complete arena kit
 > adds 19 collider-free `Art` children while keeping the original 19
-> BoxColliders. Measured texture-memory deltas are 19.9 MB and 0.2 MB; weapon and
-> enemy kits remain null. Kenney is the next free source.
+> BoxColliders. Measured texture-memory deltas are 19.9 MB and 0.2 MB; Kenney adds
+> 18 CC0 clips and 0.8 MB measured audio memory at zero VRAM. Weapon and enemy
+> kits remain null. Sonniss is the next free source.
 
 Paste the block at the bottom into a fresh Claude Code session opened at the repo
 root. Everything above it is the reasoning behind the block; the block itself is
@@ -40,7 +41,7 @@ WHERE IT STANDS
 Eight weapons, a two-mission campaign, a wave loop with a shop, three drone
 archetypes, a full HDR grade, a separate viewmodel camera, tracers, per-surface
 impacts, and a hand-authored AudioMixer with footsteps and ambience routed
-through it. 232 tests (172 EditMode + 60 PlayMode), 8 guards, 9 clean assemblies,
+through it. 242 tests (182 EditMode + 60 PlayMode), 8 guards, 9 clean assemblies,
 a release .exe that boots. Unity 6000.0.81f1.
 
 THE IMAGE TODAY: 30 materials, ONE texture (procedurally generated), ZERO
@@ -138,7 +139,8 @@ permitted here), a URP VFX pack ($25-45, VERIFY URP COMPATIBILITY BEFORE BUYING
 
   RTX 3050 Laptop, 4 GB VRAM. The binding constraint on every art decision.
   Texture Max Size 1024 project-wide; 2048 only for weapons and hands.
-  LFS: the repo is on 1.3 MB of a 400 MB budget (guard-lfs-budget). GitHub free
+  LFS: measure the staged total with guard-lfs-budget before every source commit;
+    after Poly Haven it is 29.7 MB of a 400 MB project budget. GitHub free
     is 1 GB storage and 1 GB bandwidth PER MONTH, and one asset pack exceeds it.
     Audio is the sneaky killer at ~10 MB a minute.
   All binaries through LFS. Every asset needs a committed .meta sibling.

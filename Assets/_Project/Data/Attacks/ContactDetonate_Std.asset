@@ -23,4 +23,4 @@ MonoBehaviour:
     m_Bits: 4294967291
   explosionVfx: {fileID: 6847219676677777461, guid: 1d9d431549a96da45849b0e0b54feea6, type: 3}
   explosionLifetime: 1.2
-  alertClip: {fileID: 8300000, guid: 39c4be71d505e9f419ce049207beec33, type: 3}
+  alertClip: {fileID: 8300000, guid: e4ede8d39ae4a9244bdae1fd62f7f8ee, type: 3}

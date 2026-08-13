@@ -29,4 +29,4 @@ MonoBehaviour:
   hitMask:
     serializedVersion: 2
     m_Bits: 4294967291
-  fireClip: {fileID: 8300000, guid: fac9ced74a016f542808d2449ed35913, type: 3}
+  fireClip: {fileID: 8300000, guid: b092e2c13ace28149a3388b9157e1758, type: 3}

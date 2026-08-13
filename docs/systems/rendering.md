@@ -458,6 +458,15 @@ cubemap; final LFS object/quota totals are recorded in the source commit message
 `ArtReport` now scans the base `Texture` type because `Texture2D` silently omitted
 imported cubemaps and would have falsely reported zero delta for this source.
 
+**G9a / Kenney measurement (2026-08-13):** audio-only source, therefore **0 MB
+texture-VRAM delta** and the texture asset set remains **22 textures**.
+`ArtReport` reports **0.8 MB** of runtime audio memory for the 18 retained clips.
+A fresh editor process reported 42.9 MB for the unchanged texture set versus the
+prior like-for-like 21.5 MB snapshot; that 2× residency variance is precisely why
+the report documents itself as an editor estimate, not a player VRAM reading.
+The retained OGG payload is 578,632 bytes; final LFS totals are recorded in the
+source commit message.
+
 The before/after Development-player captures were inspected frame by frame.
 Both menu PNGs are byte-identical. Arena frames preserve the same composition,
 geometry, materials, lighting and viewmodel; pixel variance is the harness's
@@ -611,10 +620,9 @@ Four things `VfxBuilder` cannot do, in the order they bite:
 4. **An impact `AudioSource`** on the player rig, wired to
    `WeaponController._audioImpact`. Without it the impact clip still plays, on
    the gun's close-layer source, which is wrong-but-audible rather than silent.
-   And the clips themselves — `Impact_Concrete`, `Impact_Metal`, `Impact_Grate`,
-   `Impact_Flesh` — do not exist yet: add them to
-   `Tools/make-placeholder-audio.mjs`, re-run it, then run `Build VFX` again.
-   `VfxBuilder` names the missing ones in one warning rather than four.
+   The complete optional audio kit now provides differentiated Kenney concrete,
+   metal, grate and flesh clips. Nulling the kit and rebuilding restores the
+   clipless fallback without changing impact particles or gameplay.
 
 ## Related Systems
 

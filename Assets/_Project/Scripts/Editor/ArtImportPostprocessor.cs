@@ -38,6 +38,26 @@ namespace CoD.EditorTools
             ApplyModelPolicy(importer, assetPath);
         }
 
+        private void OnPreprocessAudio()
+        {
+            if (!IsManagedPath(assetPath) || assetImporter is not AudioImporter importer) return;
+
+            bool ambience = assetPath.Contains("/Ambience/", System.StringComparison.OrdinalIgnoreCase);
+            importer.forceToMono = true;
+            importer.loadInBackground = ambience;
+
+            AudioImporterSampleSettings settings = importer.defaultSampleSettings;
+            settings.loadType = ambience
+                ? AudioClipLoadType.CompressedInMemory
+                : AudioClipLoadType.DecompressOnLoad;
+            settings.compressionFormat = ambience
+                ? AudioCompressionFormat.Vorbis
+                : AudioCompressionFormat.PCM;
+            settings.quality = ambience ? 0.55f : 1f;
+            settings.preloadAudioData = true;
+            importer.defaultSampleSettings = settings;
+        }
+
         /// <summary>
         /// Creates real Unity Preset assets from temporary importers. A .preset
         /// is the reviewable source of truth; the callbacks above still re-state

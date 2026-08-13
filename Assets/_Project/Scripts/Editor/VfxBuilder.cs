@@ -49,6 +49,7 @@ namespace CoD.EditorTools
         private const string Audio = "Assets/_Project/Audio";
 
         private const string ImpactConfigPath = DataGame + "/Impact_Default.asset";
+        private const string AudioKitPath = "Assets/_Project/Data/Kits/Kit_Audio_Default.asset";
         private const string PalettePath = DataGame + "/Palette_GreyBox.asset";
         private const string DecalPrefabPath = Prefabs + "/Fx_ImpactDecal.prefab";
 
@@ -182,18 +183,22 @@ namespace CoD.EditorTools
             }
 
             var missingClips = new List<string>();
+            AudioKitConfig? audioKit = AssetDatabase.LoadAssetAtPath<AudioKitConfig>(AudioKitPath);
+            if (audioKit != null && !audioKit.IsValid)
+                throw new System.InvalidOperationException(AudioKitPath + " has mixed null/non-null references.");
+            bool authoredAudio = audioKit != null && audioKit.HasCompleteAssignments;
 
             WriteSurface(impact, SurfaceType.Concrete, "Default", decal, concreteFx,
-                LoadClip(ConcreteClip, missingClips), volume: 0.5f);
+                authoredAudio ? audioKit!.impactConcrete : LoadClip(ConcreteClip, missingClips), volume: 0.5f);
             WriteSurface(impact, SurfaceType.Metal, MetalLayerName, decal, metalFx,
-                LoadClip(MetalClip, missingClips), volume: 0.6f);
+                authoredAudio ? audioKit!.impactMetal : LoadClip(MetalClip, missingClips), volume: 0.6f);
             // No hole in a grate, and none in a body: a decal is spawned into the
             // WORLD rather than parented to what it hit, so one stamped on a
             // drone hangs in mid-air after the drone dies and returns to the pool.
             WriteSurface(impact, SurfaceType.Grate, GrateLayerName, null, grateFx,
-                LoadClip(GrateClip, missingClips), volume: 0.55f);
+                authoredAudio ? audioKit!.impactGrate : LoadClip(GrateClip, missingClips), volume: 0.55f);
             WriteSurface(impact, SurfaceType.Flesh, FleshLayerName, null, fleshFx,
-                LoadClip(FleshClip, missingClips), volume: 0.65f);
+                authoredAudio ? audioKit!.impactFlesh : LoadClip(FleshClip, missingClips), volume: 0.65f);
 
             EditorUtility.SetDirty(impact);
 
@@ -571,9 +576,10 @@ namespace CoD.EditorTools
 
             row.decalPrefab = decal;
             row.particlePrefab = particles;
-            // Only when it exists: re-asserting null would wipe a clip somebody
-            // assigned by hand the moment the .wav is missing from the folder.
-            if (clip != null) row.impactSound = clip;
+            // Null is the reversible fallback state when the optional audio kit
+            // is empty. Keeping a previous source here would make nulling the kit
+            // look successful while imported sound remained live.
+            row.impactSound = clip;
 
             int layer = LayerMask.NameToLayer(layerName);
             if (layer >= 0)
