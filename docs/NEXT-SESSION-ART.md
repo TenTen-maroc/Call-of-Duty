@@ -1,5 +1,10 @@
 # The art session — a self-contained prompt
 
+> Status 2026-08-13: G8 is complete and green. All three shipped kits remain
+> null; the generated scene kept the same 218 serialized names, 133 GameObjects
+> and 19 BoxColliders; 237 tests and both player gates pass; the before/after
+> screenshots were inspected with no visual delta. G9a is now the active step.
+
 Paste the block at the bottom into a fresh Claude Code session opened at the repo
 root. Everything above it is the reasoning behind the block; the block itself is
 written to be executed without any of this context.

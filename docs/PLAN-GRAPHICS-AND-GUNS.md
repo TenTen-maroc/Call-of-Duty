@@ -186,7 +186,7 @@ The camera split fixed the *rendering*. This fixes the *motion*.
   `volume.profile` (which clones once) — **never** `sharedProfile`, because
   Domain Reload is off and the write would permanently rewrite the shipped asset.
 
-## G8 — The art seam *(~2–3 sessions. **BUILD THIS BEFORE SPENDING ANYTHING.**)*
+## G8 — The art seam ✅ *(built 2026-08-13; **BUILT BEFORE DOWNLOADING OR SPENDING ANYTHING.**)*
 
 A 2951-line editor script generates every scene from primitives. The question
 "how does bought art coexist with that" has exactly one good answer:

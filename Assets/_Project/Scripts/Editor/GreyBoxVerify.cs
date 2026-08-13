@@ -36,6 +36,9 @@ namespace CoD.EditorTools
 
         /// <summary>Read by both scenes — the menu picks a mission, the arena resolves the saved id.</summary>
         private const string MissionCatalogPath = "Assets/_Project/Data/Missions/Missions.asset";
+        private const string ArenaKitPath = "Assets/_Project/Data/Kits/Kit_Arena_Default.asset";
+        private const string WeaponKitPath = "Assets/_Project/Data/Kits/Kit_Weapon_Default.asset";
+        private const string EnemyKitPath = "Assets/_Project/Data/Kits/Kit_Enemy_Default.asset";
 
         [MenuItem("CoD/Verify and Repair Grey Box", false, 1)]
         public static void VerifyAndRepair() => VerifyAndReport();
@@ -455,6 +458,8 @@ namespace CoD.EditorTools
             CheckAssetRef(smg, "muzzleFlashPrefab", stillNull);
             CheckAssetRef(smg, "shellCasingPrefab", stillNull);
 
+            VerifyKits(stillNull);
+
             // The pooled interact point. Only the references that live INSIDE the
             // prefab are listed: _registry points at a scene object, and a prefab
             // asset cannot hold one, so whatever spawns these has to supply it.
@@ -482,6 +487,28 @@ namespace CoD.EditorTools
             }
 
             return stillNull.Count;
+        }
+
+        /// <summary>
+        /// Empty kits are the shippable grey-box fallback. Complete kits are the
+        /// imported-art path. A mixed kit is neither: it produces a scene that
+        /// looks half-built while collision, pathing and combat tests all remain
+        /// green, so it is an unresolved build error just like a dead reference.
+        /// </summary>
+        private static void VerifyKits(List<string> stillNull)
+        {
+            ArenaKitConfig? arena = Load<ArenaKitConfig>(ArenaKitPath);
+            WeaponKitConfig? weapon = Load<WeaponKitConfig>(WeaponKitPath);
+            EnemyKitConfig? enemy = Load<EnemyKitConfig>(EnemyKitPath);
+
+            if (arena == null) stillNull.Add(ArenaKitPath + " (missing kit)");
+            else if (!arena.IsValid) stillNull.Add(ArenaKitPath + " (mixed null/non-null references)");
+
+            if (weapon == null) stillNull.Add(WeaponKitPath + " (missing kit)");
+            else if (!weapon.IsValid) stillNull.Add(WeaponKitPath + " (mixed null/non-null references)");
+
+            if (enemy == null) stillNull.Add(EnemyKitPath + " (missing kit)");
+            else if (!enemy.IsValid) stillNull.Add(EnemyKitPath + " (mixed null/non-null references)");
         }
 
         /// <summary>

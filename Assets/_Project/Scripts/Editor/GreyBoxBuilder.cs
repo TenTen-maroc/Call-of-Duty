@@ -43,6 +43,7 @@ namespace CoD.EditorTools
         private const string DataPassives = "Assets/_Project/Data/Passives";
         private const string DataEffects = "Assets/_Project/Data/Effects";
         private const string DataMissions = "Assets/_Project/Data/Missions";
+        private const string DataKits = "Assets/_Project/Data/Kits";
         private const string Materials = "Assets/_Project/Art/Materials";
         private const string Textures = "Assets/_Project/Art/Textures";
         private const string Prefabs = "Assets/_Project/Prefabs";
@@ -66,6 +67,7 @@ namespace CoD.EditorTools
         public static void Build()
         {
             EnsureFolders();
+            ArtImportPostprocessor.EnsurePresets();
 
             GameConfig game = LoadOrCreate<GameConfig>(DataGame + "/GameConfig.asset", ConfigureGame);
             SettingsConfig settings = LoadOrCreate<SettingsConfig>(DataGame + "/Settings.asset", ConfigureSettings);
@@ -75,6 +77,10 @@ namespace CoD.EditorTools
             });
             ImpactConfig impact = LoadOrCreate<ImpactConfig>(DataGame + "/Impact_Default.asset", _ => { });
             VolumeProfile postFx = LoadOrCreateVolumeProfile(DataGame + "/PostFx_Arena.asset");
+            ArenaKitConfig arenaKit = LoadOrCreate<ArenaKitConfig>(DataKits + "/Kit_Arena_Default.asset", _ => { });
+            WeaponKitConfig weaponKit = LoadOrCreate<WeaponKitConfig>(DataKits + "/Kit_Weapon_Default.asset", _ => { });
+            EnemyKitConfig enemyKit = LoadOrCreate<EnemyKitConfig>(DataKits + "/Kit_Enemy_Default.asset", _ => { });
+            RequireValidKits(arenaKit, weaponKit, enemyKit);
             WeaponConfig rifle = LoadOrCreate<WeaponConfig>(DataWeapons + "/AR_Standard.asset", ConfigureRifle);
             WeaponConfig smg = LoadOrCreate<WeaponConfig>(DataWeapons + "/SMG_Rapid.asset", ConfigureSmg);
             PlayerLoadoutConfig loadout = LoadOrCreate<PlayerLoadoutConfig>(DataWeapons + "/Loadout_Default.asset", l =>
@@ -181,9 +187,9 @@ namespace CoD.EditorTools
             GameObject slamVfx = BuildSlamPrefab(fireFx);
             GameObject projectile = BuildDroneProjectilePrefab(shooterCore);
 
-            GameObject rusherPrefab = BuildDronePrefab("Drone_Rusher", DroneShape.Rusher, droneHull, droneCore);
-            GameObject shooterPrefab = BuildDronePrefab("Drone_Shooter", DroneShape.Shooter, droneHull, shooterCore);
-            GameObject tankPrefab = BuildDronePrefab("Drone_Tank", DroneShape.Tank, droneHull, tankCore);
+            GameObject rusherPrefab = BuildDronePrefab("Drone_Rusher", DroneShape.Rusher, droneHull, droneCore, enemyKit);
+            GameObject shooterPrefab = BuildDronePrefab("Drone_Shooter", DroneShape.Shooter, droneHull, shooterCore, enemyKit);
+            GameObject tankPrefab = BuildDronePrefab("Drone_Tank", DroneShape.Tank, droneHull, tankCore, enemyKit);
 
             DifficultyConfig difficulty = LoadOrCreate<DifficultyConfig>(DataGame + "/Difficulty.asset", ConfigureDifficulty);
 
@@ -300,7 +306,8 @@ namespace CoD.EditorTools
             EditorUtility.SetDirty(rifle);
 
             BuildGreyBoxScene(game, settings, loadout, impact, grey, wall, targetMat, gunmetal, gunAccent,
-                dummy, decal, sparks, flash, casing, drones, runAssets, missionAssets, postFx, trim, palette);
+                dummy, decal, sparks, flash, casing, drones, runAssets, missionAssets, postFx, trim, palette,
+                arenaKit, weaponKit);
             BuildMainMenuScene(game, settings, missionCatalog, postFx);
             BuildBootScene();
             RegisterScenes();
@@ -1335,7 +1342,8 @@ namespace CoD.EditorTools
         /// enabled while its object sits off the navmesh throws on the first
         /// SetDestination, so the controller owns exactly when it comes alive.
         /// </summary>
-        private static GameObject BuildDronePrefab(string name, DroneShape shape, Material hull, Material core)
+        private static GameObject BuildDronePrefab(string name, DroneShape shape, Material hull, Material core,
+            EnemyKitConfig kit)
         {
             Vector3 bodyScale = shape switch
             {
@@ -1359,8 +1367,28 @@ namespace CoD.EditorTools
             GameObject root = GameObject.CreatePrimitive(PrimitiveType.Cube);
             root.name = name;
             root.transform.localScale = bodyScale;
-            MeshRenderer hullRenderer = root.GetComponent<MeshRenderer>();
-            hullRenderer.sharedMaterial = hull;
+            GameObject? importedPrefab = shape switch
+            {
+                DroneShape.Shooter => kit.shooterPrefab,
+                DroneShape.Tank => kit.tankPrefab,
+                _ => kit.rusherPrefab,
+            };
+
+            Renderer hullRenderer;
+            if (importedPrefab == null)
+            {
+                MeshRenderer primitiveRenderer = root.GetComponent<MeshRenderer>();
+                primitiveRenderer.sharedMaterial = hull;
+                hullRenderer = primitiveRenderer;
+            }
+            else
+            {
+                Material importedMaterial = kit.hullMaterial ?? throw new System.InvalidOperationException(
+                    $"Enemy kit '{kit.name}' has a prefab but no hull material.");
+                Object.DestroyImmediate(root.GetComponent<MeshRenderer>());
+                Object.DestroyImmediate(root.GetComponent<MeshFilter>());
+                hullRenderer = AddArtChild(root, importedPrefab, importedMaterial, disableShadows: false);
+            }
 
             // Core: sits forward so the reward for aiming is on the face the drone
             // shows while it comes at you. Child scale compensates for the stretched
@@ -1374,7 +1402,7 @@ namespace CoD.EditorTools
             MeshRenderer coreRenderer = coreObject.GetComponent<MeshRenderer>();
             coreRenderer.sharedMaterial = core;
 
-            AddShapeDetails(root, shape, hull, bodyScale);
+            if (importedPrefab == null) AddShapeDetails(root, shape, hull, bodyScale);
 
             NavMeshAgent agent = root.AddComponent<NavMeshAgent>();
             // Every archetype keeps its agent radius at or under the 0.5 the
@@ -1610,7 +1638,7 @@ namespace CoD.EditorTools
             Material floorMat, Material wallMat, Material targetMat, Material gunmetal, Material gunAccent,
             GameObject dummyPrefab, GameObject decal, GameObject sparks, GameObject flash, GameObject casing,
             DroneAssets drones, RunAssets runAssets, MissionAssets missions, VolumeProfile postFx,
-            Material trimMat, PaletteConfig palette)
+            Material trimMat, PaletteConfig palette, ArenaKitConfig arenaKit, WeaponKitConfig weaponKit)
         {
             Scene scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
 
@@ -1677,7 +1705,7 @@ namespace CoD.EditorTools
 
             BuildPostFx(postFx);
 
-            GameObject room = BuildRoom(floorMat, wallMat, trimMat);
+            GameObject room = BuildRoom(floorMat, wallMat, trimMat, arenaKit);
             BakeNavMesh(room);
             BuildArenaLights();
 
@@ -1751,7 +1779,8 @@ namespace CoD.EditorTools
 
             (WeaponController weapon, PlayerLook look, Health playerHealth, Transform muzzle,
                 Transform playerTransform, Transform cameraTransform) =
-                BuildPlayerRig(game, loadout, impact, pool, gunmetal, gunAccent, run, settingsHub, palette);
+                BuildPlayerRig(game, loadout, impact, pool, gunmetal, gunAccent, run, settingsHub, palette,
+                    weaponKit);
 
             BuildTargets(dummyPrefab, targetMat);
             (DroneSpawner spawner, DroneRegistry registry) = BuildDroneRig(drones, pool, playerTransform);
@@ -1847,21 +1876,18 @@ namespace CoD.EditorTools
             data.antialiasingQuality = AntialiasingQuality.High;
         }
 
-        private static GameObject BuildRoom(Material floorMat, Material wallMat, Material trimMat)
+        private static GameObject BuildRoom(Material floorMat, Material wallMat, Material trimMat,
+            ArenaKitConfig kit)
         {
             GameObject room = new("Room");
 
-            GameObject floor = GameObject.CreatePrimitive(PrimitiveType.Cube);
-            floor.name = "Floor";
-            floor.transform.SetParent(room.transform, false);
-            floor.transform.localScale = new Vector3(40f, 0.5f, 40f);
-            floor.transform.position = new Vector3(0f, -0.25f, 0f);
-            floor.GetComponent<MeshRenderer>().sharedMaterial = floorMat;
+            AddBlock(room, "Floor", new Vector3(0f, -0.25f, 0f), new Vector3(40f, 0.5f, 40f),
+                floorMat, kit.floorModule, kit.floorMaterial);
 
-            AddBox(room, "Wall_N", new Vector3(0f, 2.5f, 20f), new Vector3(40f, 5f, 0.5f), wallMat);
-            AddBox(room, "Wall_S", new Vector3(0f, 2.5f, -20f), new Vector3(40f, 5f, 0.5f), wallMat);
-            AddBox(room, "Wall_E", new Vector3(20f, 2.5f, 0f), new Vector3(0.5f, 5f, 40f), wallMat);
-            AddBox(room, "Wall_W", new Vector3(-20f, 2.5f, 0f), new Vector3(0.5f, 5f, 40f), wallMat);
+            AddArenaBlock(room, "Wall_N", new Vector3(0f, 2.5f, 20f), new Vector3(40f, 5f, 0.5f), wallMat, kit);
+            AddArenaBlock(room, "Wall_S", new Vector3(0f, 2.5f, -20f), new Vector3(40f, 5f, 0.5f), wallMat, kit);
+            AddArenaBlock(room, "Wall_E", new Vector3(20f, 2.5f, 0f), new Vector3(0.5f, 5f, 40f), wallMat, kit);
+            AddArenaBlock(room, "Wall_W", new Vector3(-20f, 2.5f, 0f), new Vector3(0.5f, 5f, 40f), wallMat, kit);
 
             // THE ARENA. One open room made the fight shapeless: every drone took
             // the same straight line, retreating was a straight line too, and the
@@ -1875,29 +1901,29 @@ namespace CoD.EditorTools
             // cover worth using rather than worth hiding behind.
 
             // The centre mass. Everything orbits this, and nothing shoots across it.
-            AddBox(room, "Core_Bunker", new Vector3(0f, 1.5f, 2f), new Vector3(8f, 3f, 6f), wallMat);
+            AddArenaBlock(room, "Core_Bunker", new Vector3(0f, 1.5f, 2f), new Vector3(8f, 3f, 6f), wallMat, kit);
 
             // Lane dividers, with a deliberate 7 m crossing gap between each pair:
             // wide enough that a Tank fits, narrow enough to be a decision.
-            AddBox(room, "Divider_W_South", new Vector3(-9f, 1.5f, -6f), new Vector3(1f, 3f, 10f), wallMat);
-            AddBox(room, "Divider_E_South", new Vector3(9f, 1.5f, -6f), new Vector3(1f, 3f, 10f), wallMat);
-            AddBox(room, "Divider_W_North", new Vector3(-9f, 1.5f, 11f), new Vector3(1f, 3f, 8f), wallMat);
-            AddBox(room, "Divider_E_North", new Vector3(9f, 1.5f, 11f), new Vector3(1f, 3f, 8f), wallMat);
+            AddArenaBlock(room, "Divider_W_South", new Vector3(-9f, 1.5f, -6f), new Vector3(1f, 3f, 10f), wallMat, kit);
+            AddArenaBlock(room, "Divider_E_South", new Vector3(9f, 1.5f, -6f), new Vector3(1f, 3f, 10f), wallMat, kit);
+            AddArenaBlock(room, "Divider_W_North", new Vector3(-9f, 1.5f, 11f), new Vector3(1f, 3f, 8f), wallMat, kit);
+            AddArenaBlock(room, "Divider_E_North", new Vector3(9f, 1.5f, 11f), new Vector3(1f, 3f, 8f), wallMat, kit);
 
             // Shoot-over cover. The south block is in front of the player spawn on
             // purpose: the first thing you learn is that you can back behind it.
-            AddBox(room, "Cover_S", new Vector3(0f, 0.6f, -10f), new Vector3(6f, 1.2f, 1f), wallMat);
-            AddBox(room, "Cover_W", new Vector3(-14f, 0.6f, 4f), new Vector3(4f, 1.2f, 1f), wallMat);
-            AddBox(room, "Cover_E", new Vector3(14f, 0.6f, 4f), new Vector3(4f, 1.2f, 1f), wallMat);
-            AddBox(room, "Cover_NW", new Vector3(-5f, 0.6f, 14f), new Vector3(1f, 1.2f, 5f), wallMat);
-            AddBox(room, "Cover_NE", new Vector3(5f, 0.6f, 14f), new Vector3(1f, 1.2f, 5f), wallMat);
+            AddArenaBlock(room, "Cover_S", new Vector3(0f, 0.6f, -10f), new Vector3(6f, 1.2f, 1f), wallMat, kit);
+            AddArenaBlock(room, "Cover_W", new Vector3(-14f, 0.6f, 4f), new Vector3(4f, 1.2f, 1f), wallMat, kit);
+            AddArenaBlock(room, "Cover_E", new Vector3(14f, 0.6f, 4f), new Vector3(4f, 1.2f, 1f), wallMat, kit);
+            AddArenaBlock(room, "Cover_NW", new Vector3(-5f, 0.6f, 14f), new Vector3(1f, 1.2f, 5f), wallMat, kit);
+            AddArenaBlock(room, "Cover_NE", new Vector3(5f, 0.6f, 14f), new Vector3(1f, 1.2f, 5f), wallMat, kit);
 
             // Corner pillars: they stop the perimeter from being a free racetrack
             // and give a kiting Shooter somewhere to be forced out of.
-            AddBox(room, "Pillar_NW", new Vector3(-16f, 2f, 16f), new Vector3(2f, 4f, 2f), wallMat);
-            AddBox(room, "Pillar_NE", new Vector3(16f, 2f, 16f), new Vector3(2f, 4f, 2f), wallMat);
-            AddBox(room, "Pillar_SW", new Vector3(-16f, 2f, -16f), new Vector3(2f, 4f, 2f), wallMat);
-            AddBox(room, "Pillar_SE", new Vector3(16f, 2f, -16f), new Vector3(2f, 4f, 2f), wallMat);
+            AddArenaBlock(room, "Pillar_NW", new Vector3(-16f, 2f, 16f), new Vector3(2f, 4f, 2f), wallMat, kit);
+            AddArenaBlock(room, "Pillar_NE", new Vector3(16f, 2f, 16f), new Vector3(2f, 4f, 2f), wallMat, kit);
+            AddArenaBlock(room, "Pillar_SW", new Vector3(-16f, 2f, -16f), new Vector3(2f, 4f, 2f), wallMat, kit);
+            AddArenaBlock(room, "Pillar_SE", new Vector3(16f, 2f, -16f), new Vector3(2f, 4f, 2f), wallMat, kit);
 
             // Edge trim. Untextured grey blocks under fog lose their silhouette at
             // exactly the distance where knowing whether you can back behind one
@@ -2004,14 +2030,70 @@ namespace CoD.EditorTools
             return (spawner, registry);
         }
 
-        private static void AddBox(GameObject parent, string name, Vector3 position, Vector3 scale, Material material)
+        private static void AddArenaBlock(GameObject parent, string name, Vector3 position, Vector3 scale,
+            Material fallbackMaterial, ArenaKitConfig kit)
+            => AddBlock(parent, name, position, scale, fallbackMaterial, kit.wallModule, kit.wallMaterial);
+
+        /// <summary>
+        /// Gameplay geometry is always the same unit box transformed by the
+        /// builder. An empty kit takes the original primitive path exactly. A
+        /// complete kit keeps only that box's collider and puts imported art in
+        /// a child named Art after stripping every collider from its subtree.
+        /// </summary>
+        private static void AddBlock(GameObject parent, string name, Vector3 position, Vector3 scale,
+            Material fallbackMaterial, GameObject? artPrefab, Material? artMaterial)
         {
-            GameObject box = GameObject.CreatePrimitive(PrimitiveType.Cube);
-            box.name = name;
+            if (artPrefab == null)
+            {
+                GameObject primitive = GameObject.CreatePrimitive(PrimitiveType.Cube);
+                primitive.name = name;
+                primitive.transform.SetParent(parent.transform, false);
+                primitive.transform.position = position;
+                primitive.transform.localScale = scale;
+                primitive.GetComponent<MeshRenderer>().sharedMaterial = fallbackMaterial;
+                return;
+            }
+
+            Material material = artMaterial ?? throw new System.InvalidOperationException(
+                $"Art block '{name}' has a prefab but no material.");
+            GameObject box = new(name);
             box.transform.SetParent(parent.transform, false);
             box.transform.position = position;
             box.transform.localScale = scale;
-            box.GetComponent<MeshRenderer>().sharedMaterial = material;
+            box.AddComponent<BoxCollider>();
+            AddArtChild(box, artPrefab, material, disableShadows: false);
+        }
+
+        private static Renderer AddArtChild(GameObject parent, GameObject prefab, Material material,
+            bool disableShadows)
+        {
+            GameObject art = Object.Instantiate(prefab);
+            art.name = "Art";
+            art.transform.SetParent(parent.transform, false);
+            art.transform.localPosition = Vector3.zero;
+            art.transform.localRotation = Quaternion.identity;
+            art.transform.localScale = Vector3.one;
+
+            Collider[] colliders = art.GetComponentsInChildren<Collider>(true);
+            for (int i = 0; i < colliders.Length; i++) Object.DestroyImmediate(colliders[i]);
+
+            Renderer[] renderers = art.GetComponentsInChildren<Renderer>(true);
+            if (renderers.Length == 0)
+                throw new System.InvalidOperationException(
+                    $"Art prefab '{prefab.name}' contains no renderer.");
+
+            for (int i = 0; i < renderers.Length; i++)
+            {
+                Material[] materials = renderers[i].sharedMaterials;
+                for (int materialIndex = 0; materialIndex < materials.Length; materialIndex++)
+                    materials[materialIndex] = material;
+                renderers[i].sharedMaterials = materials;
+
+                if (!disableShadows) continue;
+                renderers[i].shadowCastingMode = ShadowCastingMode.Off;
+                renderers[i].receiveShadows = false;
+            }
+            return renderers[0];
         }
 
         /// <summary>
@@ -2222,7 +2304,8 @@ namespace CoD.EditorTools
 
         private static (WeaponController, PlayerLook, Health, Transform, Transform, Transform) BuildPlayerRig(
             GameConfig game, PlayerLoadoutConfig loadout, ImpactConfig impact, ObjectPool pool,
-            Material gunmetal, Material gunAccent, RunContext run, SettingsHub settings, PaletteConfig palette)
+            Material gunmetal, Material gunAccent, RunContext run, SettingsHub settings, PaletteConfig palette,
+            WeaponKitConfig weaponKit)
         {
             GameObject player = new("Player");
             player.transform.position = new Vector3(0f, 0.1f, -12f);
@@ -2310,14 +2393,23 @@ namespace CoD.EditorTools
             GameObject model = new("Viewmodel");
             model.transform.SetParent(weaponRig.transform, false);
 
-            AddViewmodelPart(model, "Receiver", new Vector3(0f, 0f, 0.10f), new Vector3(0.055f, 0.075f, 0.30f), gunmetal);
-            AddViewmodelPart(model, "Handguard", new Vector3(0f, -0.004f, 0.31f), new Vector3(0.045f, 0.052f, 0.23f), gunAccent);
-            AddViewmodelPart(model, "Barrel", new Vector3(0f, 0.006f, 0.46f), new Vector3(0.019f, 0.019f, 0.13f), gunAccent);
-            AddViewmodelPart(model, "Stock", new Vector3(0f, -0.006f, -0.13f), new Vector3(0.045f, 0.062f, 0.17f), gunmetal);
-            AddViewmodelPart(model, "Grip", new Vector3(0f, -0.077f, 0.015f), new Vector3(0.04f, 0.105f, 0.05f), gunmetal);
-            AddViewmodelPart(model, "Magazine", new Vector3(0f, -0.102f, 0.15f), new Vector3(0.036f, 0.135f, 0.062f), gunAccent);
-            AddViewmodelPart(model, "SightRear", new Vector3(0f, 0.052f, 0.01f), new Vector3(0.022f, 0.028f, 0.03f), gunAccent);
-            AddViewmodelPart(model, "SightFront", new Vector3(0f, 0.052f, 0.42f), new Vector3(0.016f, 0.032f, 0.022f), gunAccent);
+            if (weaponKit.viewmodelPrefab == null)
+            {
+                AddViewmodelPart(model, "Receiver", new Vector3(0f, 0f, 0.10f), new Vector3(0.055f, 0.075f, 0.30f), gunmetal);
+                AddViewmodelPart(model, "Handguard", new Vector3(0f, -0.004f, 0.31f), new Vector3(0.045f, 0.052f, 0.23f), gunAccent);
+                AddViewmodelPart(model, "Barrel", new Vector3(0f, 0.006f, 0.46f), new Vector3(0.019f, 0.019f, 0.13f), gunAccent);
+                AddViewmodelPart(model, "Stock", new Vector3(0f, -0.006f, -0.13f), new Vector3(0.045f, 0.062f, 0.17f), gunmetal);
+                AddViewmodelPart(model, "Grip", new Vector3(0f, -0.077f, 0.015f), new Vector3(0.04f, 0.105f, 0.05f), gunmetal);
+                AddViewmodelPart(model, "Magazine", new Vector3(0f, -0.102f, 0.15f), new Vector3(0.036f, 0.135f, 0.062f), gunAccent);
+                AddViewmodelPart(model, "SightRear", new Vector3(0f, 0.052f, 0.01f), new Vector3(0.022f, 0.028f, 0.03f), gunAccent);
+                AddViewmodelPart(model, "SightFront", new Vector3(0f, 0.052f, 0.42f), new Vector3(0.016f, 0.032f, 0.022f), gunAccent);
+            }
+            else
+            {
+                Material material = weaponKit.viewmodelMaterial ?? throw new System.InvalidOperationException(
+                    $"Weapon kit '{weaponKit.name}' has a prefab but no material.");
+                AddArtChild(model, weaponKit.viewmodelPrefab, material, disableShadows: true);
+            }
 
             WeaponSway sway = weaponRig.AddComponent<WeaponSway>();
             SetRef(sway, "_input", input);
@@ -3382,7 +3474,7 @@ namespace CoD.EditorTools
             {
                 "Assets/_Project/Art", Materials, Textures, "Assets/_Project/Audio",
                 "Assets/_Project/Data", DataGame, DataWeapons, DataDrones, DataAttacks,
-                DataWaves, DataShop, DataPassives, DataEffects, DataMissions, Audio,
+                DataWaves, DataShop, DataPassives, DataEffects, DataMissions, DataKits, Audio,
                 Prefabs, Scenes,
             };
             foreach (string folder in folders)
@@ -3391,6 +3483,20 @@ namespace CoD.EditorTools
                 int split = folder.LastIndexOf('/');
                 AssetDatabase.CreateFolder(folder[..split], folder[(split + 1)..]);
             }
+        }
+
+        private static void RequireValidKits(ArenaKitConfig arena, WeaponKitConfig weapon,
+            EnemyKitConfig enemy)
+        {
+            var invalid = new List<string>(3);
+            if (!arena.IsValid) invalid.Add(arena.name);
+            if (!weapon.IsValid) invalid.Add(weapon.name);
+            if (!enemy.IsValid) invalid.Add(enemy.name);
+            if (invalid.Count == 0) return;
+
+            throw new System.InvalidOperationException(
+                "Art kits must be either entirely empty or entirely assigned. Mixed kit(s): " +
+                string.Join(", ", invalid));
         }
 
         /// <summary>
