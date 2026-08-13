@@ -78,6 +78,9 @@ namespace CoD.Tests
                 fovVertical = 62f,
                 masterVolume = 1f,
                 invertLook = false,
+                accessibilityInitialised = true,
+                subtitlesEnabled = true,
+                subtitleSize = SubtitleSize.Medium,
 
                 // The campaign block, schema 4. Endless, no mission, no history —
                 // the configuration every PlayMode fixture in this project assumes

@@ -405,6 +405,9 @@ namespace CoD.EditorTools
                     // immune to damage, unable to fire, with waves respawning
                     // around a corpse and the mission wedged forever.
                     Check(director, "_playerHealth", stillNull);
+                    // Radio is optional to the mission SYSTEM, but the authored
+                    // Mission 1 vertical slice owns one and the builder wires it.
+                    Check(director, "_radio", stillNull);
                     // Where the mission RESULT is written. Null here means no
                     // mission is ever marked complete and nothing past mission
                     // one ever unlocks.
@@ -429,6 +432,15 @@ namespace CoD.EditorTools
                     Check(objectiveHud, "_objectiveLabel", stillNull);
                     Check(objectiveHud, "_bannerLabel", stillNull);
                 }
+                foreach (RadioDialogueScheduler radio in root.GetComponentsInChildren<RadioDialogueScheduler>(true))
+                    Check(radio, "_audio", stillNull);
+                foreach (RadioSubtitleHud subtitleHud in root.GetComponentsInChildren<RadioSubtitleHud>(true))
+                {
+                    Check(subtitleHud, "_radio", stillNull);
+                    Check(subtitleHud, "_settings", stillNull);
+                    Check(subtitleHud, "_label", stillNull);
+                    Check(subtitleHud, "_background", stillNull);
+                }
                 foreach (InteractPrompt prompt in root.GetComponentsInChildren<InteractPrompt>(true))
                 {
                     Check(prompt, "_interactor", stillNull);
@@ -444,10 +456,13 @@ namespace CoD.EditorTools
             CheckAssetRef(rusher, "prefab", stillNull);
             CheckAssetRef(rusher, "attack", stillNull);
             CheckAssetRef(rusher, "deathVfx", stillNull);
+            CheckAssetRef(rusher, "reactions", stillNull);
             CheckAssetRef(shooter, "prefab", stillNull);
             CheckAssetRef(shooter, "attack", stillNull);
+            CheckAssetRef(shooter, "reactions", stillNull);
             CheckAssetRef(tank, "prefab", stillNull);
             CheckAssetRef(tank, "attack", stillNull);
+            CheckAssetRef(tank, "reactions", stillNull);
             // A Shooter with no projectile prefab aims, fires, and produces
             // nothing — the drone looks like it is working and does no damage.
             CheckAssetRef(rangedBurst, "projectilePrefab", stillNull);

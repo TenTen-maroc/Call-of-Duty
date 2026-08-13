@@ -1,15 +1,15 @@
 # Settings
 
-> Last verified: 2026-08-11
-> **Verified in play:** no. Compiled, gated, and covered by 7 EditMode tests.
-> The values are proven to load, clamp, persist and reach the camera; whether
-> the default sensitivity *feels* right is a tuning-card question.
+> Last verified: 2026-08-13
+> **Verified in play:** subtitle visibility, high-contrast backing and the shipped
+> medium size are exercised in PlayMode; feel and final voice timing still need a
+> human pass. The complete settings surface is compiled, gated and covered by tests.
 
 ## Overview
 
-Mouse sensitivity, vertical FOV, invert-look, master volume, post-processing and
-anti-aliasing: the things a player changes before they will judge anything else
-about a shooter. All four
+Mouse sensitivity, vertical FOV, invert-look, master volume, post-processing,
+anti-aliasing, subtitles and subtitle size: the things a player changes before
+they will judge anything else about a shooter. All of them
 live on disk in the same versioned save as the run record, are bounded by a
 ScriptableObject, and are held at runtime in a plain C# object that is never a
 ScriptableObject.
@@ -58,8 +58,9 @@ with Domain Reload off is permanent.
     exists, and the ambiguity breaks every editor script that touches it.
   - `Current` resolves lazily via `??=`, so **script execution order does not
     matter** — a consumer may read it before or after this component's `Awake`.
-- [SaveData](../../Assets/_Project/Scripts/Core/SaveData.cs) schema **2** —
-  adds `settingsInitialised`, `fovVertical`, `invertLook`, `lastMode`.
+- [SaveData](../../Assets/_Project/Scripts/Core/SaveData.cs) schema **5** —
+  schema 2 added `settingsInitialised`, `fovVertical`, `invertLook`, `lastMode`;
+  schema 5 adds the independently seeded accessibility block.
 
 ### The `settingsInitialised` flag
 
@@ -131,22 +132,33 @@ which is all it needs.
 `UnityEngine.Rendering.Universal.AntialiasingMode` inside `CameraGraphics`. It is
 serialised as a number, so the order is a file format.
 
-## Why no AudioMixer
+## The subtitle rows (schema 5)
 
-Master volume drives `AudioListener.volume` — one global multiplier over every
-`AudioSource`, which is the entire requirement while the game has one sound
-category and no music.
+| Row | Values | Applied by |
+| --- | --- | --- |
+| SUBTITLES | ON / OFF | `RadioSubtitleHud` visibility |
+| SUBTITLE SIZE | SMALL / MEDIUM / LARGE | `RadioSubtitleHud` font size from `SettingsConfig` |
 
-An `AudioMixer` was considered and rejected: a `.mixer` is opaque asset YAML that
-`GreyBoxBuilder` cannot generate (`AudioMixerController` is internal to
-`UnityEditor.Audio`), and this project's rule is that nothing in a scene or its
-assets is hand-authored. **Revisit the moment there is a second bus to balance —
-music against SFX.** That is the first thing one line of global volume genuinely
-cannot do.
+`accessibilityInitialised` is separate from the older settings and graphics
+flags. A v4 save therefore receives the current `SettingsConfig` defaults on its
+next resolve without overwriting sensitivity, volume or graphics choices. The
+shipped default is subtitles ON at MEDIUM; size values are 28, 34 and 42 px.
+`RadioSubtitleHud` supplies an opaque high-contrast backing and immediately
+reacts to `SettingsHub.Changed`. Turning subtitles off hides both text and backing,
+including a line already in progress.
+
+## Why master volume still uses AudioListener
+
+The hand-authored mixer now owns ten routing groups and four exposed parameters;
+see [audio.md](audio.md). Master volume deliberately remains
+`AudioListener.volume`: it is the already-shipped single multiplier over every
+source, including the unrouted radio source, and preserves existing saves and UI
+behaviour. Per-bus sliders should use the exposed mixer parameters when they become
+player-facing; they do not require moving or duplicating the global control.
 
 ## Related Systems
 
-- [save.md](save.md) — the file these live in, and the v1 → v2 migration.
+- [save.md](save.md) — the file these live in, including the v4 → v5 migration.
 - [player.md](player.md) — `PlayerLook` is the only gameplay consumer.
 - [ui.md](ui.md) — the pause and main-menu screens that edit these values.
 

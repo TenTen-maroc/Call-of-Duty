@@ -27,9 +27,18 @@ namespace CoD.Core
         public bool InvertLook { get; private set; }
         public bool PostProcessing { get; private set; }
         public AntiAliasingMode AntiAliasing { get; private set; }
+        public bool SubtitlesEnabled { get; private set; }
+        public SubtitleSize SubtitleScale { get; private set; }
 
         public GameSettings(SettingsConfig bounds, float sensitivity, float fov, float volume, bool invert,
             bool postProcessing, AntiAliasingMode antiAliasing)
+            : this(bounds, sensitivity, fov, volume, invert, postProcessing, antiAliasing,
+                bounds.subtitlesEnabledDefault, bounds.subtitleSizeDefault)
+        {
+        }
+
+        public GameSettings(SettingsConfig bounds, float sensitivity, float fov, float volume, bool invert,
+            bool postProcessing, AntiAliasingMode antiAliasing, bool subtitlesEnabled, SubtitleSize subtitleSize)
         {
             _bounds = bounds;
             MouseSensitivity = Mathf.Clamp(sensitivity, bounds.sensitivityMin, bounds.sensitivityMax);
@@ -41,6 +50,8 @@ namespace CoD.Core
             // by a build that had more modes, must not leave the camera holding a
             // cast that means nothing.
             AntiAliasing = Clamp(antiAliasing);
+            SubtitlesEnabled = subtitlesEnabled;
+            SubtitleScale = Clamp(subtitleSize);
         }
 
         public void SetMouseSensitivity(float value)
@@ -58,6 +69,22 @@ namespace CoD.Core
 
         public void SetAntiAliasing(AntiAliasingMode value) => AntiAliasing = Clamp(value);
 
+        public void SetSubtitlesEnabled(bool value) => SubtitlesEnabled = value;
+
+        public void CycleSubtitleSize(int direction)
+        {
+            const int count = (int)SubtitleSize.Large + 1;
+            int step = direction >= 0 ? 1 : -1;
+            SubtitleScale = (SubtitleSize)(((int)SubtitleScale + step + count) % count);
+        }
+
+        public int SubtitleFontSize => SubtitleScale switch
+        {
+            SubtitleSize.Small => _bounds.subtitleSmallFontSize,
+            SubtitleSize.Large => _bounds.subtitleLargeFontSize,
+            _ => _bounds.subtitleMediumFontSize,
+        };
+
         /// <summary>
         /// Steps through the modes and wraps. Direction is -1 or +1; a row that
         /// only moves one way is a row the player gets stuck on.
@@ -71,6 +98,9 @@ namespace CoD.Core
 
         private static AntiAliasingMode Clamp(AntiAliasingMode value) =>
             value < AntiAliasingMode.Off || value > AntiAliasingMode.Smaa ? AntiAliasingMode.Off : value;
+
+        private static SubtitleSize Clamp(SubtitleSize value) =>
+            value < SubtitleSize.Small || value > SubtitleSize.Large ? SubtitleSize.Medium : value;
 
         /// <summary>
         /// Nudge by one step. Direction is -1 or +1; anything else is ignored.
@@ -110,6 +140,10 @@ namespace CoD.Core
             save.postProcessing = PostProcessing;
             save.antiAliasing = AntiAliasing;
             save.graphicsInitialised = true;
+
+            save.subtitlesEnabled = SubtitlesEnabled;
+            save.subtitleSize = SubtitleScale;
+            save.accessibilityInitialised = true;
         }
     }
 }

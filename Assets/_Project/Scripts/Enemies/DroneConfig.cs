@@ -48,6 +48,8 @@ namespace CoD.Enemies
         [Tooltip("Pooled prefab. Registered in the ObjectPool's prewarm list in the same commit that created it.")]
         public GameObject? prefab;
         public AttackModule? attack;
+        [Tooltip("Optional event-reaction tuning. Null preserves the pre-humanization behaviour.")]
+        public EnemyReactionConfig? reactions;
 
         [Header("Telegraph")]
         [Tooltip("Core colour at rest. Per-archetype, because the drone tints its own core and would otherwise overwrite whatever material the prefab shipped with.")]

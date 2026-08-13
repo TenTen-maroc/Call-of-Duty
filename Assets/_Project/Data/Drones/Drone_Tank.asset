@@ -26,6 +26,7 @@ MonoBehaviour:
   moneyReward: 65
   prefab: {fileID: 6909103565838853537, guid: 272acb0229b0cad49af88838d139941f, type: 3}
   attack: {fileID: 11400000, guid: 331aca1271d59a44fb834df12a7f72cd, type: 2}
+  reactions: {fileID: 11400000, guid: 37bbf8bc288d8bc41bee86d8bc7ac51b, type: 2}
   idleCoreColor: {r: 0.85, g: 0.06, b: 0.22, a: 1}
   telegraphCoreColor: {r: 1, g: 0.9, b: 0.7, a: 1}
   idleEmission: 0.35

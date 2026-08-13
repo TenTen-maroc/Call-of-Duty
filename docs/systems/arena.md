@@ -43,6 +43,15 @@ arena teaches is that backing up puts something between you and the room.
   at runtime: the wave spawns and nothing ever arrives. That test is why the
   arena can be rearranged confidently.
 
+### Mission 1 story corner
+
+`GreyBoxBuilder.BuildRoom` places `StoryCorner_LastStand` in the west lane: a
+damaged workstation, broken display and power unit, three improvised armour plates
+and two abandoned cases. It implies a failed defensive position without a lore
+panel or collectible. Every primitive in the subtree has its generated collider
+removed and casts no shadow, so it changes neither cover, navigation nor combat
+balance. A PlayMode test locks that presentation-only contract.
+
 ## G8 art seam
 
 `Kit_Arena_Default` is optional presentation data. G8 shipped it all-null and

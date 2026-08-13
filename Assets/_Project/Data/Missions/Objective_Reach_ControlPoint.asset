@@ -13,7 +13,7 @@ MonoBehaviour:
   m_Name: Objective_Reach_ControlPoint
   m_EditorClassIdentifier: 
   stableId: obj_reach_control_point
-  title: REACH THE CONTROL POINT
-  description: The facility's local control point is marked on your display. Walk
-    to it.
+  title: GET THE RELAY ONLINE
+  description: The drone bay is cycling from a local relay. Reach it before the next
+    launch.
   zoneId: 0

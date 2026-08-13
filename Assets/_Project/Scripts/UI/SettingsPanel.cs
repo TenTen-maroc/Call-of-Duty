@@ -26,8 +26,10 @@ namespace CoD.UI
         private const int RowVolume = 3;
         private const int RowPostFx = 4;
         private const int RowAntiAliasing = 5;
-        private const int RowBack = 6;
-        private const int RowCount = 7;
+        private const int RowSubtitles = 6;
+        private const int RowSubtitleSize = 7;
+        private const int RowBack = 8;
+        private const int RowCount = 9;
 
         /// <summary>Width of the text bars, in characters. A layout constant, not a tuning value.</summary>
         private const int BarCells = 14;
@@ -114,6 +116,8 @@ namespace CoD.UI
                 case RowVolume: settings.StepMasterVolume(direction); break;
                 case RowPostFx: settings.SetPostProcessing(!settings.PostProcessing); break;
                 case RowAntiAliasing: settings.CycleAntiAliasing(direction); break;
+                case RowSubtitles: settings.SetSubtitlesEnabled(!settings.SubtitlesEnabled); break;
+                case RowSubtitleSize: settings.CycleSubtitleSize(direction); break;
                 default: return false;
             }
 
@@ -153,6 +157,12 @@ namespace CoD.UI
             AppendRow(RowAntiAliasing, "ANTI-ALIASING");
             _builder.Append(Label(settings.AntiAliasing)).Append('\n');
 
+            AppendRow(RowSubtitles, "SUBTITLES");
+            _builder.Append(settings.SubtitlesEnabled ? "ON" : "OFF").Append('\n');
+
+            AppendRow(RowSubtitleSize, "SUBTITLE SIZE");
+            _builder.Append(SubtitleLabel(settings.SubtitleScale)).Append('\n');
+
             _builder.Append('\n');
             AppendRow(RowBack, "BACK");
 
@@ -173,6 +183,13 @@ namespace CoD.UI
             AntiAliasingMode.Fxaa => "FXAA",
             AntiAliasingMode.Smaa => "SMAA",
             _ => "OFF",
+        };
+
+        private static string SubtitleLabel(SubtitleSize size) => size switch
+        {
+            SubtitleSize.Small => "SMALL",
+            SubtitleSize.Large => "LARGE",
+            _ => "MEDIUM",
         };
 
         private void AppendRow(int row, string label)

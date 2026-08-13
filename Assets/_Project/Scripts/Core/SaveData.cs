@@ -51,6 +51,12 @@ namespace CoD.Core
         public bool postProcessing;
         public AntiAliasingMode antiAliasing;
 
+        // Subtitle accessibility, added in schema 5. The initialised flag keeps
+        // an explicit OFF distinct from an older save that has no block.
+        public bool accessibilityInitialised;
+        public bool subtitlesEnabled;
+        public SubtitleSize subtitleSize;
+
         // The campaign block, added in schema 4. It is a SECOND AXIS, not a third
         // GameMode, and the difference is the whole reason this block exists in
         // this shape.

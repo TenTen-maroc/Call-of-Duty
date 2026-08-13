@@ -84,8 +84,16 @@ namespace CoD.Core
                 save.graphicsInitialised = true;
             }
 
+            if (!save.accessibilityInitialised)
+            {
+                save.subtitlesEnabled = _bounds.subtitlesEnabledDefault;
+                save.subtitleSize = _bounds.subtitleSizeDefault;
+                save.accessibilityInitialised = true;
+            }
+
             return new GameSettings(_bounds, save.mouseSensitivity, save.fovVertical,
-                save.masterVolume, save.invertLook, save.postProcessing, save.antiAliasing);
+                save.masterVolume, save.invertLook, save.postProcessing, save.antiAliasing,
+                save.subtitlesEnabled, save.subtitleSize);
         }
 
         /// <summary>

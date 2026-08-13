@@ -50,7 +50,10 @@ namespace CoD.Enemies
         private DroneRegistry? _registry;
         private IAttackTokenSource? _tokens;
         private Transform? _transform;
+        private Collider? _bodyCollider;
+        private Collider? _targetCollider;
         private MaterialPropertyBlock? _propertyBlock;
+        private EnemyReactionConfig? _reactions;
 
         // Shader property ids, resolved once. Shader.PropertyToID does a string
         // hash every call, and the telegraph is written every frame of a windup
@@ -68,6 +71,17 @@ namespace CoD.Enemies
         private float _speedMultiplier = 1f;
         private float _waveSpeedMultiplier = 1f;
         private bool _active;
+        private readonly float[] _reactionLastPlayedAt = new float[(int)EnemyReactionKind.LowHealth + 1];
+        private readonly RaycastHit[] _sightHits = new RaycastHit[8];
+        private float _nextSightSampleAt;
+        private float _lostSightAt;
+        private float _reactionPulseEndsAt;
+        private float _reactionPulse;
+        private float _telegraphAmount;
+        private int _reactionSerial;
+        private int _reactionSeed;
+        private bool _hadSight;
+        private bool _lowHealthReacted;
 
         /// <summary>
         /// Pre-sized and owned HERE rather than by the attack module: modules are
@@ -115,18 +129,27 @@ namespace CoD.Enemies
             if (_agent == null) TryGetComponent(out _agent);
             if (_health == null) TryGetComponent(out _health);
             if (_pooled == null) TryGetComponent(out _pooled);
+            TryGetComponent(out _bodyCollider);
             _propertyBlock = new MaterialPropertyBlock();
             if (_agent != null) _agent.enabled = false;
         }
 
         private void OnEnable()
         {
-            if (_health != null) _health.Died += OnHealthDied;
+            if (_health != null)
+            {
+                _health.Damaged += OnHealthDamaged;
+                _health.Died += OnHealthDied;
+            }
         }
 
         private void OnDisable()
         {
-            if (_health != null) _health.Died -= OnHealthDied;
+            if (_health != null)
+            {
+                _health.Damaged -= OnHealthDamaged;
+                _health.Died -= OnHealthDied;
+            }
             // Something deactivated us without going through Retire (scene unload,
             // a stray SetActive). Give the token back anyway: a leaked token
             // shrinks the attack pool for the rest of the run.
@@ -146,8 +169,10 @@ namespace CoD.Enemies
         public void Initialize(DroneConfig config, Transform target, ObjectPool pool,
             DroneRegistry registry, IAttackTokenSource tokens, WaveScaling scaling)
         {
+            if (_registry != null) _registry.Killed -= OnNearbyDroneKilled;
             _config = config;
             _target = target;
+            target.TryGetComponent(out _targetCollider);
             _pool = pool;
             _registry = registry;
             _tokens = tokens;
@@ -155,6 +180,7 @@ namespace CoD.Enemies
             _speedMultiplier = 1f;
             _waveSpeedMultiplier = 1f;
             _nextRepathAt = 0f;
+            ResetReactions(config.reactions);
             SetTelegraph(0f);
             // Pooled objects are REUSED. A soldier respawning part-way through
             // its own death animation is the same class of bug the pool's
@@ -182,6 +208,7 @@ namespace CoD.Enemies
 
             _active = true;
             registry.Register(this);
+            if (_reactions != null) registry.Killed += OnNearbyDroneKilled;
         }
 
         private void Update()
@@ -190,6 +217,7 @@ namespace CoD.Enemies
 
             float now = Time.time;
             Steer(now);
+            TickReactions(now);
 
             AttackModule? attack = _config.attack;
             if (attack != null) attack.Tick(this, ref _attack, now, Time.deltaTime);
@@ -279,8 +307,14 @@ namespace CoD.Enemies
             // return below, because a humanoid prefab has no core renderer at
             // all and would otherwise be silently un-telegraphed -- which is the
             // fairness contract failing in the exact case it was extended for.
-            _animator?.SetTelegraph(amount);
+            _telegraphAmount = Mathf.Clamp01(amount);
+            _animator?.SetTelegraph(_telegraphAmount);
 
+            ApplyCoreVisual();
+        }
+
+        private void ApplyCoreVisual()
+        {
             if (_coreRenderer == null || _propertyBlock == null) return;
             // MaterialPropertyBlock rather than renderer.material: touching
             // .material clones it per drone, which is forty extra materials and
@@ -292,7 +326,7 @@ namespace CoD.Enemies
             // its authored core colour with the Rusher's red, and a Shooter, a
             // Tank and a Rusher were indistinguishable at a glance in the one
             // place the player has to tell them apart instantly.
-            float t = Mathf.Clamp01(amount);
+            float t = Mathf.Max(_telegraphAmount, _reactionPulse);
             Color idle = _config != null ? _config.idleCoreColor : DefaultIdleCore;
             Color hot = _config != null ? _config.telegraphCoreColor : DefaultTelegraphCore;
             float idleGlow = _config != null ? _config.idleEmission : 0.4f;
@@ -309,7 +343,11 @@ namespace CoD.Enemies
         /// modules at the moment they act, so the pose and the damage are the
         /// same beat rather than two things that drift apart.
         /// </summary>
-        public void PlayAttackAnimation() => _animator?.PlayAttack();
+        public void PlayAttackAnimation()
+        {
+            _animator?.PlayAttack();
+            TryReaction(EnemyReactionKind.AttackCommit, Time.time);
+        }
 
         public void PlayCue(AudioClip? clip)
         {
@@ -326,6 +364,139 @@ namespace CoD.Enemies
 
         /// <summary>Wave cleanup and the sandbox "kill all" cheat.</summary>
         public void DespawnNow() => Retire(raiseDied: false, default);
+
+        private void ResetReactions(EnemyReactionConfig? config)
+        {
+            _reactions = config;
+            _nextSightSampleAt = 0f;
+            _lostSightAt = 0f;
+            _reactionPulseEndsAt = 0f;
+            _reactionPulse = 0f;
+            _telegraphAmount = 0f;
+            _reactionSerial = 0;
+            _reactionSeed = GetInstanceID();
+            _hadSight = false;
+            _lowHealthReacted = false;
+            for (int i = 0; i < _reactionLastPlayedAt.Length; i++)
+                _reactionLastPlayedAt[i] = float.NegativeInfinity;
+        }
+
+        private void TickReactions(float now)
+        {
+            if (_reactionPulse > 0f && now >= _reactionPulseEndsAt)
+            {
+                _reactionPulse = 0f;
+                ApplyCoreVisual();
+            }
+
+            if (_reactions == null || _target == null || now < _nextSightSampleAt) return;
+
+            // Instance-derived phase offset keeps a fresh wave from sampling and
+            // reacting in lockstep on the same frame.
+            float jitter = Hash01(_reactionSeed, _reactionSerial++, (int)EnemyReactionKind.DetectPlayer);
+            _nextSightSampleAt = now + _reactions.sightSampleInterval * Mathf.Lerp(0.8f, 1.2f, jitter);
+
+            Vector3 sensorOrigin = _bodyCollider != null ? _bodyCollider.bounds.center : Position;
+            Vector3 targetPoint = _targetCollider != null ? _targetCollider.bounds.center : _target.position;
+            Vector3 delta = targetPoint - sensorOrigin;
+            bool inRange = delta.sqrMagnitude <= _reactions.detectionRange * _reactions.detectionRange;
+            bool visible = inRange && HasLineOfSight(sensorOrigin, delta);
+
+            if (visible)
+            {
+                if (!_hadSight) TryReaction(EnemyReactionKind.DetectPlayer, now);
+                _hadSight = true;
+                _lostSightAt = 0f;
+                return;
+            }
+
+            if (!_hadSight) return;
+            if (_lostSightAt <= 0f)
+            {
+                _lostSightAt = now;
+                return;
+            }
+            if (now - _lostSightAt < _reactions.lostSightSeconds) return;
+
+            _hadSight = false;
+            _lostSightAt = 0f;
+            TryReaction(EnemyReactionKind.LostSight, now);
+        }
+
+        private bool HasLineOfSight(Vector3 origin, Vector3 delta)
+        {
+            if (_reactions == null || _target == null) return false;
+            float distance = delta.magnitude;
+            if (distance <= Mathf.Epsilon) return true;
+
+            int count = Physics.RaycastNonAlloc(origin, delta / distance, _sightHits, distance,
+                _reactions.sightMask, QueryTriggerInteraction.Ignore);
+            if (count == 0) return true;
+
+            float nearestDistance = float.MaxValue;
+            Transform? nearest = null;
+            for (int i = 0; i < count; i++)
+            {
+                RaycastHit hit = _sightHits[i];
+                if (hit.distance >= nearestDistance) continue;
+                nearestDistance = hit.distance;
+                nearest = hit.transform;
+            }
+            return nearest != null && nearest.root == _target.root;
+        }
+
+        private void OnHealthDamaged(Health health, DamageInfo info)
+        {
+            if (!_active || _reactions == null) return;
+            float now = Time.time;
+            if (info.Amount >= health.Max * _reactions.heavyDamageFraction)
+                TryReaction(EnemyReactionKind.HeavyDamage, now);
+
+            if (!_lowHealthReacted && health.Normalized <= _reactions.lowHealthFraction)
+            {
+                _lowHealthReacted = true;
+                TryReaction(EnemyReactionKind.LowHealth, now);
+            }
+        }
+
+        private void OnNearbyDroneKilled(DroneController drone, DamageInfo info)
+        {
+            if (!_active || _reactions == null || drone == this) return;
+            Vector3 delta = drone.Position - Position;
+            if (delta.sqrMagnitude > _reactions.allyDeathRadius * _reactions.allyDeathRadius) return;
+            TryReaction(EnemyReactionKind.NearbyAllyDeath, Time.time);
+        }
+
+        private bool TryReaction(EnemyReactionKind kind, float now)
+        {
+            if (_reactions == null) return false;
+            EnemyReactionResponse? response = _reactions.ResponseFor(kind);
+            if (response == null) return false;
+
+            int index = (int)kind;
+            if (now - _reactionLastPlayedAt[index] < response.cooldownSeconds) return false;
+            float roll = Hash01(_reactionSeed, _reactionSerial++, index);
+            if (roll > response.probability) return false;
+
+            _reactionLastPlayedAt[index] = now;
+            _reactionPulse = Mathf.Max(_reactionPulse, response.corePulse);
+            _reactionPulseEndsAt = Mathf.Max(_reactionPulseEndsAt, now + response.pulseSeconds);
+            ApplyCoreVisual();
+            PlayCue(response.cue);
+            return true;
+        }
+
+        private static float Hash01(int seed, int serial, int kind)
+        {
+            unchecked
+            {
+                uint value = (uint)(seed * 73856093) ^ (uint)(serial * 19349663) ^ (uint)(kind * 83492791);
+                value ^= value >> 16;
+                value *= 0x7FEB352Du;
+                value ^= value >> 15;
+                return (value & 0x00FFFFFFu) / 16777215f;
+            }
+        }
 
         private void OnHealthDied(Health health, DamageInfo info)
         {
@@ -350,6 +521,7 @@ namespace CoD.Enemies
 
             if (_config != null && _config.attack != null) _config.attack.Cancel(this, ref _attack);
             ReleaseAttackToken(ref _attack);
+            if (_registry != null) _registry.Killed -= OnNearbyDroneKilled;
             _registry?.Unregister(this);
 
             if (raiseDied)
@@ -366,6 +538,7 @@ namespace CoD.Enemies
             // the next user of it must not inherit this wave's listeners.
             Died = null;
             Despawned = null;
+            ResetReactions(null);
 
             if (_agent != null && _agent.enabled)
             {

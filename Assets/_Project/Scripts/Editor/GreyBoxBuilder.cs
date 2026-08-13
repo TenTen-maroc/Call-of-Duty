@@ -212,21 +212,27 @@ namespace CoD.EditorTools
             SetRef(heavySlam, "windupClip", Prefer(audioKit.slamWindup, "Slam_Windup"));
             EditorUtility.SetDirty(heavySlam);
 
+            EnemyReactionConfig reactions = LoadOrCreate<EnemyReactionConfig>(
+                DataDrones + "/Reactions_Drone_Standard.asset", ConfigureEnemyReactions);
+
             DroneConfig rusher = LoadOrCreate<DroneConfig>(DataDrones + "/Drone_Rusher.asset", ConfigureRusher);
             SetRef(rusher, "prefab", rusherPrefab);
             SetRef(rusher, "attack", detonate);
+            SetRef(rusher, "reactions", reactions);
             SetRef(rusher, "deathVfx", droneDeath);
             EditorUtility.SetDirty(rusher);
 
             DroneConfig shooter = LoadOrCreate<DroneConfig>(DataDrones + "/Drone_Shooter.asset", ConfigureShooter);
             SetRef(shooter, "prefab", shooterPrefab);
             SetRef(shooter, "attack", rangedBurst);
+            SetRef(shooter, "reactions", reactions);
             SetRef(shooter, "deathVfx", droneDeath);
             EditorUtility.SetDirty(shooter);
 
             DroneConfig tank = LoadOrCreate<DroneConfig>(DataDrones + "/Drone_Tank.asset", ConfigureTank);
             SetRef(tank, "prefab", tankPrefab);
             SetRef(tank, "attack", heavySlam);
+            SetRef(tank, "reactions", reactions);
             SetRef(tank, "deathVfx", droneDeath);
             EditorUtility.SetDirty(tank);
 
@@ -530,6 +536,38 @@ namespace CoD.EditorTools
             config.blastRadius = 3.5f;
             config.minBlastMultiplier = 0.33f;
         }
+
+        private static void ConfigureEnemyReactions(EnemyReactionConfig config)
+        {
+            config.sightSampleInterval = 0.25f;
+            config.detectionRange = 24f;
+            config.lostSightSeconds = 1.2f;
+            config.sightMask = Physics.DefaultRaycastLayers;
+            config.heavyDamageFraction = 0.28f;
+            config.lowHealthFraction = 0.25f;
+            config.allyDeathRadius = 9f;
+            config.responses = new[]
+            {
+                Reaction(EnemyReactionKind.DetectPlayer, 0.62f, 8f, 0.35f, 0.16f),
+                Reaction(EnemyReactionKind.NearbyAllyDeath, 0.38f, 5f, 0.42f, 0.18f),
+                Reaction(EnemyReactionKind.HeavyDamage, 0.72f, 2.5f, 0.65f, 0.12f),
+                Reaction(EnemyReactionKind.LostSight, 0.45f, 6f, 0.28f, 0.22f),
+                Reaction(EnemyReactionKind.AttackCommit, 0.58f, 2f, 0.52f, 0.14f),
+                Reaction(EnemyReactionKind.LowHealth, 0.80f, 30f, 0.78f, 0.24f),
+            };
+        }
+
+        private static EnemyReactionResponse Reaction(EnemyReactionKind kind, float probability,
+            float cooldownSeconds, float corePulse, float pulseSeconds)
+            => new()
+            {
+                kind = kind,
+                probability = probability,
+                cooldownSeconds = cooldownSeconds,
+                corePulse = corePulse,
+                pulseSeconds = pulseSeconds,
+                cue = null,
+            };
 
         private static void ConfigureRusher(DroneConfig config)
         {
@@ -1775,6 +1813,12 @@ namespace CoD.EditorTools
             // Awake lands before any Start, and that is the guarantee
             // MissionDirector.Suspend relies on.
             MissionDirector director = runObject.AddComponent<MissionDirector>();
+            AudioSource radioAudio = runObject.AddComponent<AudioSource>();
+            radioAudio.playOnAwake = false;
+            radioAudio.loop = false;
+            radioAudio.spatialBlend = 0f;
+            RadioDialogueScheduler radio = runObject.AddComponent<RadioDialogueScheduler>();
+            SetRef(radio, "_audio", radioAudio);
             SetRef(run, "_config", game);
 
             // Settings come before the player: PlayerLook subscribes to this
@@ -1817,6 +1861,7 @@ namespace CoD.EditorTools
             SetRef(director, "_registry", registry);
             SetRef(director, "_player", playerTransform);
             SetRef(director, "_playerHealth", playerHealth);
+            SetRef(director, "_radio", radio);
             SetRef(director, "_settings", settingsHub);
             SetRef(director, "_interactables", interactables);
             BuildMissionZones(director);
@@ -1842,7 +1887,7 @@ namespace CoD.EditorTools
             BuildObjective(runAssets, runner, playerTransform, playerHealth);
 
             BuildHud(weapon, playerHealth, game, pool, dummyPrefab, muzzle, spawner, registry, cameraTransform,
-                run, runner, settingsHub, playerInput, director, interactor, audioKit);
+                run, runner, settingsHub, playerInput, director, interactor, radio, audioKit);
 
             EditorSceneManager.MarkSceneDirty(scene);
             EditorSceneManager.SaveScene(scene, GreyBoxScenePath);
@@ -1955,7 +2000,55 @@ namespace CoD.EditorTools
             // Half-height cover gets it too: this is the row the player has to
             // judge "can I shoot over that" against, from across the arena.
             AddTrim(room, "Trim_Cover_S", new Vector3(0f, 1.22f, -10f), new Vector3(6.1f, 0.05f, 1.1f), trimMat);
+            BuildMissionOneStoryCorner(room, wallMat, trimMat);
             return room;
+        }
+
+        /// <summary>
+        /// One restrained environmental sentence: somebody dragged equipment
+        /// behind a damaged workstation and tried to hold the west service lane.
+        /// Every piece is presentation-only. No collider means no NavMesh input,
+        /// no aim-ray blocker, and no gameplay change when this vignette moves.
+        /// </summary>
+        private static void BuildMissionOneStoryCorner(GameObject room, Material equipment, Material screen)
+        {
+            GameObject root = new("StoryCorner_LastStand");
+            root.transform.SetParent(room.transform, false);
+
+            AddStoryProp(root, "Workstation_Base", new Vector3(-18.1f, 0.55f, -5.8f),
+                new Vector3(0.7f, 1.1f, 2.5f), new Vector3(0f, -7f, 0f), equipment);
+            AddStoryProp(root, "Workstation_BrokenScreen", new Vector3(-17.65f, 1.35f, -5.8f),
+                new Vector3(0.06f, 0.8f, 1.45f), new Vector3(0f, -7f, 18f), screen);
+            AddStoryProp(root, "PowerUnit_TornFree", new Vector3(-16.9f, 0.4f, -7.0f),
+                new Vector3(0.9f, 0.8f, 0.8f), new Vector3(0f, 28f, 12f), equipment);
+
+            // Three scavenged plates face the lane; two dropped cases behind
+            // them show the defenders left in a hurry rather than decorating a room.
+            AddStoryProp(root, "ImprovisedPlate_A", new Vector3(-16.8f, 0.7f, -4.6f),
+                new Vector3(0.12f, 1.4f, 1.8f), new Vector3(0f, -18f, -8f), equipment);
+            AddStoryProp(root, "ImprovisedPlate_B", new Vector3(-16.5f, 0.62f, -2.9f),
+                new Vector3(0.12f, 1.25f, 1.5f), new Vector3(0f, -8f, 6f), equipment);
+            AddStoryProp(root, "ImprovisedPlate_Fallen", new Vector3(-15.9f, 0.18f, -3.8f),
+                new Vector3(0.12f, 1.6f, 1.2f), new Vector3(72f, 10f, 4f), equipment);
+            AddStoryProp(root, "AbandonedCase_A", new Vector3(-17.4f, 0.22f, -8.1f),
+                new Vector3(0.9f, 0.44f, 0.6f), new Vector3(0f, 16f, 0f), equipment);
+            AddStoryProp(root, "AbandonedCase_B", new Vector3(-16.5f, 0.18f, -8.35f),
+                new Vector3(0.7f, 0.36f, 0.5f), new Vector3(5f, -24f, 12f), equipment);
+        }
+
+        private static void AddStoryProp(GameObject parent, string name, Vector3 position, Vector3 scale,
+            Vector3 eulerAngles, Material material)
+        {
+            GameObject prop = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            prop.name = name;
+            prop.transform.SetParent(parent.transform, false);
+            prop.transform.position = position;
+            prop.transform.localScale = scale;
+            prop.transform.localRotation = Quaternion.Euler(eulerAngles);
+            Object.DestroyImmediate(prop.GetComponent<Collider>());
+            MeshRenderer renderer = prop.GetComponent<MeshRenderer>();
+            renderer.sharedMaterial = material;
+            renderer.shadowCastingMode = ShadowCastingMode.Off;
         }
 
         /// <summary>
@@ -2663,7 +2756,8 @@ namespace CoD.EditorTools
             ObjectPool pool, GameObject dummyPrefab, Transform spawnOrigin,
             DroneSpawner spawner, DroneRegistry registry, Transform cameraTransform,
             RunContext run, WaveRunner runner, SettingsHub settingsHub, PlayerInput input,
-            MissionDirector director, PlayerInteractor interactor, AudioKitConfig audioKit)
+            MissionDirector director, PlayerInteractor interactor, RadioDialogueScheduler radio,
+            AudioKitConfig audioKit)
         {
             GameObject canvasObject = new("HUD");
             Canvas canvas = canvasObject.AddComponent<Canvas>();
@@ -2803,6 +2897,7 @@ namespace CoD.EditorTools
             // exception and is built after all three; see BuildObjectiveHud.
             Text objectiveLabel = BuildObjectiveLabel(canvasObject);
             BuildInteractPrompt(canvasObject, interactor);
+            BuildRadioSubtitles(canvasObject, radio, settingsHub);
 
             BuildDamageFeedback(canvasObject, game, playerHealth, cameraTransform, hudAudio);
             BuildRunUi(canvasObject, run, runner, weapon, hudAudio, audioKit);
@@ -3019,6 +3114,40 @@ namespace CoD.EditorTools
             objective.rectTransform.sizeDelta = new Vector2(HUD_COLUMN_WIDTH, HUD_OBJECTIVE_HEIGHT);
             objective.text = string.Empty;
             return objective;
+        }
+
+        private static void BuildRadioSubtitles(GameObject canvasObject, RadioDialogueScheduler radio,
+            SettingsHub settingsHub)
+        {
+            GameObject backgroundObject = new("RadioSubtitleBackground", typeof(RectTransform));
+            backgroundObject.transform.SetParent(canvasObject.transform, false);
+            Image background = backgroundObject.AddComponent<Image>();
+            background.color = new Color(0.015f, 0.02f, 0.028f, 0.82f);
+            background.raycastTarget = false;
+            RectTransform backgroundRect = backgroundObject.GetComponent<RectTransform>();
+            backgroundRect.anchorMin = new Vector2(0.5f, 0f);
+            backgroundRect.anchorMax = new Vector2(0.5f, 0f);
+            backgroundRect.pivot = new Vector2(0.5f, 0f);
+            backgroundRect.anchoredPosition = new Vector2(0f, 96f);
+            backgroundRect.sizeDelta = new Vector2(1180f, 136f);
+
+            Text label = BuildLabel(canvasObject, "RadioSubtitle", new Vector2(0f, 108f),
+                TextAnchor.MiddleCenter, new Vector2(0.5f, 0f), 34);
+            // Two full lines at the Large accessibility size. A shorter box
+            // rendered a wrapped final word below its own truncate boundary.
+            label.rectTransform.sizeDelta = new Vector2(1100f, 112f);
+            label.horizontalOverflow = HorizontalWrapMode.Wrap;
+            label.verticalOverflow = VerticalWrapMode.Truncate;
+            label.text = string.Empty;
+
+            RadioSubtitleHud hud = canvasObject.AddComponent<RadioSubtitleHud>();
+            SetRef(hud, "_radio", radio);
+            SetRef(hud, "_settings", settingsHub);
+            SetRef(hud, "_label", label);
+            SetRef(hud, "_background", background);
+
+            label.enabled = false;
+            background.enabled = false;
         }
 
         /// <summary>

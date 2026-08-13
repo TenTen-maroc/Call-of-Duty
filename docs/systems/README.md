@@ -15,12 +15,12 @@ obvious, emphasise the non-obvious.
 | [player.md](player.md) | Input, movement, look, camera shake, the rig layout | ✅ |
 | [pooling.md](pooling.md) | The object pool every spawn goes through | ✅ |
 | [ui.md](ui.md) | Crosshair, hitmarker, HUD, damage feedback, wave/shop/game-over panels, cheat console | ✅ |
-| [drones.md](drones.md) | `DroneConfig`, `AttackModule`, NavMesh pathing, attack tokens | ✅ all three archetypes |
+| [drones.md](drones.md) | `DroneConfig`, `AttackModule`, NavMesh pathing, attack tokens, pooled reactions | ✅ all three archetypes |
 | [waves.md](waves.md) | `WaveConfig`, `WaveRunner`, `DifficultyConfig` caps and the endless ramp | ✅ |
 | [shop.md](shop.md) | `ShopConfig`, `ShopItemConfig`, `PassiveConfig`, `StatSheet` rebuild | ✅ passives + modules |
 | [save.md](save.md) | Versioned JSON, `schemaVersion` migration, atomic write, `.bak` | ✅ |
 | [arena.md](arena.md) | The three-lane arena, cover heights, navmesh bake | ✅ |
-| [settings.md](settings.md) | Sensitivity, FOV, invert, volume, post-processing, anti-aliasing — bounds, the runtime layer, schema 3 | ✅ |
+| [settings.md](settings.md) | Sensitivity, FOV, invert, volume, graphics, subtitles and subtitle size — schema 5 | ✅ |
 | [rendering.md](rendering.md) | Post-processing stack, arena lighting, surface response, the generated detail normal | ✅ |
 | [menus.md](menus.md) | Main menu, pause, the shared settings page, Run vs Sandbox | ✅ |
 | [build.md](build.md) | Producing the Windows .exe, and the smoke test that proves it runs | ✅ |
@@ -30,8 +30,8 @@ obvious, emphasise the non-obvious.
 
 ## Automated verification
 
-Beyond `typecheck.mjs` and the guards, the project has 244 tests (184 EditMode,
-60 PlayMode):
+Beyond `typecheck.mjs` and the guards, the project has 257 tests (195 EditMode,
+62 PlayMode):
 
 ```
 Unity.exe -batchmode -runTests -projectPath . -testPlatform EditMode -testResults Logs/tests-editmode.xml

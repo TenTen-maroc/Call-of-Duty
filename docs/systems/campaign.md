@@ -1,6 +1,6 @@
 # Campaign
 
-> Last verified: 2026-08-12
+> Last verified: 2026-08-13
 > **Status: under construction.** This file is the map of the mission layer as
 > it lands. Sections marked ⏳ are planned, not built. Do not cite a ⏳ row as
 > if it were code — the whole point of this folder is that it never lies.
@@ -13,14 +13,10 @@ shop and the endless ramp; a `MissionDirector` drives it through seven additive
 methods and consumes its four events. With no director in the scene, every one
 of those additions is inert and endless mode is byte-identical to before.
 
-**What exists today:** the `WaveRunner` seam (built, with its own test file) and
-the **objective layer** — the ScriptableObject family, the state types, the
-progress record and the mission asset, all of it data and pure logic with no
-MonoBehaviour anywhere. **`MissionDirector` exists now** and is what makes any of this run: it
-subscribes once, accumulates into `MissionProgress`, ticks the active step group,
-gates waves on whether a step actually wants enemies, and rewinds to a
-checkpoint on death. Nothing wires one into a scene yet, so it is still
-unexercised by any test — see the state table in CLAUDE.md.
+**What exists today:** the objective layer, director, zones, HUD, mission menu and
+two authored missions are wired into the generated scenes. Mission 1 now carries
+the first humanization vertical slice described below. The slice is machine-tested
+and screenshot-reviewed; it still needs a human combat and audio timing pass.
 
 See [docs/PLAN-CAMPAIGN.md](../PLAN-CAMPAIGN.md) for the full plan and the
 reasoning behind each decision.
@@ -58,6 +54,31 @@ None. This game has no database; persistence is versioned JSON — see
   stateless ScriptableObjects, eight concrete types. **Built** — no assets
   authored yet. See the three rules below.
 - **`ArenaConfig`** (`Data/Arenas/Arena_*.asset`) ⏳ — the data-driven arena.
+
+## Mission 1 humanization vertical slice
+
+`Radio_Mission01_MaraVenn.asset` contains nine restrained subtitle lines from
+operator **Mara Venn**. Each row has a stable ID, semantic trigger, occurrence,
+priority, cooldown, interruption policy, display time and optional `AudioClip`.
+The shipped clips are deliberately null: the scheduler still displays the line
+without warning spam, and the docs do not pretend generated or placeholder speech
+is final voice acting.
+
+`RadioDialogueArbiter` is pure runtime logic. It performs occurrence selection,
+priority interruption, bounded queuing, duplicate suppression and per-line
+cooldowns. `RadioDialogueScheduler` adds unscaled-time playback and subtitle
+events. `MissionDirector` owns only trigger timing: entry, first objective, first
+contact, player badly hurt, wave clear, objective complete, completion and failure.
+This keeps authored copy out of combat code and lets a future recorded clip replace
+a null reference without changing the schedule.
+
+Mission 1's visible objectives are contextual rather than mechanical: get the
+relay online, break the drone push, then fall back to extraction. After the second
+push, the step's `completionDelaySeconds = 4` suspends waves and hides the objective
+HUD before extraction appears. The quiet beat is independent of radio duration,
+so missing audio cannot stall the mission and a long localization cannot move the
+gameplay gate. `humanizationVersion` applies this authored upgrade once without
+continually overwriting later designer edits.
 
 ## The three objective rules
 

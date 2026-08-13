@@ -1,11 +1,8 @@
 # Save
 
-> Last verified: 2026-08-12 — code-verified when schema 4 added the campaign
-> block. The write, the `.bak` on the second run, recovery from a deliberately
-> corrupted file, the v1→v4 and v3→v4 migrations, the mission-record round trip
-> and the refusal to overwrite a newer schema are all covered by EditMode tests.
-> **Still unverified in play:** the campaign block. Nothing writes it yet — the
-> mission layer that will is ⏳ in [campaign.md](campaign.md).
+> Last verified: 2026-08-13 — schema 5 adds subtitle accessibility preferences.
+> Atomic write/backup recovery, migrations, mission records, accessibility
+> round-trip and refusal to overwrite a newer schema are covered by tests.
 
 ## Overview
 
@@ -19,7 +16,7 @@ instead of a migration problem.
 
 ```json
 {
-  "schemaVersion": 4,
+  "schemaVersion": 5,
   "bestRound": 0,
   "totalKills": 0,
   "totalRuns": 0,
@@ -33,6 +30,9 @@ instead of a migration problem.
   "graphicsInitialised": true,
   "postProcessing": true,
   "antiAliasing": 2,
+  "accessibilityInitialised": true,
+  "subtitlesEnabled": true,
+  "subtitleSize": 1,
   "campaignSelected": false,
   "selectedMissionId": "",
   "missionRecords": [
@@ -49,6 +49,10 @@ instead of a migration problem.
 
 `antiAliasing` is `0` Off, `1` FXAA, `2` SMAA. The enum's ORDER is a file format:
 append new modes, never reorder the existing ones.
+
+`subtitleSize` is `0` Small, `1` Medium, `2` Large. Its enum order is likewise
+append-only. `accessibilityInitialised` distinguishes a player's deliberate OFF
+choice from a pre-v5 save that needs current defaults seeded from `SettingsConfig`.
 
 `lastMode` is `0` for Run and `1` for Sandbox. It is how the menu's mode choice
 reaches the next scene without a mutable static — Domain Reload is off, so a
@@ -100,6 +104,7 @@ second thing to keep in sync.
 | 1 → 2 | the settings block (fov, invert, the initialised flag) and the remembered mode | Clears `settingsInitialised`. v1 wrote `mouseSensitivity` and `masterVolume` that nothing ever read, so there was no player choice to preserve. |
 | 2 → 3 | the graphics block (`graphicsInitialised`, `postProcessing`, `antiAliasing`) | **Deliberately a no-op.** `graphicsInitialised` defaults to false, which is exactly what makes `SettingsHub` seed the block from `SettingsConfig` on the next resolve — the same path a brand-new save takes. Writing real values in `Migrate` would put a tuning number in a migration, and tuning numbers live in ScriptableObjects. |
 | 3 → 4 | the campaign block (`campaignSelected`, `selectedMissionId`, `missionRecords[]`) | **Deliberately a no-op, for a different reason than 2 → 3.** That one is empty because a real default would be a tuning number; this one is empty because the block has no real default at all. An old save **is** an endless save and the zero values already say so, which is also why there is no `campaignInitialised` to clear. The one thing a v3 file can hand over is a **null** `missionRecords`, and that is fixed in `Normalise` on the load path rather than in this step — see below. |
+| 4 → 5 | the accessibility block (`accessibilityInitialised`, `subtitlesEnabled`, `subtitleSize`) | **Deliberately a no-op.** The false initialised flag makes `SettingsHub` seed current values from `SettingsConfig`; migration code never owns player-facing tuning defaults. |
 
 The version is bumped even when the migration does nothing, because the number is
 what tells a **downgraded** build that this file holds fields it cannot represent.
@@ -173,8 +178,8 @@ un-chosen. `RunAndSettings_ShareOneSaveObject` pins it.
 
 - [waves.md](waves.md) — permadeath is what triggers the only write.
 - [ui.md](ui.md) — the game-over panel is the only place the record is displayed.
-- [campaign.md](campaign.md) — owns the campaign block's meaning; schema 4 only
-  reserves the shape. Nothing writes `missionRecords` yet.
+- [campaign.md](campaign.md) — owns the campaign block and writes mission results.
+- [settings.md](settings.md) — owns the schema 5 accessibility values.
 
 ## Testing this system
 

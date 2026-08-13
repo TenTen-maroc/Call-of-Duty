@@ -40,6 +40,13 @@ namespace CoD.Core
         [Tooltip("SMAA by default: the arena is built from hard-edged primitives, the worst case for edge crawl.")]
         public AntiAliasingMode antiAliasingDefault = AntiAliasingMode.Smaa;
 
+        [Header("Subtitles — the SHIPPED accessibility defaults")]
+        public bool subtitlesEnabledDefault = true;
+        public SubtitleSize subtitleSizeDefault = SubtitleSize.Medium;
+        [Range(22, 52)] public int subtitleSmallFontSize = 28;
+        [Range(22, 52)] public int subtitleMediumFontSize = 34;
+        [Range(22, 52)] public int subtitleLargeFontSize = 42;
+
 #if UNITY_EDITOR
         private void OnValidate()
         {
@@ -48,6 +55,10 @@ namespace CoD.Core
             if (sensitivityMax < sensitivityMin) sensitivityMax = sensitivityMin;
             if (fovMax < fovMin) fovMax = fovMin;
             if (volumeMax < volumeMin) volumeMax = volumeMin;
+            if (subtitleMediumFontSize < subtitleSmallFontSize)
+                subtitleMediumFontSize = subtitleSmallFontSize;
+            if (subtitleLargeFontSize < subtitleMediumFontSize)
+                subtitleLargeFontSize = subtitleMediumFontSize;
         }
 #endif
     }

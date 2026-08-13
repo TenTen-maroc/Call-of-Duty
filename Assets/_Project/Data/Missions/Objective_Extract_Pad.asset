@@ -13,8 +13,8 @@ MonoBehaviour:
   m_Name: Objective_Extract_Pad
   m_EditorClassIdentifier: 
   stableId: obj_extract_pad
-  title: EXTRACT
-  description: "The bird is on the pad. Stand on it until it lifts \u2014 leaving
-    restarts the count."
+  title: FALL BACK TO EXTRACTION
+  description: The bay is quiet. Return to the south pad before the backup circuit
+    recovers.
   zoneId: 1
   dwellSeconds: 5

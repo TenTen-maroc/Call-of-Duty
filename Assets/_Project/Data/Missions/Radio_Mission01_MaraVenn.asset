@@ -1,0 +1,115 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 74b6a6f0b6aa4e28abffef58e56ef501, type: 3}
+  m_Name: Radio_Mission01_MaraVenn
+  m_EditorClassIdentifier: 
+  lines:
+  - stableId: m01_entry
+    speakerId: operator_mara_venn
+    speakerName: MARA VENN
+    subtitle: Venn to ground team. C-9's relay is still alive. Get eyes on it.
+    trigger: 0
+    occurrence: 1
+    priority: 50
+    cooldownSeconds: 999
+    subtitleSeconds: 3.2
+    interruptionPolicy: 1
+    audioClip: {fileID: 0}
+  - stableId: m01_first_objective
+    speakerId: operator_mara_venn
+    speakerName: MARA VENN
+    subtitle: Reach the relay north of the bunker. If it stays dark, the bay keeps
+      cycling.
+    trigger: 1
+    occurrence: 1
+    priority: 45
+    cooldownSeconds: 999
+    subtitleSeconds: 3.4
+    interruptionPolicy: 1
+    audioClip: {fileID: 0}
+  - stableId: m01_first_contact
+    speakerId: operator_mara_venn
+    speakerName: MARA VENN
+    subtitle: Movement. Rushers only. Keep space and shoot the lit cores.
+    trigger: 2
+    occurrence: 1
+    priority: 65
+    cooldownSeconds: 999
+    subtitleSeconds: 3
+    interruptionPolicy: 1
+    audioClip: {fileID: 0}
+  - stableId: m01_badly_hurt
+    speakerId: operator_mara_venn
+    speakerName: MARA VENN
+    subtitle: You're bleeding. Break contact. The relay can wait.
+    trigger: 3
+    occurrence: 1
+    priority: 95
+    cooldownSeconds: 999
+    subtitleSeconds: 2.5
+    interruptionPolicy: 1
+    audioClip: {fileID: 0}
+  - stableId: m01_wave_one_clear
+    speakerId: operator_mara_venn
+    speakerName: MARA VENN
+    subtitle: First push is down. The bay is winding up again.
+    trigger: 4
+    occurrence: 1
+    priority: 55
+    cooldownSeconds: 999
+    subtitleSeconds: 3.1
+    interruptionPolicy: 1
+    audioClip: {fileID: 0}
+  - stableId: m01_relay_found
+    speakerId: operator_mara_venn
+    speakerName: MARA VENN
+    subtitle: Relay found. Bringing the floor map back now.
+    trigger: 5
+    occurrence: 1
+    priority: 52
+    cooldownSeconds: 999
+    subtitleSeconds: 2.8
+    interruptionPolicy: 1
+    audioClip: {fileID: 0}
+  - stableId: m01_wave_two_clear
+    speakerId: operator_mara_venn
+    speakerName: MARA VENN
+    subtitle: Second push is down. Hold. Let the room go quiet.
+    trigger: 4
+    occurrence: 2
+    priority: 58
+    cooldownSeconds: 999
+    subtitleSeconds: 2.8
+    interruptionPolicy: 1
+    audioClip: {fileID: 0}
+  - stableId: m01_complete
+    speakerId: operator_mara_venn
+    speakerName: MARA VENN
+    subtitle: Copy your signal. C-9 is contained. For tonight.
+    trigger: 6
+    occurrence: 1
+    priority: 100
+    cooldownSeconds: 999
+    subtitleSeconds: 3
+    interruptionPolicy: 0
+    audioClip: {fileID: 0}
+  - stableId: m01_failed
+    speakerId: operator_mara_venn
+    speakerName: MARA VENN
+    subtitle: I've lost your signal. Pulling the route.
+    trigger: 7
+    occurrence: 1
+    priority: 100
+    cooldownSeconds: 999
+    subtitleSeconds: 2.7
+    interruptionPolicy: 0
+    audioClip: {fileID: 0}

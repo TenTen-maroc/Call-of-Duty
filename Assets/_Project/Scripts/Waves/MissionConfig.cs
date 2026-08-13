@@ -39,6 +39,9 @@ namespace CoD.Waves
 
             [Tooltip("Seconds before this step fails. 0 = untimed. Any objective can be timed; there is no timed objective type.")]
             [Min(0f)] public float timeLimitSeconds;
+
+            [Tooltip("Authored silence after this group resolves before the next instruction. Independent of dialogue audio.")]
+            [Min(0f)] public float completionDelaySeconds;
         }
 
         [Header("Identity")]
@@ -57,12 +60,18 @@ namespace CoD.Waves
         [Tooltip("What the player drops in with. A mission's economy is authored, not inherited from the endless shop.")]
         [Min(0)] public int startingMoney = 300;
 
+        [Tooltip("One-time builder content revision. It protects later human tuning from being overwritten.")]
+        [Min(0)] public int humanizationVersion;
+
         [Header("The mission")]
         [Tooltip("In order. A step is complete before the next begins, unless the next one is marked parallel.")]
         public Step[] steps = System.Array.Empty<Step>();
 
         [Tooltip("Handed to WaveRunner when the mission starts. Empty means a mission with no fighting.")]
         public WaveConfig[] waves = System.Array.Empty<WaveConfig>();
+
+        [Tooltip("Optional mission-owned radio arc. Null means the mission plays without radio or subtitles.")]
+        public RadioDialogueConfig? radioDialogue;
 
         public int StepCount => steps.Length;
 
@@ -162,6 +171,23 @@ namespace CoD.Waves
                         $"[{name}] step {i} had a negative time limit ({steps[i].timeLimitSeconds}s), which reads " +
                         "as untimed. Clamped to 0 — set the seconds you meant.", this);
                     steps[i].timeLimitSeconds = 0f;
+                }
+
+                if (steps[i].completionDelaySeconds < 0f)
+                {
+                    Debug.LogError(
+                        $"[{name}] step {i} had a negative completion delay. Clamped to 0.", this);
+                    steps[i].completionDelaySeconds = 0f;
+                }
+            }
+
+            if (radioDialogue != null)
+            {
+                RadioValidationIssue issues = radioDialogue.Validate(out int invalidLine);
+                if (issues != RadioValidationIssue.None)
+                {
+                    Debug.LogError(
+                        $"[{name}] radio dialogue has invalid line {invalidLine}: {issues}.", this);
                 }
             }
 

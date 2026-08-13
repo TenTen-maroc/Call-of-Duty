@@ -67,6 +67,7 @@ namespace CoD.EditorTools
 
         /// <summary>The second mission's save key. Never renamed — see <see cref="Mission01Id"/>.</summary>
         private const string Mission02Id = "mission_02_hard_contact";
+        private const int Mission01HumanizationVersion = 1;
 
         [MenuItem("CoD/Build Missions", false, 2)]
         public static void Build()
@@ -94,6 +95,9 @@ namespace CoD.EditorTools
                         "The facility's local control point is marked on your display. Walk to it.";
                     objective.zoneId = ZONE_CONTROL_POINT;
                 });
+
+            RadioDialogueConfig missionOneRadio = LoadOrCreate<RadioDialogueConfig>(
+                DataMissions + "/Radio_Mission01_MaraVenn.asset", ConfigureMissionOneRadio);
 
             Obj_SurviveWaves surviveTwo = LoadOrCreate<Obj_SurviveWaves>(
                 DataMissions + "/Objective_Survive_Two.asset", objective =>
@@ -180,6 +184,31 @@ namespace CoD.EditorTools
                 },
                 LoadWaves(1, 2));
 
+            // One-time authored upgrade. Future Inspector tuning survives every
+            // later builder run; references are still repaired below.
+            if (shakedown.humanizationVersion < Mission01HumanizationVersion)
+            {
+                reachControlPoint.title = "GET THE RELAY ONLINE";
+                reachControlPoint.description =
+                    "The drone bay is cycling from a local relay. Reach it before the next launch.";
+                surviveTwo.title = "BREAK THE DRONE PUSH";
+                surviveTwo.description =
+                    "The relay woke the bay. Clear both launches so the shutdown can finish.";
+                extractPad.title = "FALL BACK TO EXTRACTION";
+                extractPad.description =
+                    "The bay is quiet. Return to the south pad before the backup circuit recovers.";
+                shakedown.briefing =
+                    "Facility C-9 went dark eleven hours ago. Its local relay is still cycling the drone bay.\n\n" +
+                    "Bring the relay online, survive the bay's remaining launches, then fall back to the south pad.";
+                shakedown.steps[1].completionDelaySeconds = 4f;
+                shakedown.humanizationVersion = Mission01HumanizationVersion;
+                EditorUtility.SetDirty(reachControlPoint);
+                EditorUtility.SetDirty(surviveTwo);
+                EditorUtility.SetDirty(extractPad);
+            }
+            shakedown.radioDialogue = missionOneRadio;
+            EditorUtility.SetDirty(shakedown);
+
             // ---- mission 2: HARD CONTACT ---------------------------------
             // The same three verbs with the training wheels off: a quota the
             // player has to go and earn, then the hold that makes a corner with
@@ -258,6 +287,49 @@ namespace CoD.EditorTools
                 TimeLimitSeconds = timeLimitSeconds;
             }
         }
+
+        private static void ConfigureMissionOneRadio(RadioDialogueConfig config)
+        {
+            config.lines = new[]
+            {
+                Line("m01_entry", RadioTrigger.MissionEntry, 1, 50, 999f, 3.2f,
+                    "Venn to ground team. C-9's relay is still alive. Get eyes on it."),
+                Line("m01_first_objective", RadioTrigger.FirstObjective, 1, 45, 999f, 3.4f,
+                    "Reach the relay north of the bunker. If it stays dark, the bay keeps cycling."),
+                Line("m01_first_contact", RadioTrigger.FirstContact, 1, 65, 999f, 3.0f,
+                    "Movement. Rushers only. Keep space and shoot the lit cores."),
+                Line("m01_badly_hurt", RadioTrigger.PlayerBadlyHurt, 1, 95, 999f, 2.5f,
+                    "You're bleeding. Break contact. The relay can wait."),
+                Line("m01_wave_one_clear", RadioTrigger.WaveClear, 1, 55, 999f, 3.1f,
+                    "First push is down. The bay is winding up again."),
+                Line("m01_relay_found", RadioTrigger.ObjectiveComplete, 1, 52, 999f, 2.8f,
+                    "Relay found. Bringing the floor map back now."),
+                Line("m01_wave_two_clear", RadioTrigger.WaveClear, 2, 58, 999f, 2.8f,
+                    "Second push is down. Hold. Let the room go quiet."),
+                Line("m01_complete", RadioTrigger.MissionComplete, 1, 100, 999f, 3.0f,
+                    "Copy your signal. C-9 is contained. For tonight.", RadioInterruptionPolicy.Finish),
+                Line("m01_failed", RadioTrigger.MissionFailed, 1, 100, 999f, 2.7f,
+                    "I've lost your signal. Pulling the route.", RadioInterruptionPolicy.Finish),
+            };
+        }
+
+        private static RadioLine Line(string stableId, RadioTrigger trigger, int occurrence, int priority,
+            float cooldownSeconds, float subtitleSeconds, string subtitle,
+            RadioInterruptionPolicy interruption = RadioInterruptionPolicy.AllowHigherPriority)
+            => new()
+            {
+                stableId = stableId,
+                speakerId = "operator_mara_venn",
+                speakerName = "MARA VENN",
+                subtitle = subtitle,
+                trigger = trigger,
+                occurrence = occurrence,
+                priority = priority,
+                cooldownSeconds = cooldownSeconds,
+                subtitleSeconds = subtitleSeconds,
+                interruptionPolicy = interruption,
+                audioClip = null,
+            };
 
         /// <summary>
         /// Writes a mission's steps and wave list: references always, everything

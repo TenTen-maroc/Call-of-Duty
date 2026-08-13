@@ -1,9 +1,8 @@
 # Drones
 
-> Last verified: 2026-08-12 — every assembly compiles clean, the grey box builds
-> headlessly and GreyBoxVerify proves the references survive a save/reload round
-> trip. **Not yet verified in play:** the chase, the fuse window, blast damage on
-> the player, and pool reuse across many waves.
+> Last verified: 2026-08-13 — every assembly compiles clean, the grey box builds
+> headlessly and GreyBoxVerify proves references survive save/reload. Reaction
+> state reset is tested across pooling; feel and final reaction audio need a human pass.
 
 ## Overview
 
@@ -46,6 +45,9 @@ how a crowd stays fair.
 - **[Difficulty.asset](../../Assets/_Project/Data/Game/Difficulty.asset)** —
   `maxAliveDrones` 40, `maxSimultaneousAttackers` 3,
   `minSpawnDistanceFromPlayer` 12, `spawnSampleRadius` 4, `attackTokenTimeout` 6.
+- **[Reactions_Drone_Standard.asset](../../Assets/_Project/Data/Drones/Reactions_Drone_Standard.asset)** —
+  six optional reaction rows shared by all three archetypes: detect player, nearby
+  ally death, heavy damage, lost sight, attack commit and low health.
 
 **Speed is a relationship, not a number.** 6.0 sits between the player's walk
 (5.2) and sprint (8.0): backpedalling loses the race, sprinting wins it. Change
@@ -108,6 +110,21 @@ the player's speed and this one has to move with it.
 - Pool prewarm: drone 24, explosion 8, death VFX 8 — sized for a wave, not a demo.
 
 ## Key Behaviors & Non-Obvious Patterns
+
+### The pooled reaction seam
+
+`EnemyReactionConfig` gives each reaction a probability, per-instance cooldown,
+core-pulse scale/duration and optional audio cue. `DroneController` samples sight
+at a throttled interval with a reusable `RaycastNonAlloc` buffer, listens to its
+own damage/death events and the registry kill event, and calls attack-commit from
+the existing token-gated path. A stable per-instance hash spreads probabilities
+without synchronising a whole crowd and without allocating random state each frame.
+
+The reactions reuse the existing core material property block and spatial audio
+source. Null clips are legal and silent; the visual pulse remains readable. Every
+flag, cooldown and pulse value is reset in `Initialize` and `Retire`, and registry
+subscriptions exist only while the pooled drone is active. The seam changes no HP,
+speed, damage, token cap, attack timing or navmesh geometry.
 
 - **The Shooter's first shot misses on purpose.** It is thrown wide on a fixed
   angle — fixed, not random, because a warning shot has to miss *reliably* or it

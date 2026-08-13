@@ -48,6 +48,8 @@ namespace CoD.Waves
         [SerializeField] private Transform? _player = null;
         [Tooltip("The player's Health. A campaign death is a rewind, and a rewind has to put them back on their feet.")]
         [SerializeField] private Health? _playerHealth = null;
+        [Tooltip("Priority/cooldown scheduler. Optional: missions remain fully playable without radio.")]
+        [SerializeField] private RadioDialogueScheduler? _radio = null;
         [Tooltip("Named places a mission can send the player. Registered on mission start; objectives address them by id.")]
         [SerializeField] private MissionZone[] _zones = System.Array.Empty<MissionZone>();
 
@@ -58,6 +60,9 @@ namespace CoD.Waves
         private int _activeStep;
         private bool _running;
         private bool _finished;
+        private bool _transitionPending;
+        private float _transitionAt;
+        private int _pendingNextStep;
 
         private float _startedAt;
         private int _checkpointStep;
@@ -107,10 +112,12 @@ namespace CoD.Waves
             if (_runner != null)
             {
                 _runner.WaveCleared += OnWaveCleared;
+                _runner.WaveStarted += OnWaveStarted;
                 _runner.PlayerDown += OnPlayerDown;
             }
             if (_registry != null) _registry.Killed += OnDroneKilled;
             if (_interactables != null) _interactables.Interacted += RecordInteraction;
+            if (_playerHealth != null) _playerHealth.Damaged += OnPlayerDamaged;
         }
 
         private void OnDisable()
@@ -118,10 +125,12 @@ namespace CoD.Waves
             if (_runner != null)
             {
                 _runner.WaveCleared -= OnWaveCleared;
+                _runner.WaveStarted -= OnWaveStarted;
                 _runner.PlayerDown -= OnPlayerDown;
             }
             if (_registry != null) _registry.Killed -= OnDroneKilled;
             if (_interactables != null) _interactables.Interacted -= RecordInteraction;
+            if (_playerHealth != null) _playerHealth.Damaged -= OnPlayerDamaged;
         }
 
         private void Start()
@@ -140,11 +149,14 @@ namespace CoD.Waves
             _checkpointStep = 0;
             _checkpointWave = 0;
             _finished = false;
+            _transitionPending = false;
 
             _run.BeginRun(_mission.startingMoney);
             _runner.SetWaves(_mission.waves);
             _running = true;
             _startedAt = Time.time;
+            _radio?.Configure(_mission.radioDialogue);
+            TriggerRadio(RadioTrigger.MissionEntry);
 
             RegisterZones();
 
@@ -180,6 +192,7 @@ namespace CoD.Waves
 
             ApplyWaveGate();
             ObjectivesChanged?.Invoke();
+            if (index == 0) TriggerRadio(RadioTrigger.FirstObjective);
         }
 
         /// <summary>
@@ -269,6 +282,17 @@ namespace CoD.Waves
             if (!_running || _finished || _mission == null) return;
 
             float now = Time.time;
+            if (_transitionPending)
+            {
+                if (now < _transitionAt) return;
+                _transitionPending = false;
+                _activeStep = _pendingNextStep;
+                _checkpointStep = _pendingNextStep;
+                _checkpointWave = _runner != null ? _runner.WaveNumber : 0;
+                ActivateFrom(_pendingNextStep);
+                return;
+            }
+
             float deltaTime = Time.deltaTime;
             ObjectiveContext context = Context();
 
@@ -329,6 +353,19 @@ namespace CoD.Waves
                 return;
             }
 
+
+            TriggerRadio(RadioTrigger.ObjectiveComplete);
+            float completionDelay = GroupCompletionDelay();
+            if (completionDelay > 0f)
+            {
+                _runner?.Suspend();
+                _transitionPending = true;
+                _transitionAt = now + completionDelay;
+                _pendingNextStep = next;
+                ObjectivesChanged?.Invoke();
+                return;
+            }
+
             _activeStep = next;
             _checkpointStep = next;
             _checkpointWave = _runner != null ? _runner.WaveNumber : 0;
@@ -355,11 +392,27 @@ namespace CoD.Waves
             return i;
         }
 
+        private float GroupCompletionDelay()
+        {
+            if (_mission == null) return 0f;
+            float delay = 0f;
+            for (int i = _activeStep; i < _mission.StepCount; i++)
+            {
+                if (i > _activeStep && !_mission.steps[i].parallel) break;
+                delay = Mathf.Max(delay, _mission.steps[i].completionDelaySeconds);
+            }
+            return delay;
+        }
+
         private void FinishMission(RunOutcome outcome)
         {
             if (_finished) return;
             _finished = true;
             _running = false;
+
+            TriggerRadio(outcome == RunOutcome.MissionComplete
+                ? RadioTrigger.MissionComplete
+                : RadioTrigger.MissionFailed);
 
             _runner?.FinishRun(outcome);
 
@@ -396,6 +449,7 @@ namespace CoD.Waves
             if (_mission == null || _runner == null || _run == null || _finished) return;
 
             _progress.RecordDeath();
+            _transitionPending = false;
             _runner.AbortWave();
 
             // PUT THE PLAYER BACK ON THEIR FEET. Everything else here is
@@ -432,7 +486,20 @@ namespace CoD.Waves
             ActivateFrom(_activeStep);
         }
 
-        private void OnWaveCleared(int wave) => _progress.RecordWaveCleared();
+        private void OnWaveStarted(int wave) => TriggerRadio(RadioTrigger.FirstContact);
+
+        private void OnWaveCleared(int wave)
+        {
+            _progress.RecordWaveCleared();
+            TriggerRadio(RadioTrigger.WaveClear);
+        }
+
+        private void OnPlayerDamaged(Health health, DamageInfo info)
+        {
+            if (health.Normalized <= 0.25f) TriggerRadio(RadioTrigger.PlayerBadlyHurt);
+        }
+
+        private void TriggerRadio(RadioTrigger trigger) => _radio?.Trigger(trigger);
 
         private void OnDroneKilled(DroneController drone, DamageInfo info)
             => _progress.RecordKill(drone.Config);
@@ -474,6 +541,7 @@ namespace CoD.Waves
         public void DescribeActive(StringBuilder into)
         {
             if (_mission == null) return;
+            if (_transitionPending) return;
 
             // Bounded by _states, NOT by StepCount, and the difference is a
             // crash on scene load.

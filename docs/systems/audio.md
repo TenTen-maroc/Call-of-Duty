@@ -164,6 +164,13 @@ null sections restore silence or an existing deterministic placeholder. That
 fallback matters for reversibility, and every runtime path still treats a null
 clip or empty array as silence without warning spam.
 
+Mission 1 also has a separate data-driven 2D radio source. Its nine Mara Venn
+rows currently have **null AudioClips** by design: `RadioDialogueScheduler` still
+emits subtitle events for the authored duration and logs no missing-clip warning.
+Priority, interruption, duplicate suppression and cooldowns are owned by the radio
+config and scheduler; mission code supplies semantic triggers only. This source is
+not evidence of final VO, and no generated placeholder voice is checked in.
+
 Kenney's three complete source archives remain outside the repo: 7,510,490 bytes
 downloaded, 578,632 bytes retained. The 8.4 GB Sonniss archive was never
 downloaded whole: ZIP64 metadata and three exact compressed members were fetched
@@ -498,6 +505,8 @@ SceneWiring: added N component(s), rewired M reference(s), unresolved K  [Assets
 - **The clips have not been auditioned by a human.** Spectrogram and duration
   review caught selection mistakes cheaply, but only an interactive mix pass can
   judge cadence, repetition, loudness and whether the facility beds loop cleanly.
+- **Mara Venn has no recorded voice yet.** Mission 1 is subtitle-complete and
+  null-audio-safe; casting, recording, edit, mix and an in-combat timing pass remain.
 - **The Reverb bus has no effects.** Receive, Send and SFX Reverb still require
   the documented editor clicks followed by an audible tuning pass.
 - **Hitmarker, dry-fire and player-hurt remain synthesized placeholders.** The

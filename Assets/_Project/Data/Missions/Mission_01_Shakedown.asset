@@ -14,27 +14,29 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   stableId: mission_01_shakedown
   displayName: SHAKEDOWN
-  briefing: 'Facility C-9 went dark eleven hours ago and its drone bay is still answering.
+  briefing: 'Facility C-9 went dark eleven hours ago. Its local relay is still cycling
+    the drone bay.
 
 
-    Walk
-    to the local control point, hold the floor while the bay empties itself at you,
-    and take the pad out.
-
-
-    Two waves. Rushers only. Nothing here shoots back.'
+    Bring the relay online, survive the bay''s remaining launches,
+    then fall back to the south pad.'
   arenaScene: 10_GreyBox
   startingMoney: 300
+  humanizationVersion: 1
   steps:
   - objective: {fileID: 11400000, guid: 48dfba8834fa5d14ca56bc8b532a9d8a, type: 2}
     parallel: 0
     timeLimitSeconds: 0
+    completionDelaySeconds: 0
   - objective: {fileID: 11400000, guid: b66326fedec055b41ab9fdb87051a788, type: 2}
     parallel: 0
     timeLimitSeconds: 0
+    completionDelaySeconds: 4
   - objective: {fileID: 11400000, guid: e2c08668a50685e45bcbfe0daac04577, type: 2}
     parallel: 0
     timeLimitSeconds: 0
+    completionDelaySeconds: 0
   waves:
   - {fileID: 11400000, guid: 087b864a27832944d8a7164b8e246802, type: 2}
   - {fileID: 11400000, guid: a8e51294eb9843f4bb2f2850e9e34fde, type: 2}
+  radioDialogue: {fileID: 11400000, guid: ce9959d796d881547b77e2b6667410ff, type: 2}

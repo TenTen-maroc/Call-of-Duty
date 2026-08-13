@@ -35,8 +35,13 @@ namespace CoD.Core
         /// mission as a Run, and write its wave number into bestRound. As a bool
         /// it ignores three unknown fields and starts an endless run instead. See
         /// SaveData for the long version.
+        ///
+        /// 4 → 5 added the accessibility block (subtitles enabled and subtitle
+        /// size). The migration is deliberately empty so SettingsHub can seed the
+        /// player-facing defaults from SettingsConfig rather than freezing tuning
+        /// values into migration code.
         /// </summary>
-        public const int CurrentSchemaVersion = 4;
+        public const int CurrentSchemaVersion = 5;
 
         private const string FileName = "cod_save.json";
         private const string BackupName = "cod_save.bak.json";
@@ -223,6 +228,12 @@ namespace CoD.Core
                 // Normalise rather than here. A save from the future returns above
                 // without ever reaching a migration step and can be just as null,
                 // so the guard belongs on the load path, not on this version's.
+            }
+
+            if (data.schemaVersion < 5)
+            {
+                // Deliberately empty. accessibilityInitialised=false makes
+                // SettingsHub seed the player-facing defaults from SettingsConfig.
             }
 
             data.schemaVersion = CurrentSchemaVersion;

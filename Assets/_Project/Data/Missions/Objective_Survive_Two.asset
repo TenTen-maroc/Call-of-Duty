@@ -13,7 +13,6 @@ MonoBehaviour:
   m_Name: Objective_Survive_Two
   m_EditorClassIdentifier: 
   stableId: obj_survive_two
-  title: HOLD OUT
-  description: Taking the control point wakes the drones on this floor. Clear two
-    waves.
+  title: BREAK THE DRONE PUSH
+  description: The relay woke the bay. Clear both launches so the shutdown can finish.
   waves: 2
