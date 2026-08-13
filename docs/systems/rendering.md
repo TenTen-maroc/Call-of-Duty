@@ -80,7 +80,7 @@ the URP 16 spelling and is obsolete in 17 — the compiler catches it.)
 
 ### G8 art kits — an optional data seam, not scene ownership
 
-Three empty-by-default assets under `Assets/_Project/Data/Kits/` are the only
+Three optional assets under `Assets/_Project/Data/Kits/` are the only
 places imported presentation enters the generated game:
 
 - `Kit_Arena_Default` — unit floor and wall modules plus their explicit materials.
@@ -89,7 +89,8 @@ places imported presentation enters the generated game:
 
 Each kit is valid only when **every reference is null** or **every reference is
 assigned**. `GreyBoxVerify.VerifyKits()` fails a mixed kit, and the builder also
-stops before authoring a half-imported scene. The committed state is all-null.
+stops before authoring a half-imported scene. G8 was committed all-null; G9a now
+ships the arena kit complete while weapon and enemy kits remain all-null.
 
 The null path is the original primitive path. A complete kit keeps gameplay on
 the generated object and instantiates the imported prefab beneath it as a child
@@ -106,6 +107,16 @@ medium-compressed models with cameras/lights/material extraction disabled.
 Weapons/hands/viewmodels may use 2048, and character/animation folders keep
 Humanoid animation import. Generated first-party art is deliberately outside
 those managed prefixes.
+
+The first complete source is the CC0 ambientCG set documented in
+[`SOURCE.md`](../../Assets/_Project/Art/Imported/AmbientCG/SOURCE.md): ten 1K
+industrial surfaces, each retaining only Color and NormalGL. The reproducible
+`AmbientCgMaterialBuilder` creates the URP materials and one collider-free unit
+cube prefab, then assigns Concrete034 to the floor and Concrete031 to the walls.
+The other eight materials are a measured variation library. `GreyBoxVerify`
+checks the regenerated room has one collider-free `Art` child for every gameplay
+`BoxCollider`; the source prefab being clean is not accepted as proof that a
+future imported hierarchy was stripped correctly.
 
 - **Palette_GreyBox.asset** (`Assets/_Project/Data/Game/`, a `PaletteConfig`) —
   every colour the arena is built from, and the fix for a whole bug CLASS.
@@ -412,9 +423,9 @@ on a 3 m crate. The same forty at 1024 is 56 MB, or 42 MB if the albedos go to
 BC1. Weapons and hands may sit at 2048 because the viewmodel fills a third of the
 screen for the entire run; nothing else earns it.
 
-Where the project stands right now: **one texture**, the generated 1024 detail
-normal. There is enormous headroom. This is a discipline problem, not a capacity
-problem, and the guards exist so it stays one — including
+Where the project stands right now: **21 textures** — the generated 1024 detail
+normal plus 20 ambientCG maps. There is enormous headroom. This is a discipline
+problem, not a capacity problem, and the guards exist so it stays controlled — including
 [guard-lfs-budget.mjs](../../Tools/guards/guard-lfs-budget.mjs), because the
 other price of a 4K import is an LFS object that is billed forever.
 
@@ -422,6 +433,15 @@ other price of a 4K import is an LFS object that is billed forever.
 texture-VRAM delta**. The working LFS set remains **16 objects / 1.3 MB**. The
 two `.preset` files and three empty kit assets are editor/YAML data, not runtime
 texture allocations and not LFS objects.
+
+**G9a / ambientCG measurement (2026-08-13):** `ArtReport` reports **21.3 MB
+across 21 textures**, versus the G8 baseline's 1.4 MB detail normal: a **19.9 MB
+texture-memory delta** for this source. The retained source payload is **26.8 MB
+across 20 JPEGs** before LFS pointer compression; final LFS object/quota totals
+are recorded in the source commit message. All maps import at 1024 or below with
+streaming mipmaps; normal maps are DXT5 and color maps are DXT1. This editor-side
+figure deliberately overstates the built player because eight variation
+materials are not referenced by a scene yet.
 
 The before/after Development-player captures were inspected frame by frame.
 Both menu PNGs are byte-identical. Arena frames preserve the same composition,

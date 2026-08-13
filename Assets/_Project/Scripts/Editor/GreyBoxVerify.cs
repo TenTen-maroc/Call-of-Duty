@@ -459,6 +459,7 @@ namespace CoD.EditorTools
             CheckAssetRef(smg, "shellCasingPrefab", stillNull);
 
             VerifyKits(stillNull);
+            VerifyArenaArtSeam(scene, stillNull);
 
             // The pooled interact point. Only the references that live INSIDE the
             // prefab are listed: _registry points at a scene object, and a prefab
@@ -509,6 +510,57 @@ namespace CoD.EditorTools
 
             if (enemy == null) stillNull.Add(EnemyKitPath + " (missing kit)");
             else if (!enemy.IsValid) stillNull.Add(EnemyKitPath + " (mixed null/non-null references)");
+        }
+
+        /// <summary>
+        /// A complete arena kit must decorate every gameplay box without adding
+        /// one new collider. This is deliberately checked in the regenerated
+        /// scene, not only in the source prefab: AddArtChild promises to strip
+        /// colliders recursively even when a future imported pack contains them.
+        /// </summary>
+        private static void VerifyArenaArtSeam(Scene scene, List<string> stillNull)
+        {
+            ArenaKitConfig? kit = Load<ArenaKitConfig>(ArenaKitPath);
+            if (kit is null || !kit.IsValid) return;
+
+            GameObject? room = null;
+            foreach (GameObject root in scene.GetRootGameObjects())
+            {
+                if (root.name == "Room")
+                {
+                    room = root;
+                    break;
+                }
+            }
+            if (room is null)
+            {
+                stillNull.Add(GreyBoxScenePath + " Room (missing arena root)");
+                return;
+            }
+
+            BoxCollider[] gameplayBoxes = room.GetComponentsInChildren<BoxCollider>(true);
+            int artCount = 0;
+            foreach (BoxCollider gameplayBox in gameplayBoxes)
+            {
+                Transform? art = gameplayBox.transform.Find("Art");
+                if (art is null)
+                {
+                    if (kit.HasCompleteAssignments)
+                        stillNull.Add(gameplayBox.name + " (complete arena kit has no Art child)");
+                    continue;
+                }
+
+                artCount++;
+                if (art.GetComponentsInChildren<Collider>(true).Length != 0)
+                    stillNull.Add(gameplayBox.name + "/Art (imported collider survived stripping)");
+                if (art.GetComponentsInChildren<Renderer>(true).Length == 0)
+                    stillNull.Add(gameplayBox.name + "/Art (no renderer)");
+            }
+
+            if (kit.HasNoAssignments && artCount != 0)
+                stillNull.Add($"Room (empty arena kit retained {artCount} Art children)");
+            if (kit.HasCompleteAssignments && artCount != gameplayBoxes.Length)
+                stillNull.Add($"Room (Art children {artCount}, gameplay BoxColliders {gameplayBoxes.Length})");
         }
 
         /// <summary>

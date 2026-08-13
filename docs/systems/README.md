@@ -30,7 +30,7 @@ obvious, emphasise the non-obvious.
 
 ## Automated verification
 
-Beyond `typecheck.mjs` and the guards, the project has 237 tests (177 EditMode,
+Beyond `typecheck.mjs` and the guards, the project has 238 tests (178 EditMode,
 60 PlayMode):
 
 ```

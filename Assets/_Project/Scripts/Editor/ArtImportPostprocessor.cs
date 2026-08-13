@@ -65,7 +65,8 @@ namespace CoD.EditorTools
             importer.maxTextureSize = IsHighDetailTexture(path) ? 2048 : 1024;
 
             string lower = path.ToLowerInvariant();
-            if (lower.Contains("_normal.") || lower.Contains("_n.") ||
+            if (lower.Contains("_normal.") || lower.Contains("_normalgl.") ||
+                lower.Contains("_normaldx.") || lower.Contains("_n.") ||
                 lower.Contains("/normals/"))
             {
                 importer.textureType = TextureImporterType.NormalMap;

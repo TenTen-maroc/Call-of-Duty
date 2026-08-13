@@ -45,14 +45,18 @@ arena teaches is that backing up puts something between you and the room.
 
 ## G8 art seam
 
-`Kit_Arena_Default` is optional presentation data. It currently has every field
-null, which takes the exact primitive fallback path. When a complete kit is
-assigned, each block keeps the same generated root transform and `BoxCollider`;
-the imported unit module is a child named `Art`, and every collider below that
-child is removed before the scene is saved. `BakeNavMesh` still collects
-`PhysicsColliders`, so an art swap cannot change the baked walkable geometry.
+`Kit_Arena_Default` is optional presentation data. G8 shipped it all-null and
+proved that path was the exact primitive fallback. G9a now assigns the complete
+ambientCG kit: Concrete034 on the floor, Concrete031 on the walls, and the same
+collider-free unit cube module for both. Each of the 19 blocks keeps the same
+generated root transform and `BoxCollider`; presentation is a child named `Art`.
+Every collider below that child is removed before the scene is saved.
+`BakeNavMesh` still collects `PhysicsColliders`, so the art swap does not change
+the baked walkable geometry.
 
-The verifier rejects a partially assigned kit. This matters because collision
+The verifier rejects a partially assigned kit and now compares the 19 gameplay
+`BoxCollider`s with the 19 generated `Art` children, asserting every art subtree
+has a renderer and zero colliders. This matters because collision
 tests would remain green on a half-art, half-grey scene: mixed presentation is a
 visual failure, not a gameplay-reference failure.
 

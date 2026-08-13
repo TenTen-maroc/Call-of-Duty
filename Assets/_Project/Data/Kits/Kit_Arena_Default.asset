@@ -12,7 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8ea7f516aff869d5b53e2bf3d95f581f, type: 3}
   m_Name: Kit_Arena_Default
   m_EditorClassIdentifier: 
-  floorModule: {fileID: 0}
-  floorMaterial: {fileID: 0}
-  wallModule: {fileID: 0}
-  wallMaterial: {fileID: 0}
+  floorModule: {fileID: 5705646691090410861, guid: 57a37b0fafd203346baec6ab21046719, type: 3}
+  floorMaterial: {fileID: 2100000, guid: 706a1acef35d5484c94fcab3e02a3eef, type: 2}
+  wallModule: {fileID: 5705646691090410861, guid: 57a37b0fafd203346baec6ab21046719, type: 3}
+  wallMaterial: {fileID: 2100000, guid: dc9cf83e915886e40b6092f8f37420b4, type: 2}

@@ -15,7 +15,7 @@ namespace CoD.Tests
         private const string KitFolder = "Assets/_Project/Data/Kits";
 
         [Test]
-        public void ShippedKits_ArePresentValidAndEmpty()
+        public void ShippedKits_ArenaIsComplete_AndUnconvertedTracksRemainEmpty()
         {
             ArenaKitConfig? arena = AssetDatabase.LoadAssetAtPath<ArenaKitConfig>(
                 KitFolder + "/Kit_Arena_Default.asset");
@@ -27,9 +27,18 @@ namespace CoD.Tests
             Assert.That(arena, Is.Not.Null);
             Assert.That(weapon, Is.Not.Null);
             Assert.That(enemy, Is.Not.Null);
-            Assert.That(arena!.HasNoAssignments && arena.IsValid, Is.True);
+            Assert.That(arena!.HasCompleteAssignments && arena.IsValid, Is.True);
             Assert.That(weapon!.HasNoAssignments && weapon.IsValid, Is.True);
             Assert.That(enemy!.HasNoAssignments && enemy.IsValid, Is.True);
+
+            Assert.That(AssetDatabase.GetAssetPath(arena.floorModule),
+                Does.StartWith("Assets/_Project/Art/Imported/AmbientCG/"));
+            Assert.That(AssetDatabase.GetAssetPath(arena.floorMaterial),
+                Does.EndWith("/Concrete034.mat"));
+            Assert.That(AssetDatabase.GetAssetPath(arena.wallModule),
+                Does.StartWith("Assets/_Project/Art/Imported/AmbientCG/"));
+            Assert.That(AssetDatabase.GetAssetPath(arena.wallMaterial),
+                Does.EndWith("/Concrete031.mat"));
         }
 
         [Test]
@@ -93,6 +102,37 @@ namespace CoD.Tests
                 "Assets/_Project/Art/Presets/Texture_Art_1024.preset"), Is.Not.Null);
             Assert.That(AssetDatabase.LoadAssetAtPath<Preset>(
                 "Assets/_Project/Art/Presets/Model_Art_Static.preset"), Is.Not.Null);
+        }
+
+        [Test]
+        public void AmbientCgSource_IsCompleteBudgetedAndColliderFree()
+        {
+            const string root = "Assets/_Project/Art/Imported/AmbientCG";
+            string[] materialGuids = AssetDatabase.FindAssets("t:Material", new[] { root + "/Materials" });
+            Assert.That(materialGuids, Has.Length.EqualTo(10));
+
+            string[] textureGuids = AssetDatabase.FindAssets("t:Texture2D", new[] { root });
+            Assert.That(textureGuids, Has.Length.EqualTo(20));
+            foreach (string guid in textureGuids)
+            {
+                string path = AssetDatabase.GUIDToAssetPath(guid);
+                var importer = AssetImporter.GetAtPath(path) as TextureImporter;
+                Assert.That(importer, Is.Not.Null, path);
+                Assert.That(importer!.maxTextureSize, Is.EqualTo(1024), path);
+                Assert.That(importer.isReadable, Is.False, path);
+                Assert.That(importer.streamingMipmaps, Is.True, path);
+                if (path.Contains("_NormalGL", System.StringComparison.Ordinal))
+                {
+                    Assert.That(importer.textureType, Is.EqualTo(TextureImporterType.NormalMap), path);
+                    Assert.That(importer.sRGBTexture, Is.False, path);
+                }
+            }
+
+            GameObject? unitBlock = AssetDatabase.LoadAssetAtPath<GameObject>(
+                root + "/Geometry/AmbientCG_UnitBlock.prefab");
+            Assert.That(unitBlock, Is.Not.Null);
+            Assert.That(unitBlock!.GetComponentsInChildren<Renderer>(true), Is.Not.Empty);
+            Assert.That(unitBlock.GetComponentsInChildren<Collider>(true), Is.Empty);
         }
 
         [Test]

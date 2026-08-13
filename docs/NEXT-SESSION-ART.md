@@ -1,9 +1,10 @@
 # The art session — a self-contained prompt
 
-> Status 2026-08-13: G8 is complete and green. All three shipped kits remain
-> null; the generated scene kept the same 218 serialized names, 133 GameObjects
-> and 19 BoxColliders; 237 tests and both player gates pass; the before/after
-> screenshots were inspected with no visual delta. G9a is now the active step.
+> Status 2026-08-13: G8 is complete, green, committed, and was visually neutral.
+> G9a source 1 is integrated: ten 1K ambientCG CC0 surfaces, with only Color and
+> NormalGL retained. The complete arena kit adds 19 collider-free `Art` children
+> while keeping the original 19 BoxColliders. Measured texture-memory delta is
+> 19.9 MB; weapon and enemy kits remain null. Poly Haven is the next free source.
 
 Paste the block at the bottom into a fresh Claude Code session opened at the repo
 root. Everything above it is the reasoning behind the block; the block itself is
