@@ -1,0 +1,31 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 1638104aaae621614c3475c6e615359e, type: 3}
+  m_Name: Ambience_Tazir
+  m_EditorClassIdentifier:
+  roomTone: {fileID: 8300000, guid: b2675eeb3b8e3094ca7e2475f65c8b61, type: 3}
+  roomToneVolume: 0.22
+  roomTonePitch: 1
+  fadeInSeconds: 2.5
+  emitters:
+  - label: Generator_Yard
+    clip: {fileID: 8300000, guid: 213132013a0355645b49047a47b2985d, type: 3}
+    localPosition: {x: -17, y: 1.5, z: 8}
+    volume: 0.28
+    pitch: 0.9
+    minDistance: 4
+    maxDistance: 24
+    spatialBlend: 1
+    spreadDegrees: 55
+    rolloff: 1
+  randomiseStartTime: 1
+  outputGroup: {fileID: 1116620510656971074, guid: 65e9bcccdaba3984287abac88343eef0, type: 2}

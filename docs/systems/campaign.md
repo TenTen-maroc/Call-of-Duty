@@ -14,9 +14,25 @@ methods and consumes its four events. With no director in the scene, every one
 of those additions is inert and endless mode is byte-identical to before.
 
 **What exists today:** the objective layer, director, zones, HUD, mission menu and
-two authored missions are wired into the generated scenes. Mission 1 now carries
-the first humanization vertical slice described below. The slice is machine-tested
-and screenshot-reviewed; it still needs a human combat and audio timing pass.
+two authored missions are wired into generated scenes. Mission 1 carries the
+indoor drone introduction. Mission 2 keeps stable ID `mission_02_hard_contact`
+and now loads `11_AtlasOutpost`: locate the comms hut, break four Meridian
+Riflemen, disable the relay, survive a two-wave mixed push, and extract north.
+Both slices are machine-tested and screenshot-reviewed; combat feel and audio
+timing still need a human pass.
+
+## Mission 2 — HARD CONTACT
+
+The first visible-human mission is authored by `MissionBuilder` and uses three
+mission-only waves. First contact is four riflemen; the counterattack raises the
+human count while keeping `maxAliveOverride` at 12; the final push mixes eight
+riflemen with three existing Shooter drones. Mara Venn has a separate
+`Radio_Mission02_MaraVenn` config, so Mission 1 dialogue is never overwritten.
+
+`OutdoorArenaBuilder` owns the scene, baked NavMesh, mission zones, relay
+interaction, cover registry, gore manager, human/gore prewarm, outdoor footsteps,
+ambience, and capture director. `OutdoorArenaBuilder.VerifyHeadless` reloads the
+serialized scene and verifies spawn/cover/art/navigation contracts.
 
 See [docs/PLAN-CAMPAIGN.md](../PLAN-CAMPAIGN.md) for the full plan and the
 reasoning behind each decision.

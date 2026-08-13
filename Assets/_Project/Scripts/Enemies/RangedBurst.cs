@@ -34,6 +34,9 @@ namespace CoD.Enemies
         [Range(1, 8)] public int burstCount = 3;
         [Range(0.05f, 1f)] public float burstInterval = 0.18f;
         [Range(0.2f, 6f)] public float cooldown = 1.6f;
+        [Tooltip("0 disables reloads. Humans use three bursts per magazine; drones may leave it at zero.")]
+        [Range(0, 12)] public int reloadEveryBursts;
+        [Range(0.1f, 4f)] public float reloadSeconds = 1.4f;
 
         [Header("Accuracy")]
         [Tooltip("1 = dead on. Lower widens the cone; 0.7 is the arcade-fair number.")]
@@ -67,6 +70,7 @@ namespace CoD.Enemies
                     if (!drone.TryAcquireAttackToken(ref state)) return;
 
                     state.Phase = DroneAttackPhase.Windup;
+                    drone.SetFiringPosture(true);
                     state.PhaseEndsAt = now + reactionDelay;
                     break;
 
@@ -95,11 +99,15 @@ namespace CoD.Enemies
 
                     drone.SetTelegraph(0f);
                     state.Phase = DroneAttackPhase.Idle;
-                    state.NextAttackAt = now + cooldown;
+                    state.CompletedBursts++;
+                    bool reload = reloadEveryBursts > 0 && state.CompletedBursts % reloadEveryBursts == 0;
+                    if (reload) drone.PlayReloadAnimation();
+                    state.NextAttackAt = now + (reload ? reloadSeconds : cooldown);
                     // Hand the token back the moment the burst ends, so the next
                     // drone in the pack gets its turn instead of waiting out a
                     // cooldown it is not serving.
                     drone.ReleaseAttackToken(ref state);
+                    drone.SetFiringPosture(false);
                     break;
             }
         }
@@ -109,6 +117,7 @@ namespace CoD.Enemies
             state.Phase = DroneAttackPhase.Idle;
             state.BurstRemaining = 0;
             drone.SetTelegraph(0f);
+            drone.SetFiringPosture(false);
         }
 
         private void FireOne(DroneController drone, ref DroneAttackState state)

@@ -1,0 +1,34 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 580e9451cdead624aabc56606395cf55, type: 3}
+  m_Name: HumanCombat_Rifleman
+  m_EditorClassIdentifier:
+  speedAtFullBlend: 4.5
+  speedDamping: 0.1
+  variantA: {r: 0.2, g: 0.23, b: 0.16, a: 1}
+  variantB: {r: 0.34, g: 0.27, b: 0.16, a: 1}
+  decisionInterval: 0.65
+  coverChecksPerDecision: 8
+  coverArrivalDistance: 0.7
+  coverSearchRadius: 22
+  flankLaneBonus: 3
+  firingSpeedMultiplier: 0
+  facingDegreesPerSecond: 320
+  betweenBurstStrafeSeconds: 0.9
+  strafeDistance: 2.2
+  suppressionSeconds: 0.85
+  aimDisruptionSeconds: 0.42
+  legStumbleSeconds: 0.55
+  legStumbleSpeedMultiplier: 0.42
+  corpseLifetime: 12
+  ragdollLifetime: 6
+  bloodPoolDelay: 1.2

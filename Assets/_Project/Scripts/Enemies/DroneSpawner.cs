@@ -26,6 +26,8 @@ namespace CoD.Enemies
         [Tooltip("Used by the sandbox console and as the fallback when a wave entry has no config.")]
         [SerializeField] private DroneConfig? _defaultDrone = null;
         [SerializeField] private Transform[] _spawnPoints = Array.Empty<Transform>();
+        [SerializeField] private CoverRegistry? _coverRegistry = null;
+        [SerializeField] private GoreManager? _goreManager = null;
 
         // Instance field, not static: the wave runner swaps in the real token pool
         // at run start, and the sandbox can swap it back out.
@@ -64,6 +66,14 @@ namespace CoD.Enemies
                 return FALLBACK_ALIVE_CAP;
             }
         }
+
+#if UNITY_EDITOR
+        public void ConfigureHumanSystems(CoverRegistry coverRegistry, GoreManager goreManager)
+        {
+            _coverRegistry = coverRegistry;
+            _goreManager = goreManager;
+        }
+#endif
 
         /// <summary>True when the alive cap still has room.</summary>
         public bool CanSpawn()
@@ -117,6 +127,8 @@ namespace CoD.Enemies
                 return null;
             }
 
+            if (instance.TryGetComponent(out HumanEnemyPresentation human))
+                human.ConfigureRuntime(_target, _coverRegistry, _goreManager);
             drone.Initialize(config, _target, _pool, _registry, _tokens, scaling);
             return drone;
         }

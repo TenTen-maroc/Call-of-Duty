@@ -1,0 +1,86 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: d330940934eaa2f3ceeac0efd74e214c, type: 3}
+  m_Name: Footsteps_Tazir
+  m_EditorClassIdentifier:
+  strideLength: 0.85
+  minSpeed: 0.55
+  firstStepFraction: 0.55
+  groundMask:
+    serializedVersion: 2
+    m_Bits: 4294967035
+  probeStartHeight: 0.6
+  probeDistance: 1.6
+  walkVolume: 0.55
+  walkPitch: 1
+  sprintVolume: 0.85
+  sprintPitch: 0.95
+  crouchVolume: 0.22
+  crouchPitch: 1.05
+  pitchJitter: 0.07
+  volumeJitter: 0.06
+  landMinImpact: 0.12
+  landVolume: 0.8
+  landPitch: 0.9
+  surfaces:
+  - label: Soil and dust
+    layers:
+      serializedVersion: 2
+      m_Bits: 4096
+    physicsMaterial: {fileID: 0}
+    stepClips:
+    - {fileID: 8300000, guid: 404f5020ddae6444e8678a5111cbb8c0, type: 3}
+    - {fileID: 8300000, guid: 0be7e667e8b7fb54cb2dfbd578fe74f6, type: 3}
+    - {fileID: 8300000, guid: 432a230a49295d443af8799ee08ec280, type: 3}
+    - {fileID: 8300000, guid: 644a2842f18af904e834438a31b7cfcb, type: 3}
+    landClips: []
+    volumeScale: 0.9
+    pitchScale: 0.92
+  - label: Rock
+    layers:
+      serializedVersion: 2
+      m_Bits: 8192
+    physicsMaterial: {fileID: 0}
+    stepClips:
+    - {fileID: 8300000, guid: 404f5020ddae6444e8678a5111cbb8c0, type: 3}
+    - {fileID: 8300000, guid: 0be7e667e8b7fb54cb2dfbd578fe74f6, type: 3}
+    - {fileID: 8300000, guid: 432a230a49295d443af8799ee08ec280, type: 3}
+    - {fileID: 8300000, guid: 644a2842f18af904e834438a31b7cfcb, type: 3}
+    landClips: []
+    volumeScale: 1.05
+    pitchScale: 0.86
+  - label: Wood
+    layers:
+      serializedVersion: 2
+      m_Bits: 16384
+    physicsMaterial: {fileID: 0}
+    stepClips:
+    - {fileID: 8300000, guid: 404f5020ddae6444e8678a5111cbb8c0, type: 3}
+    - {fileID: 8300000, guid: 0be7e667e8b7fb54cb2dfbd578fe74f6, type: 3}
+    - {fileID: 8300000, guid: 432a230a49295d443af8799ee08ec280, type: 3}
+    - {fileID: 8300000, guid: 644a2842f18af904e834438a31b7cfcb, type: 3}
+    landClips: []
+    volumeScale: 0.8
+    pitchScale: 1.08
+  - label: Metal
+    layers:
+      serializedVersion: 2
+      m_Bits: 512
+    physicsMaterial: {fileID: 0}
+    stepClips:
+    - {fileID: 8300000, guid: c41b29e6daa31084998af2846848bb09, type: 3}
+    - {fileID: 8300000, guid: d18fd4df9669faf4aa5631c1f0ab7fe2, type: 3}
+    landClips: []
+    volumeScale: 1.15
+    pitchScale: 1.08
+  defaultSurface: 0
+  outputGroup: {fileID: 637639045088156147, guid: 65e9bcccdaba3984287abac88343eef0, type: 2}

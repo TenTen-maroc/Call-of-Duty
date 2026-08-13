@@ -40,7 +40,7 @@
  * Run:  node Tools/screenshot.mjs                 (build, then endless + campaign)
  *       node Tools/screenshot.mjs --reuse         (skip the build, use Build/Windows-Dev as-is)
  *       node Tools/screenshot.mjs --no-campaign   (endless pass only)
- *       node Tools/screenshot.mjs --mission mission_02_hardcontact
+ *       node Tools/screenshot.mjs --mission mission_02_hard_contact
  */
 import { execFileSync, spawnSync } from 'node:child_process'
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync } from 'node:fs'

@@ -1,7 +1,7 @@
 # Save
 
-> Last verified: 2026-08-13 — schema 5 adds subtitle accessibility preferences.
-> Atomic write/backup recovery, migrations, mission records, accessibility
+> Last verified: 2026-08-13 — schema 6 adds violence preferences.
+> Atomic write/backup recovery, migrations, mission records, accessibility, violence
 > round-trip and refusal to overwrite a newer schema are covered by tests.
 
 ## Overview
@@ -16,7 +16,7 @@ instead of a migration problem.
 
 ```json
 {
-  "schemaVersion": 5,
+  "schemaVersion": 6,
   "bestRound": 0,
   "totalKills": 0,
   "totalRuns": 0,

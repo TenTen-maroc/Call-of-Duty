@@ -78,6 +78,7 @@ namespace CoD.Weapons
                     Direction = toTarget.normalized,
                     Damage = context.DamageDealt * damageFraction * falloff,
                     Target = health,
+                    DamageKind = DamageKind.Explosive,
                     Depth = context.Depth + 1,
                 });
 

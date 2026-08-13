@@ -8,7 +8,7 @@
 ## Overview
 
 Mouse sensitivity, vertical FOV, invert-look, master volume, post-processing,
-anti-aliasing, subtitles and subtitle size: the things a player changes before
+anti-aliasing, subtitles, subtitle size, and violence: the things a player changes before
 they will judge anything else about a shooter. All of them
 live on disk in the same versioned save as the run record, are bounded by a
 ScriptableObject, and are held at runtime in a plain C# object that is never a
@@ -146,6 +146,15 @@ shipped default is subtitles ON at MEDIUM; size values are 28, 34 and 42 px.
 `RadioSubtitleHud` supplies an opaque high-contrast backing and immediately
 reacts to `SettingsHub.Changed`. Turning subtitles off hides both text and backing,
 including a line already in progress.
+
+## The violence row (schema 6)
+
+`VIOLENCE` cycles `OFF / REDUCED / EXTREME` in both settings menus. The authored
+default is Extreme. `violenceInitialised` distinguishes an older save from a
+player's explicit Off choice; migration seeds from `SettingsConfig` without
+changing any older preference or mission record. `SettingsHub.Changed` applies
+the new level immediately to the scene-owned `GoreManager`, which clears
+incompatible active blood presentation when the level is reduced.
 
 ## Why master volume still uses AudioListener
 

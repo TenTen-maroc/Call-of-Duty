@@ -7,6 +7,12 @@
 > and screenshots all pass. A headless machine can
 > prove the graph and data; it cannot judge whether the mix sounds good.
 
+Mission 2 adds builder-owned `Footsteps_Tazir` and `Ambience_Tazir`. Soil, rock,
+wood, and metal reuse the curated CC0 Kenney surface clips through the existing
+footstep seam. A generated 12-second low-passed wind bed and a point-source
+generator use the existing ambience graph. The mixer verification still passes;
+neither the outdoor mix nor rifleman combat has been human-auditioned.
+
 ## READ THIS FIRST: the mixer exists now, and nothing can regenerate it
 
 **`Assets/_Project/Audio/Master.mixer` is the only hand-authored asset in this

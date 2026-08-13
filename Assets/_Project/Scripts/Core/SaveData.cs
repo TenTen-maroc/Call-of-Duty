@@ -57,6 +57,11 @@ namespace CoD.Core
         public bool subtitlesEnabled;
         public SubtitleSize subtitleSize;
 
+        // Violence presentation, added in schema 6. The flag preserves an
+        // explicit Off while older saves seed the authored default from data.
+        public bool violenceInitialised;
+        public GoreLevel goreLevel;
+
         // The campaign block, added in schema 4. It is a SECOND AXIS, not a third
         // GameMode, and the difference is the whole reason this block exists in
         // this shape.

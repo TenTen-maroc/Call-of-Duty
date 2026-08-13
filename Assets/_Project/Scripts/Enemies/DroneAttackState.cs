@@ -37,5 +37,7 @@ namespace CoD.Enemies
         public bool HasToken;
         /// <summary>False until the drone's first attack resolves — the Shooter's deliberate opening miss reads this.</summary>
         public bool HasAttackedOnce;
+        /// <summary>Completed bursts since this pooled instance was initialized.</summary>
+        public int CompletedBursts;
     }
 }

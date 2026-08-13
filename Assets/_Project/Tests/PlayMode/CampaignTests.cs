@@ -46,6 +46,7 @@ namespace CoD.Tests
     {
         private const string ScenePath = "Assets/_Project/Scenes/10_GreyBox.unity";
         private const string ArenaScene = "10_GreyBox";
+        private const string OutdoorArenaScene = "11_AtlasOutpost";
 
         /// <summary>The stableId MissionBuilder authors mission 1 with. A save key, not a tuning value.</summary>
         private const string Mission01Id = "mission_01_shakedown";
@@ -123,9 +124,11 @@ namespace CoD.Tests
             SaveSystem.Save(save);
         }
 
-        private static IEnumerator LoadArena()
+        private static IEnumerator LoadArena() => LoadArena(ArenaScene);
+
+        private static IEnumerator LoadArena(string sceneName)
         {
-            AsyncOperation? load = SceneManager.LoadSceneAsync(ArenaScene, LoadSceneMode.Single);
+            AsyncOperation? load = SceneManager.LoadSceneAsync(sceneName, LoadSceneMode.Single);
             Assert.IsNotNull(load, $"'{ScenePath}' must be in the build settings — the builder registers it");
             while (load != null && !load.isDone) yield return null;
             // One frame past the load so every Awake and Start has run. The whole
@@ -544,18 +547,23 @@ namespace CoD.Tests
         public IEnumerator MissionTwo_ActuallyRunsItsWaves_SoItsQuotaCanFill()
         {
             SelectMission(Mission02Id);
-            yield return LoadArena();
+            yield return LoadArena(OutdoorArenaScene);
 
             MissionDirector director = FindDirector();
             yield return WaitForMissionStart(director);
 
             var runner = Find<WaveRunner>("no WaveRunner");
             var registry = Find<DroneRegistry>("no DroneRegistry");
+            Transform player = Find<PlayerMotor>("no PlayerMotor").transform;
 
-            Assert.AreEqual(0, director.ActiveStep, "mission 2 should open on its kill quota");
+            Assert.AreEqual(0, director.ActiveStep, "mission 2 should open on the forest approach");
+            Assert.IsTrue(runner.Suspended, "the approach should be quiet until the player reaches the outpost");
+
+            player.position = new Vector3(0f, 1f, -2f);
+            yield return WaitUntil(() => director.ActiveStep == 1, StepSeconds,
+                "mission 2 to advance from approach to first contact");
             Assert.IsFalse(runner.Suspended,
-                "the runner is suspended on a step that needs enemies. Obj_KillQuota must report " +
-                "RequiresWaves, or this mission is a locked empty room.");
+                "the runner is suspended on first contact. Obj_KillQuota must report RequiresWaves.");
 
             yield return WaitUntil(() => runner.Phase == RunPhase.Wave, StepSeconds,
                 "mission 2's first wave to start");

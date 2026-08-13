@@ -1,5 +1,7 @@
 #nullable enable
 using CoD.Waves;
+using CoD.Enemies;
+using CoD.Core;
 using UnityEditor;
 using UnityEngine;
 
@@ -39,6 +41,7 @@ namespace CoD.EditorTools
 
         /// <summary>Scene NAME, not a path — the same string Build Settings knows the arena by.</summary>
         private const string ArenaScene = "10_GreyBox";
+        private const string AtlasOutpostScene = "11_AtlasOutpost";
 
         /// <summary>
         /// Zone ids, and they are IDS rather than tuning numbers — the contract
@@ -68,6 +71,7 @@ namespace CoD.EditorTools
         /// <summary>The second mission's save key. Never renamed — see <see cref="Mission01Id"/>.</summary>
         private const string Mission02Id = "mission_02_hard_contact";
         private const int Mission01HumanizationVersion = 1;
+        private const int Mission02OutdoorVersion = 1;
 
         [MenuItem("CoD/Build Missions", false, 2)]
         public static void Build()
@@ -151,6 +155,62 @@ namespace CoD.EditorTools
                     objective.dwellSeconds = 5f;
                 });
 
+            // Mission 2 owns separate objective and radio assets. Mission 1's
+            // authored language and C-9 dialogue must remain untouched.
+            DroneConfig meridian = RequireAsset<DroneConfig>(
+                "Assets/_Project/Data/Drones/Meridian_Rifleman.asset");
+            DroneConfig shooter = RequireAsset<DroneConfig>(
+                "Assets/_Project/Data/Drones/Drone_Shooter.asset");
+
+            Obj_ReachZone reachOutpost = LoadOrCreate<Obj_ReachZone>(
+                DataMissions + "/Objective_M02_Reach_Outpost.asset", objective =>
+                {
+                    objective.stableId = "obj_m02_reach_outpost";
+                    objective.title = "LOCATE THE COMMS HUT";
+                    objective.description = "Move through the southern approach and identify the outpost relay.";
+                    objective.zoneId = ZONE_CONTROL_POINT;
+                });
+            Obj_KillQuota firstContact = LoadOrCreate<Obj_KillQuota>(
+                DataMissions + "/Objective_M02_FirstContact.asset", objective =>
+                {
+                    objective.stableId = "obj_m02_first_contact";
+                    objective.title = "BREAK MERIDIAN CONTACT";
+                    objective.description = "Clear the rifle team holding the outpost lanes.";
+                    objective.quota = 4;
+                    objective.droneFilter = meridian;
+                });
+            firstContact.droneFilter = meridian;
+            EditorUtility.SetDirty(firstContact);
+            Obj_Interact disableRelay = LoadOrCreate<Obj_Interact>(
+                DataMissions + "/Objective_M02_DisableRelay.asset", objective =>
+                {
+                    objective.stableId = "obj_m02_disable_relay";
+                    objective.title = "DISABLE THE OUTPOST RELAY";
+                    objective.description = "Use the generator-side relay and cut Meridian's uplink.";
+                    objective.kind = InteractKind.Terminal;
+                    objective.count = 1;
+                });
+            Obj_SurviveWaves holdOutpost = LoadOrCreate<Obj_SurviveWaves>(
+                DataMissions + "/Objective_M02_HoldOutpost.asset", objective =>
+                {
+                    objective.stableId = "obj_m02_hold_outpost";
+                    objective.title = "HOLD AGAINST THE PUSH";
+                    objective.description = "Meridian is counterattacking through all three lanes. Clear two pushes.";
+                    objective.waves = 2;
+                });
+            Obj_Extract extractNorth = LoadOrCreate<Obj_Extract>(
+                DataMissions + "/Objective_M02_ExtractNorth.asset", objective =>
+                {
+                    objective.stableId = "obj_m02_extract_north";
+                    objective.title = "EXTRACT NORTH";
+                    objective.description = "Move through the service gate and hold for pickup.";
+                    objective.zoneId = ZONE_EXTRACT;
+                    objective.dwellSeconds = 5f;
+                });
+            RadioDialogueConfig missionTwoRadio = LoadOrCreate<RadioDialogueConfig>(
+                DataMissions + "/Radio_Mission02_MaraVenn.asset", ConfigureMissionTwoRadio);
+            WaveConfig[] missionTwoWaves = BuildMissionTwoWaves(meridian, shooter);
+
             // ---- mission 1: SHAKEDOWN ------------------------------------
             // The tutorial, and the first thing anyone will ever play of this
             // campaign. It teaches the three verbs in the order that costs the
@@ -224,18 +284,35 @@ namespace CoD.EditorTools
                         "Break twelve of them, then run the override from the control point — " +
                         "forty-five seconds standing still, in the open, while the rest of the floor comes to you.\n\n" +
                         "Then take the pad out.";
-                    mission.arenaScene = ArenaScene;
+                    mission.arenaScene = AtlasOutpostScene;
                     mission.startingMoney = 450;
                 });
 
             WriteMission(hardContact,
                 new[]
                 {
-                    new StepPlan(killsTwelve),
-                    new StepPlan(holdControlPoint),
-                    new StepPlan(extractPad),
+                    new StepPlan(reachOutpost),
+                    new StepPlan(firstContact),
+                    new StepPlan(disableRelay),
+                    new StepPlan(holdOutpost),
+                    new StepPlan(extractNorth),
                 },
-                LoadWaves(1, 5));
+                missionTwoWaves);
+
+            if (hardContact.humanizationVersion < Mission02OutdoorVersion)
+            {
+                hardContact.briefing =
+                    "A Vantage relay is transmitting from Tazir Pass. Meridian reached it first.\n\n" +
+                    "Cross the forest approach, break their rifle team, cut the uplink, and hold the outpost " +
+                    "until the northern route opens.";
+                hardContact.arenaScene = AtlasOutpostScene;
+                hardContact.steps[1].completionDelaySeconds = 1.2f;
+                hardContact.steps[2].completionDelaySeconds = 1.5f;
+                hardContact.steps[3].completionDelaySeconds = 3f;
+                hardContact.humanizationVersion = Mission02OutdoorVersion;
+            }
+            hardContact.radioDialogue = missionTwoRadio;
+            EditorUtility.SetDirty(hardContact);
 
             EnsureInCatalog(catalog, shakedown, hardContact);
 
@@ -311,6 +388,62 @@ namespace CoD.EditorTools
                 Line("m01_failed", RadioTrigger.MissionFailed, 1, 100, 999f, 2.7f,
                     "I've lost your signal. Pulling the route.", RadioInterruptionPolicy.Finish),
             };
+        }
+
+        private static void ConfigureMissionTwoRadio(RadioDialogueConfig config)
+        {
+            config.lines = new[]
+            {
+                Line("m02_entry", RadioTrigger.MissionEntry, 1, 55, 999f, 3.6f,
+                    "Tazir Pass. The relay is in the centre hut. Meridian has the ridgelines."),
+                Line("m02_objective", RadioTrigger.FirstObjective, 1, 52, 999f, 3.2f,
+                    "Use the trees on approach. The south lane keeps you below their watch position."),
+                Line("m02_contact", RadioTrigger.FirstContact, 1, 80, 999f, 3.4f,
+                    "Human contact. Meridian rifle team. Their rounds are slow, but the lanes are covered."),
+                Line("m02_wave_one", RadioTrigger.WaveClear, 1, 62, 999f, 2.8f,
+                    "First team is down. Cut the generator-side relay before they regroup."),
+                Line("m02_wave_two", RadioTrigger.WaveClear, 2, 60, 999f, 2.7f,
+                    "More movement behind the service gate. Hold the cross-lanes."),
+                Line("m02_badly_hurt", RadioTrigger.PlayerBadlyHurt, 1, 96, 999f, 2.5f,
+                    "Break line of sight. Their rifle team is walking rounds onto you."),
+                Line("m02_complete", RadioTrigger.MissionComplete, 1, 100, 999f, 3f,
+                    "North route is open. Meridian lost the relay, not the story. Move.",
+                    RadioInterruptionPolicy.Finish),
+                Line("m02_failed", RadioTrigger.MissionFailed, 1, 100, 999f, 2.7f,
+                    "Signal lost at Tazir. Abort the route.", RadioInterruptionPolicy.Finish),
+            };
+        }
+
+        private static WaveConfig[] BuildMissionTwoWaves(DroneConfig meridian, DroneConfig shooter)
+        {
+            return new[]
+            {
+                MissionWave("Wave_M02_01_FirstContact.asset", 1, "FIRST CONTACT", 100, 4,
+                    new WaveConfig.Entry { drone = meridian, count = 4, spawnOverSeconds = 3f, startDelay = 0f }),
+                MissionWave("Wave_M02_02_Counterattack.asset", 2, "RIDGELINE PUSH", 140, 12,
+                    new WaveConfig.Entry { drone = meridian, count = 7, spawnOverSeconds = 9f, startDelay = 0f }),
+                MissionWave("Wave_M02_03_MixedPush.asset", 3, "HARD CONTACT", 180, 12,
+                    new WaveConfig.Entry { drone = meridian, count = 8, spawnOverSeconds = 12f, startDelay = 0f },
+                    new WaveConfig.Entry { drone = shooter, count = 3, spawnOverSeconds = 8f, startDelay = 4f }),
+            };
+        }
+
+        private static WaveConfig MissionWave(string fileName, int number, string displayName,
+            int bonus, int maxAlive, params WaveConfig.Entry[] entries)
+        {
+            WaveConfig wave = LoadOrCreate<WaveConfig>(DataWaves + "/" + fileName, _ => { });
+            if (wave.designVersion < 1)
+            {
+                wave.waveNumber = number;
+                wave.displayName = displayName;
+                wave.durationTarget = number == 1 ? 28f : 45f;
+                wave.maxAliveOverride = maxAlive;
+                wave.moneyBonusOnClear = bonus;
+                wave.designVersion = 1;
+            }
+            wave.entries = entries;
+            EditorUtility.SetDirty(wave);
+            return wave;
         }
 
         private static RadioLine Line(string stableId, RadioTrigger trigger, int occurrence, int priority,
@@ -492,6 +625,13 @@ namespace CoD.EditorTools
                 AssetDatabase.CreateAsset(asset, path);
             }
             return asset;
+        }
+
+        private static T RequireAsset<T>(string path) where T : UnityEngine.Object
+        {
+            T? asset = AssetDatabase.LoadAssetAtPath<T>(path);
+            return asset ?? throw new System.InvalidOperationException(
+                "Mission authoring requires the asset '" + path + "'. Run the owning builder first.");
         }
 
         private static void EnsureFolder(string folder)

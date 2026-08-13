@@ -11,7 +11,7 @@ MonoBehaviour:
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: dce750cbcb9c828b7b6871b3aa3ea9cc, type: 3}
   m_Name: Impact_Default
-  m_EditorClassIdentifier: 
+  m_EditorClassIdentifier:
   surfaces:
   - surface: 0
     layers:
@@ -24,7 +24,7 @@ MonoBehaviour:
   - surface: 1
     layers:
       serializedVersion: 2
-      m_Bits: 0
+      m_Bits: 512
     decalPrefab: {fileID: 8809702538543044335, guid: 2cab4f9b22063f04d911a09edf1816d0, type: 3}
     particlePrefab: {fileID: 734582964414470361, guid: d25959689ccaa6a4194787c95cb75dab, type: 3}
     impactSound: {fileID: 8300000, guid: c41b29e6daa31084998af2846848bb09, type: 3}
@@ -32,7 +32,7 @@ MonoBehaviour:
   - surface: 2
     layers:
       serializedVersion: 2
-      m_Bits: 0
+      m_Bits: 1024
     decalPrefab: {fileID: 0}
     particlePrefab: {fileID: 6641932800431724907, guid: 02b709996ce40ae43825f6a51270cec3, type: 3}
     impactSound: {fileID: 8300000, guid: d18fd4df9669faf4aa5631c1f0ab7fe2, type: 3}
@@ -40,11 +40,43 @@ MonoBehaviour:
   - surface: 3
     layers:
       serializedVersion: 2
-      m_Bits: 0
+      m_Bits: 2048
     decalPrefab: {fileID: 0}
     particlePrefab: {fileID: 1501240396153436133, guid: 2f3cdae61eadca448a24171636e3ca89, type: 3}
     impactSound: {fileID: 8300000, guid: f4c806e2e8312914687651b453134c82, type: 3}
     volume: 0.65
+  - surface: 4
+    layers:
+      serializedVersion: 2
+      m_Bits: 4096
+    decalPrefab: {fileID: 8809702538543044335, guid: 2cab4f9b22063f04d911a09edf1816d0, type: 3}
+    particlePrefab: {fileID: 2321595363397802847, guid: f2b4f11b01415454c8488e469c7c2462, type: 3}
+    impactSound: {fileID: 8300000, guid: 47a4925e9b23ec34fade09940a5a766c, type: 3}
+    volume: 0.5
+  - surface: 5
+    layers:
+      serializedVersion: 2
+      m_Bits: 8192
+    decalPrefab: {fileID: 8809702538543044335, guid: 2cab4f9b22063f04d911a09edf1816d0, type: 3}
+    particlePrefab: {fileID: 824543272342169350, guid: 50476f332c5ebae4cb06073e062443dc, type: 3}
+    impactSound: {fileID: 8300000, guid: 47a4925e9b23ec34fade09940a5a766c, type: 3}
+    volume: 0.55
+  - surface: 6
+    layers:
+      serializedVersion: 2
+      m_Bits: 16384
+    decalPrefab: {fileID: 8809702538543044335, guid: 2cab4f9b22063f04d911a09edf1816d0, type: 3}
+    particlePrefab: {fileID: 2180021507933643310, guid: 41080ac4a357d14448a1f0eb685d6d54, type: 3}
+    impactSound: {fileID: 8300000, guid: 47a4925e9b23ec34fade09940a5a766c, type: 3}
+    volume: 0.5
+  - surface: 7
+    layers:
+      serializedVersion: 2
+      m_Bits: 32768
+    decalPrefab: {fileID: 0}
+    particlePrefab: {fileID: 3665608624202986017, guid: 966d56d2a83ad424b8b0d46266225100, type: 3}
+    impactSound: {fileID: 8300000, guid: 47a4925e9b23ec34fade09940a5a766c, type: 3}
+    volume: 0.35
   decalPrefab: {fileID: 8809702538543044335, guid: 2cab4f9b22063f04d911a09edf1816d0, type: 3}
   particlePrefab: {fileID: 7827309126676619225, guid: 5b13a67bcc38d6b45b4ae27b75b4669c, type: 3}
   impactSound: {fileID: 0}

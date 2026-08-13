@@ -1,0 +1,344 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 37f4f89c56484aeab0b699f4c8c03117, type: 3}
+  m_Name: Arena_TazirPassOutpost
+  m_EditorClassIdentifier:
+  displayLocation: TAZIR PASS OUTPOST
+  contentVersion: 2
+  sunColor: {r: 1, g: 0.75, b: 0.52, a: 1}
+  sunIntensity: 1.35
+  sunEuler: {x: 42, y: -32, z: 0}
+  fogColor: {r: 0.34, g: 0.4, b: 0.43, a: 1}
+  fogStart: 34
+  fogEnd: 96
+  blocks:
+  - name: Ground
+    position: {x: 0, y: -0.35, z: 0}
+    size: {x: 60, y: 0.7, z: 60}
+    surface: 0
+  - name: Ridge_W
+    position: {x: -30, y: 2.5, z: 0}
+    size: {x: 2, y: 5, z: 60}
+    surface: 1
+  - name: Ridge_E
+    position: {x: 30, y: 2.5, z: 0}
+    size: {x: 2, y: 5, z: 60}
+    surface: 1
+  - name: Ridge_S
+    position: {x: 0, y: 2.5, z: -30}
+    size: {x: 60, y: 5, z: 2}
+    surface: 1
+  - name: Ridge_NW
+    position: {x: -19, y: 2.5, z: 30}
+    size: {x: 22, y: 5, z: 2}
+    surface: 1
+  - name: Ridge_NE
+    position: {x: 19, y: 2.5, z: 30}
+    size: {x: 22, y: 5, z: 2}
+    surface: 1
+  - name: CommsHut
+    position: {x: 0, y: 2, z: 4}
+    size: {x: 10, y: 4, z: 8}
+    surface: 3
+  - name: HutDoorCover
+    position: {x: 0, y: 1, z: -0.25}
+    size: {x: 3, y: 2, z: 0.6}
+    surface: 3
+  - name: Generator
+    position: {x: -17, y: 1.5, z: 8}
+    size: {x: 6, y: 3, z: 5}
+    surface: 3
+  - name: GeneratorBarrier
+    position: {x: -14, y: 0.7, z: 1}
+    size: {x: 7, y: 1.4, z: 0.8}
+    surface: 3
+  - name: WatchRock
+    position: {x: 17, y: 2.2, z: 10}
+    size: {x: 8, y: 4.4, z: 7}
+    surface: 1
+  - name: WatchBarrier
+    position: {x: 13, y: 0.75, z: 2}
+    size: {x: 7, y: 1.5, z: 0.8}
+    surface: 2
+  - name: LaneWest
+    position: {x: -9, y: 1.5, z: -8}
+    size: {x: 2, y: 3, z: 11}
+    surface: 1
+  - name: LaneEast
+    position: {x: 9, y: 1.5, z: -8}
+    size: {x: 2, y: 3, z: 11}
+    surface: 1
+  - name: CrossCover_W
+    position: {x: -8, y: 0.65, z: 16}
+    size: {x: 7, y: 1.3, z: 1}
+    surface: 2
+  - name: CrossCover_E
+    position: {x: 8, y: 0.65, z: 16}
+    size: {x: 7, y: 1.3, z: 1}
+    surface: 3
+  - name: RoadGate_W
+    position: {x: -8, y: 1.8, z: 25}
+    size: {x: 1.2, y: 3.6, z: 6}
+    surface: 1
+  - name: RoadGate_E
+    position: {x: 8, y: 1.8, z: 25}
+    size: {x: 1.2, y: 3.6, z: 6}
+    surface: 1
+  spawnPoints:
+  - name: Spawn_NW_Ridge
+    position: {x: -23, y: 0, z: 24}
+    outward: {x: 0, y: 0, z: -1}
+    lane: 0
+  - name: Spawn_N_GateW
+    position: {x: -4, y: 0, z: 27}
+    outward: {x: 0, y: 0, z: -1}
+    lane: 1
+  - name: Spawn_N_GateE
+    position: {x: 4, y: 0, z: 27}
+    outward: {x: 0, y: 0, z: -1}
+    lane: 1
+  - name: Spawn_NE_Ridge
+    position: {x: 23, y: 0, z: 24}
+    outward: {x: 0, y: 0, z: -1}
+    lane: 2
+  - name: Spawn_W_Generator
+    position: {x: -26, y: 0, z: 9}
+    outward: {x: 1, y: 0, z: 0}
+    lane: 0
+  - name: Spawn_E_Watch
+    position: {x: 26, y: 0, z: 10}
+    outward: {x: -1, y: 0, z: 0}
+    lane: 2
+  - name: Spawn_W_South
+    position: {x: -25, y: 0, z: -15}
+    outward: {x: 1, y: 0, z: 0}
+    lane: 0
+  - name: Spawn_E_South
+    position: {x: 25, y: 0, z: -15}
+    outward: {x: -1, y: 0, z: 0}
+    lane: 2
+  - name: Spawn_NW_Hut
+    position: {x: -9, y: 0, z: 10}
+    outward: {x: 0, y: 0, z: -1}
+    lane: 0
+  - name: Spawn_NE_Hut
+    position: {x: 9, y: 0, z: 10}
+    outward: {x: 0, y: 0, z: -1}
+    lane: 2
+  coverPoints:
+  - name: Cover_Hut_SW
+    position: {x: -5.8, y: 0, z: -0.8}
+    outward: {x: 0, y: 0, z: -1}
+    lane: 0
+  - name: Cover_Hut_SE
+    position: {x: 5.8, y: 0, z: -0.8}
+    outward: {x: 0, y: 0, z: -1}
+    lane: 2
+  - name: Cover_Hut_NW
+    position: {x: -5.8, y: 0, z: 8}
+    outward: {x: 0, y: 0, z: 1}
+    lane: 0
+  - name: Cover_Hut_NE
+    position: {x: 5.8, y: 0, z: 8}
+    outward: {x: 0, y: 0, z: 1}
+    lane: 2
+  - name: Cover_Generator_S
+    position: {x: -17, y: 0, z: 4.6}
+    outward: {x: 0, y: 0, z: -1}
+    lane: 0
+  - name: Cover_Generator_E
+    position: {x: -13.3, y: 0, z: 8}
+    outward: {x: 1, y: 0, z: 0}
+    lane: 1
+  - name: Cover_Watch_S
+    position: {x: 17, y: 0, z: 5.6}
+    outward: {x: 0, y: 0, z: -1}
+    lane: 2
+  - name: Cover_Watch_W
+    position: {x: 12.3, y: 0, z: 10}
+    outward: {x: -1, y: 0, z: 0}
+    lane: 1
+  - name: Cover_Cross_W1
+    position: {x: -10, y: 0, z: 14.8}
+    outward: {x: 0, y: 0, z: -1}
+    lane: 0
+  - name: Cover_Cross_W2
+    position: {x: -6, y: 0, z: 17.2}
+    outward: {x: 0, y: 0, z: 1}
+    lane: 0
+  - name: Cover_Cross_E1
+    position: {x: 6, y: 0, z: 14.8}
+    outward: {x: 0, y: 0, z: -1}
+    lane: 2
+  - name: Cover_Cross_E2
+    position: {x: 10, y: 0, z: 17.2}
+    outward: {x: 0, y: 0, z: 1}
+    lane: 2
+  - name: Cover_Gate_W
+    position: {x: -6.5, y: 0, z: 23}
+    outward: {x: 0, y: 0, z: -1}
+    lane: 1
+  - name: Cover_Gate_E
+    position: {x: 6.5, y: 0, z: 23}
+    outward: {x: 0, y: 0, z: -1}
+    lane: 1
+  decorations:
+  - assetPath: Assets/_Project/Art/Imported/Kenney/Nature/tree_pineTallA.fbx
+    position: {x: -24, y: 0, z: -22}
+    rotation: {x: 0, y: 18, z: 0}
+    scale: {x: 1.35, y: 1.35, z: 1.35}
+    lod: 1
+    castsShadow: 1
+  - assetPath: Assets/_Project/Art/Imported/Kenney/Nature/tree_pineTallB.fbx
+    position: {x: -18, y: 0, z: -25}
+    rotation: {x: 0, y: -12, z: 0}
+    scale: {x: 1.1, y: 1.1, z: 1.1}
+    lod: 1
+    castsShadow: 0
+  - assetPath: Assets/_Project/Art/Imported/Kenney/Nature/tree_pineTallA.fbx
+    position: {x: 23, y: 0, z: -22}
+    rotation: {x: 0, y: -22, z: 0}
+    scale: {x: 1.25, y: 1.25, z: 1.25}
+    lod: 1
+    castsShadow: 1
+  - assetPath: Assets/_Project/Art/Imported/Kenney/Nature/tree_pineSmallA.fbx
+    position: {x: 17, y: 0, z: -25}
+    rotation: {x: 0, y: 8, z: 0}
+    scale: {x: 1.2, y: 1.2, z: 1.2}
+    lod: 1
+    castsShadow: 0
+  - assetPath: Assets/_Project/Art/Imported/Kenney/Nature/tree_pineTallB.fbx
+    position: {x: -27, y: 0, z: 19}
+    rotation: {x: 0, y: 15, z: 0}
+    scale: {x: 1.4, y: 1.4, z: 1.4}
+    lod: 1
+    castsShadow: 1
+  - assetPath: Assets/_Project/Art/Imported/Kenney/Nature/tree_pineTallA.fbx
+    position: {x: 27, y: 0, z: 21}
+    rotation: {x: 0, y: -18, z: 0}
+    scale: {x: 1.3, y: 1.3, z: 1.3}
+    lod: 1
+    castsShadow: 1
+  - assetPath: Assets/_Project/Art/Imported/Kenney/Nature/tree_pineSmallA.fbx
+    position: {x: -18, y: 0, z: 21}
+    rotation: {x: 0, y: 32, z: 0}
+    scale: {x: 1.15, y: 1.15, z: 1.15}
+    lod: 1
+    castsShadow: 0
+  - assetPath: Assets/_Project/Art/Imported/Kenney/Nature/tree_pineSmallA.fbx
+    position: {x: 20, y: 0, z: 24}
+    rotation: {x: 0, y: -30, z: 0}
+    scale: {x: 1.1, y: 1.1, z: 1.1}
+    lod: 1
+    castsShadow: 0
+  - assetPath: Assets/_Project/Art/Imported/Kenney/Nature/rock_largeA.fbx
+    position: {x: -11, y: 0, z: -18}
+    rotation: {x: 0, y: 20, z: 0}
+    scale: {x: 1.8, y: 1.8, z: 1.8}
+    lod: 1
+    castsShadow: 1
+  - assetPath: Assets/_Project/Art/Imported/Kenney/Nature/rock_largeC.fbx
+    position: {x: 12, y: 0, z: -18}
+    rotation: {x: 0, y: -35, z: 0}
+    scale: {x: 1.6, y: 1.6, z: 1.6}
+    lod: 1
+    castsShadow: 1
+  - assetPath: Assets/_Project/Art/Imported/Kenney/Nature/rock_tallA.fbx
+    position: {x: 18, y: 0, z: 10}
+    rotation: {x: 0, y: 12, z: 0}
+    scale: {x: 2.4, y: 2.4, z: 2.4}
+    lod: 1
+    castsShadow: 1
+  - assetPath: Assets/_Project/Art/Imported/Kenney/Nature/rock_largeC.fbx
+    position: {x: -22, y: 0, z: 13}
+    rotation: {x: 0, y: 26, z: 0}
+    scale: {x: 1.7, y: 1.7, z: 1.7}
+    lod: 1
+    castsShadow: 0
+  - assetPath: Assets/_Project/Art/Imported/Kenney/Nature/log_stack.fbx
+    position: {x: -10, y: 0, z: 15}
+    rotation: {x: 0, y: 90, z: 0}
+    scale: {x: 1.4, y: 1.4, z: 1.4}
+    lod: 0
+    castsShadow: 0
+  - assetPath: Assets/_Project/Art/Imported/Kenney/Nature/log_large.fbx
+    position: {x: 10, y: 0, z: 15}
+    rotation: {x: 0, y: 82, z: 0}
+    scale: {x: 1.4, y: 1.4, z: 1.4}
+    lod: 0
+    castsShadow: 0
+  - assetPath: Assets/_Project/Art/Imported/Kenney/Nature/plant_bushDetailed.fbx
+    position: {x: -14, y: 0, z: -11}
+    rotation: {x: 0, y: 0, z: 0}
+    scale: {x: 1.4, y: 1.4, z: 1.4}
+    lod: 0
+    castsShadow: 0
+  - assetPath: Assets/_Project/Art/Imported/Kenney/Nature/plant_bushDetailed.fbx
+    position: {x: 14, y: 0, z: -12}
+    rotation: {x: 0, y: 0, z: 0}
+    scale: {x: 1.5, y: 1.5, z: 1.5}
+    lod: 0
+    castsShadow: 0
+  - assetPath: Assets/_Project/Art/Imported/Kenney/Nature/plant_bushSmall.fbx
+    position: {x: -21, y: 0, z: 2}
+    rotation: {x: 0, y: 0, z: 0}
+    scale: {x: 1.5, y: 1.5, z: 1.5}
+    lod: 0
+    castsShadow: 0
+  - assetPath: Assets/_Project/Art/Imported/Kenney/Nature/plant_bushSmall.fbx
+    position: {x: 22, y: 0, z: 1}
+    rotation: {x: 0, y: 0, z: 0}
+    scale: {x: 1.5, y: 1.5, z: 1.5}
+    lod: 0
+    castsShadow: 0
+  - assetPath: Assets/_Project/Art/Imported/Kenney/Survival/structure-metal.fbx
+    position: {x: 0, y: 0, z: 4}
+    rotation: {x: 0, y: 0, z: 0}
+    scale: {x: 4.2, y: 4.2, z: 4.2}
+    lod: 0
+    castsShadow: 1
+  - assetPath: Assets/_Project/Art/Imported/Kenney/Survival/structure-metal-roof.fbx
+    position: {x: 0, y: 0, z: 4}
+    rotation: {x: 0, y: 0, z: 0}
+    scale: {x: 4.2, y: 4.2, z: 4.2}
+    lod: 0
+    castsShadow: 1
+  - assetPath: Assets/_Project/Art/Imported/Kenney/Survival/fence-fortified.fbx
+    position: {x: -14, y: 0, z: 1}
+    rotation: {x: 0, y: 90, z: 0}
+    scale: {x: 2.2, y: 2.2, z: 2.2}
+    lod: 0
+    castsShadow: 1
+  - assetPath: Assets/_Project/Art/Imported/Kenney/Survival/fence-fortified.fbx
+    position: {x: 13, y: 0, z: 2}
+    rotation: {x: 0, y: 90, z: 0}
+    scale: {x: 2.2, y: 2.2, z: 2.2}
+    lod: 0
+    castsShadow: 1
+  - assetPath: Assets/_Project/Art/Imported/Kenney/Survival/barrel.fbx
+    position: {x: -17, y: 0, z: 5}
+    rotation: {x: 0, y: 0, z: 0}
+    scale: {x: 1.7, y: 1.7, z: 1.7}
+    lod: 0
+    castsShadow: 0
+  - assetPath: Assets/_Project/Art/Imported/Kenney/Survival/box-large.fbx
+    position: {x: 16, y: 0, z: 5}
+    rotation: {x: 0, y: 18, z: 0}
+    scale: {x: 1.6, y: 1.6, z: 1.6}
+    lod: 0
+    castsShadow: 0
+  - assetPath: Assets/_Project/Art/Imported/Kenney/Survival/signpost.fbx
+    position: {x: 0, y: 0, z: 22}
+    rotation: {x: 0, y: 0, z: 0}
+    scale: {x: 2, y: 2, z: 2}
+    lod: 0
+    castsShadow: 0

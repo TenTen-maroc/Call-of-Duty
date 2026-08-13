@@ -28,8 +28,9 @@ namespace CoD.UI
         private const int RowAntiAliasing = 5;
         private const int RowSubtitles = 6;
         private const int RowSubtitleSize = 7;
-        private const int RowBack = 8;
-        private const int RowCount = 9;
+        private const int RowGore = 8;
+        private const int RowBack = 9;
+        private const int RowCount = 10;
 
         /// <summary>Width of the text bars, in characters. A layout constant, not a tuning value.</summary>
         private const int BarCells = 14;
@@ -118,6 +119,7 @@ namespace CoD.UI
                 case RowAntiAliasing: settings.CycleAntiAliasing(direction); break;
                 case RowSubtitles: settings.SetSubtitlesEnabled(!settings.SubtitlesEnabled); break;
                 case RowSubtitleSize: settings.CycleSubtitleSize(direction); break;
+                case RowGore: settings.CycleGore(direction); break;
                 default: return false;
             }
 
@@ -163,6 +165,9 @@ namespace CoD.UI
             AppendRow(RowSubtitleSize, "SUBTITLE SIZE");
             _builder.Append(SubtitleLabel(settings.SubtitleScale)).Append('\n');
 
+            AppendRow(RowGore, "VIOLENCE");
+            _builder.Append(GoreLabel(settings.Gore)).Append('\n');
+
             _builder.Append('\n');
             AppendRow(RowBack, "BACK");
 
@@ -190,6 +195,13 @@ namespace CoD.UI
             SubtitleSize.Small => "SMALL",
             SubtitleSize.Large => "LARGE",
             _ => "MEDIUM",
+        };
+
+        private static string GoreLabel(GoreLevel level) => level switch
+        {
+            GoreLevel.Off => "OFF",
+            GoreLevel.Reduced => "REDUCED",
+            _ => "EXTREME",
         };
 
         private void AppendRow(int row, string label)

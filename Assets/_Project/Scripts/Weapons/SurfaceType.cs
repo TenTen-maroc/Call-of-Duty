@@ -45,5 +45,17 @@ namespace CoD.Weapons
         /// other.
         /// </summary>
         Flesh,
+
+        /// <summary>Loose earth and dusty paths.</summary>
+        Soil,
+
+        /// <summary>Ochre stone, cliffs, and boulders.</summary>
+        Rock,
+
+        /// <summary>Logs, timber barriers, and wooden structures.</summary>
+        Wood,
+
+        /// <summary>Leaves and decorative vegetation. Never navigation geometry.</summary>
+        Foliage,
     }
 }

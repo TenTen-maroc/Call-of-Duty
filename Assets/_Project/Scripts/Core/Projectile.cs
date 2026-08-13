@@ -212,6 +212,7 @@ namespace CoD.Core
         private static Health? HealthBehind(Collider collider)
         {
             if (collider.TryGetComponent(out Weakpoint weakpoint)) return weakpoint.Owner;
+            if (collider.TryGetComponent(out HitZone zone)) return zone.Owner;
             return collider.TryGetComponent(out Health direct) ? direct : null;
         }
 
@@ -231,7 +232,15 @@ namespace CoD.Core
             Health? health = HealthBehind(hit.collider);
             if (health != null && health.IsAlive)
             {
-                var info = new DamageInfo(_damage, hit.point, hit.normal, _direction, false);
+                HitRegion region = HitRegion.Torso;
+                float damage = _damage;
+                if (hit.collider.TryGetComponent(out HitZone zone))
+                {
+                    region = zone.Region;
+                    damage *= zone.DamageFactor;
+                }
+                var info = new DamageInfo(damage, hit.point, hit.normal, _direction,
+                    region == HitRegion.Head, region, DamageKind.Direct);
                 health.ApplyDamage(in info);
             }
 

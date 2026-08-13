@@ -21,3 +21,23 @@ Archive SHA-256 values:
 Short cues import mono, PCM, and decompressed-on-load for predictable latency.
 The three five-second ambience loops import mono Vorbis and compressed-in-memory
 so the always-resident room bed does not pay the PCM footprint of source audio.
+
+## Tazir Pass environment kits
+
+Official sources downloaded 2026-08-13:
+
+- [Nature Kit](https://kenney.nl/assets/nature-kit), CC0
+- [Survival Kit](https://kenney.nl/assets/survival-kit), CC0
+
+Archive SHA-256 values:
+
+- Nature Kit: `FA7974A0D342BFE63C38664BA9F8EC1A4AAB8EA25F099BDC56870E33588C4D9D`
+- Survival Kit: `C3586341B5932C87EB43D75D915434F47DAED168B17ED36A03E8CA9977C7443E`
+
+The complete 10,537,521-byte and 1,948,174-byte archives remain outside the
+repository. `Nature/` retains eleven pine, rock, shrub, grass, and log FBXs
+(322,654 bytes). `Survival/` retains ten outpost/prop FBXs plus the shared
+colormap (314,384 bytes). Imported meshes are collider-free presentation
+children; generated primitives remain the sole owners of collision and
+navigation. Attribution is not required by CC0 and is retained here only for
+provenance.

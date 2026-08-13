@@ -61,6 +61,8 @@ namespace CoD.Core
         private const float PlaySeconds = 6f;
         private const string MenuScene = "20_MainMenu";
         private const string GameScene = "10_GreyBox";
+        private const string OutdoorScene = "11_AtlasOutpost";
+        private const string MissionTwoId = "mission_02_hard_contact";
 
         [SerializeField] private bool _alsoLoadTheArena = true;
 
@@ -211,6 +213,16 @@ namespace CoD.Core
                 // Let a wave actually start. Real time, not scaled: this must not
                 // stall forever if something leaves timeScale at zero.
                 yield return WaitRealSeconds(PlaySeconds);
+
+                Debug.Log("Smoke test: loading " + OutdoorScene);
+                SceneManager.LoadScene(OutdoorScene);
+                yield return WaitForScene(OutdoorScene);
+                if (_sceneTimedOut)
+                {
+                    Finish();
+                    yield break;
+                }
+                yield return WaitRealSeconds(PlaySeconds);
             }
 
             Finish();
@@ -292,7 +304,8 @@ namespace CoD.Core
         /// place it should be tolerated is in the capture code itself. Add a
         /// Capture call, move this number.
         /// </summary>
-        private const int ExpectedShots = 4;
+        private const int DefaultExpectedShots = 4;
+        private const int MissionTwoExpectedShots = 9;
 
         /// <summary>
         /// Frames to let a freshly activated scene draw before photographing it.
@@ -319,11 +332,13 @@ namespace CoD.Core
 
         private string _shotDirectory = string.Empty;
         private int _shotCount;
+        private string _screenshotMissionId = string.Empty;
 
         private bool _saveRewritten;
         private bool _savedCampaign;
         private string _savedMissionId = string.Empty;
         private GameMode _savedMode;
+        private MissionRecord[] _savedMissionRecords = Array.Empty<MissionRecord>();
 
         private void PrepareScreenshotRun()
         {
@@ -357,7 +372,8 @@ namespace CoD.Core
             // (lastMode still Sandbox). Nothing in the log, the console or the
             // filenames would say so, which makes it the worst class of bug a
             // LOOKING tool can have: it lies about what you are looking at.
-            PrepareSaveAxes(ArgumentValue(MissionArgument));
+            _screenshotMissionId = ArgumentValue(MissionArgument);
+            PrepareSaveAxes(_screenshotMissionId);
 
             // The resolution the player ACTUALLY got, not the one that was asked
             // for. Windows clamps a window to the desktop, and a silently clamped
@@ -413,6 +429,7 @@ namespace CoD.Core
             _savedCampaign = save.campaignSelected;
             _savedMissionId = save.selectedMissionId;
             _savedMode = save.lastMode;
+            _savedMissionRecords = CloneMissionRecords(save.missionRecords);
             _saveRewritten = true;
 
             bool campaign = missionId.Length > 0;
@@ -421,10 +438,54 @@ namespace CoD.Core
             // Run rules for both passes. A campaign mission plays by Run rules
             // too, so this is the correct value either way.
             save.lastMode = GameMode.Run;
+            if (string.Equals(missionId, MissionTwoId, StringComparison.OrdinalIgnoreCase))
+            {
+                // Mission 2 is normally unlocked by completing Mission 1. The
+                // visual harness temporarily supplies that one prerequisite so
+                // frame 1 can review the actual Mission 2 row rather than a
+                // locked placeholder. RestoreSave reloads and restores only the
+                // route axes, so preserve the record array explicitly here and
+                // remove this synthetic row in RestoreSave below.
+                EnsureMissionOneVisualUnlock(save);
+            }
             SaveSystem.Save(save);
             Debug.Log(campaign
                 ? "Screenshot run: campaign mission '" + missionId + "'."
                 : "Screenshot run: endless, campaign axis explicitly cleared.");
+        }
+
+        private static void EnsureMissionOneVisualUnlock(SaveData save)
+        {
+            const string missionOne = "mission_01_shakedown";
+            for (int i = 0; i < save.missionRecords.Length; i++)
+            {
+                if (save.missionRecords[i].missionId != missionOne) continue;
+                save.missionRecords[i].completed = true;
+                return;
+            }
+
+            var records = new MissionRecord[save.missionRecords.Length + 1];
+            Array.Copy(save.missionRecords, records, save.missionRecords.Length);
+            records[records.Length - 1] = new MissionRecord { missionId = missionOne, completed = true };
+            save.missionRecords = records;
+        }
+
+        private static MissionRecord[] CloneMissionRecords(MissionRecord[] source)
+        {
+            var clone = new MissionRecord[source.Length];
+            for (int i = 0; i < source.Length; i++)
+            {
+                MissionRecord record = source[i];
+                clone[i] = new MissionRecord
+                {
+                    missionId = record.missionId,
+                    completed = record.completed,
+                    bestRating = record.bestRating,
+                    bestTimeSeconds = record.bestTimeSeconds,
+                    deaths = record.deaths,
+                };
+            }
+            return clone;
         }
 
         /// <summary>
@@ -447,6 +508,7 @@ namespace CoD.Core
             save.campaignSelected = _savedCampaign;
             save.selectedMissionId = _savedMissionId;
             save.lastMode = _savedMode;
+            save.missionRecords = _savedMissionRecords;
             SaveSystem.Save(save);
         }
 
@@ -471,12 +533,14 @@ namespace CoD.Core
                 yield break;
             }
 
+            if (IsMissionTwoCapture) ShowMissionSelectionForCapture();
             yield return Settle();
-            yield return Capture("01-main-menu");
+            yield return Capture(IsMissionTwoCapture ? "01-mission-selection" : "01-main-menu");
 
-            Debug.Log("Screenshot run: loading " + GameScene);
-            SceneManager.LoadScene(GameScene);
-            yield return WaitForScene(GameScene);
+            string targetScene = IsMissionTwoCapture ? OutdoorScene : GameScene;
+            Debug.Log("Screenshot run: loading " + targetScene);
+            SceneManager.LoadScene(targetScene);
+            yield return WaitForScene(targetScene);
             if (_sceneTimedOut)
             {
                 FinishScreenshots();
@@ -484,7 +548,27 @@ namespace CoD.Core
             }
 
             yield return Settle();
-            yield return Capture("02-arena-loaded");
+            yield return Capture(IsMissionTwoCapture ? "02-outdoor-establishing" : "02-arena-loaded");
+
+            if (IsMissionTwoCapture)
+            {
+                yield return WaitRealSeconds(4f);
+                yield return Capture("03-first-meridian-contact");
+                yield return WaitRealSeconds(6f);
+                yield return Capture("04-soldier-firing-from-cover");
+                yield return WaitRealSeconds(3f);
+                yield return Capture("05-regional-impact-readability");
+                yield return WaitRealSeconds(4f);
+                yield return Capture("06-extreme-aftermath");
+                yield return WaitRealSeconds(4f);
+                yield return Capture("07-reduced-gore");
+                yield return WaitRealSeconds(4f);
+                yield return Capture("08-gore-off");
+                yield return WaitRealSeconds(1f);
+                yield return Capture("09-outdoor-combat-hud");
+                FinishScreenshots();
+                yield break;
+            }
 
             yield return WaitRealSeconds(HudSeconds);
             yield return Capture("03-arena-hud");
@@ -493,6 +577,45 @@ namespace CoD.Core
             yield return Capture("04-arena-wave");
 
             FinishScreenshots();
+        }
+
+        private bool IsMissionTwoCapture =>
+            string.Equals(_screenshotMissionId, MissionTwoId, StringComparison.OrdinalIgnoreCase);
+
+        /// <summary>
+        /// Opens the real mission-select panel for the first Mission 2 frame.
+        /// CoD.Core deliberately has no reference to CoD.UI, so the development
+        /// harness locates that one component by name and invokes its public
+        /// Open method reflectively. It does not use this to launch the mission;
+        /// the save-axis route below remains the authoritative scene channel.
+        /// </summary>
+        private static void ShowMissionSelectionForCapture()
+        {
+            GameObject canvas = GameObject.Find("MenuCanvas");
+            if (canvas == null)
+            {
+                Debug.LogError("Screenshot run: MenuCanvas was not found for the mission-selection frame.");
+                return;
+            }
+
+            MonoBehaviour[] components = canvas.GetComponents<MonoBehaviour>();
+            for (int i = 0; i < components.Length; i++)
+            {
+                MonoBehaviour component = components[i];
+                if (component == null || component.GetType().FullName != "CoD.UI.MissionSelectPanel") continue;
+                Type panelType = component.GetType();
+                panelType.GetMethod("Open")?.Invoke(component, null);
+                object? cursor = panelType.GetField("_cursor",
+                    System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)
+                    ?.GetValue(component);
+                cursor?.GetType().GetMethod("SetIndex")?.Invoke(cursor, new object[] { 1 });
+                panelType.GetMethod("Redraw",
+                    System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)
+                    ?.Invoke(component, null);
+                return;
+            }
+
+            Debug.LogError("Screenshot run: MissionSelectPanel was not found on MenuCanvas.");
         }
 
         private IEnumerator Settle()
@@ -555,14 +678,15 @@ namespace CoD.Core
         {
             RestoreSave();
 
-            if (_errorCount == 0 && _shotCount == ExpectedShots)
+            int expected = IsMissionTwoCapture ? MissionTwoExpectedShots : DefaultExpectedShots;
+            if (_errorCount == 0 && _shotCount == expected)
             {
                 Debug.Log($"{ScreenshotPassMarker}: {_shotCount} frame(s) written to {_shotDirectory}");
                 Application.Quit(0);
             }
             else
             {
-                Debug.LogError($"{ScreenshotFailMarker}: {_shotCount}/{ExpectedShots} frame(s), " +
+                Debug.LogError($"{ScreenshotFailMarker}: {_shotCount}/{expected} frame(s), " +
                                $"{_errorCount} error(s) or exception(s) during the run.");
                 Application.Quit(1);
             }

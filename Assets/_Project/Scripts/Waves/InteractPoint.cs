@@ -96,6 +96,20 @@ namespace CoD.Waves
         }
 
 #if UNITY_EDITOR
+        public void Configure(InteractableRegistry registry, InteractKind kind, string prompt,
+            float holdSeconds, GameObject visual, AudioSource? audio = null, AudioClip? useClip = null)
+        {
+            _registry = registry;
+            _kind = kind;
+            _prompt = prompt;
+            _holdSeconds = Mathf.Max(0f, holdSeconds);
+            _repeatable = false;
+            _startsLocked = false;
+            _visual = visual;
+            _audio = audio;
+            _useClip = useClip;
+        }
+
         private void OnValidate()
         {
             // An empty prompt is an interactable the player cannot see, which

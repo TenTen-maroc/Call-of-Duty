@@ -60,7 +60,8 @@ namespace CoD.Enemies
                 if (toTarget.sqrMagnitude < 0.0001f) toTarget = Vector3.up;
                 Vector3 direction = toTarget.normalized;
 
-                var info = new DamageInfo(damage * falloff, origin, -direction, direction, false);
+                var info = new DamageInfo(damage * falloff, origin, -direction, direction, false,
+                    HitRegion.Torso, DamageKind.Explosive);
                 health.ApplyDamage(in info);
             }
         }

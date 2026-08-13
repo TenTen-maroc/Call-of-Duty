@@ -117,6 +117,7 @@ namespace CoD.Weapons
         public float Damage;
         public float Range;
         public Health? Target;
+        public DamageKind DamageKind;
         /// <summary>Depth this follow-up resolves AT — always the queuing context's depth + 1.</summary>
         public int Depth;
     }

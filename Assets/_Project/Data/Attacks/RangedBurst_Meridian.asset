@@ -1,0 +1,34 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 2d09e2a8b50341d499dfcb075af3e797, type: 3}
+  m_Name: RangedBurst_Meridian
+  m_EditorClassIdentifier:
+  triggerRange: 28
+  reactionDelay: 0.48
+  aimHeightOffset: 1.35
+  burstCount: 4
+  burstInterval: 0.14
+  cooldown: 1.35
+  reloadEveryBursts: 3
+  reloadSeconds: 1.55
+  accuracy: 0.74
+  maxSpreadDegrees: 9
+  firstShotMissDegrees: 6
+  firstShotDeliberateMiss: 1
+  damage: 10
+  projectileSpeed: 24
+  projectileLifetime: 3
+  projectilePrefab: {fileID: 7387908720264780402, guid: c793c62f915e69a4483a94c5e4b7590b, type: 3}
+  hitMask:
+    serializedVersion: 2
+    m_Bits: 4294967291
+  fireClip: {fileID: 8300000, guid: b092e2c13ace28149a3388b9157e1758, type: 3}

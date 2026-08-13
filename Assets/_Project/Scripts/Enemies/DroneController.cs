@@ -43,6 +43,7 @@ namespace CoD.Enemies
         [SerializeField] private AudioSource? _audio = null;
         [Tooltip("Tinted through the attack windup. The telegraph is what makes a contact detonation fair instead of a coin flip.")]
         [SerializeField] private Renderer? _coreRenderer = null;
+        [SerializeField] private HumanEnemyPresentation? _human = null;
 
         private DroneConfig? _config;
         private Transform? _target;
@@ -82,6 +83,7 @@ namespace CoD.Enemies
         private int _reactionSeed;
         private bool _hadSight;
         private bool _lowHealthReacted;
+        private bool _awaitingDeathPresentation;
 
         /// <summary>
         /// Pre-sized and owned HERE rather than by the attack module: modules are
@@ -129,6 +131,7 @@ namespace CoD.Enemies
             if (_agent == null) TryGetComponent(out _agent);
             if (_health == null) TryGetComponent(out _health);
             if (_pooled == null) TryGetComponent(out _pooled);
+            if (_human == null) TryGetComponent(out _human);
             TryGetComponent(out _bodyCollider);
             _propertyBlock = new MaterialPropertyBlock();
             if (_agent != null) _agent.enabled = false;
@@ -177,6 +180,7 @@ namespace CoD.Enemies
             _registry = registry;
             _tokens = tokens;
             _attack = default;
+            _awaitingDeathPresentation = false;
             _speedMultiplier = 1f;
             _waveSpeedMultiplier = 1f;
             _nextRepathAt = 0f;
@@ -186,6 +190,7 @@ namespace CoD.Enemies
             // its own death animation is the same class of bug the pool's
             // generation counter exists to prevent elsewhere.
             _animator?.ResetForReuse();
+            _human?.ResetForReuse();
 
             // HP comes from the drone's own config, not a shared HealthConfig —
             // one source of truth per archetype.
@@ -229,6 +234,9 @@ namespace CoD.Enemies
             if (!_agent.enabled || !_agent.isOnNavMesh) return;
 
             _agent.speed = _config.moveSpeed * _speedMultiplier * _waveSpeedMultiplier;
+
+            if (_human != null && _human.TrySteer(now,
+                _config.moveSpeed * _speedMultiplier, _waveSpeedMultiplier)) return;
 
             // Fed from the agent's REALISED velocity, not from its target speed.
             // A soldier stopped dead against a wall, or zeroed by an attack
@@ -349,6 +357,10 @@ namespace CoD.Enemies
             TryReaction(EnemyReactionKind.AttackCommit, Time.time);
         }
 
+        public void SetFiringPosture(bool firing) => _human?.SetFiring(firing);
+
+        public void PlayReloadAnimation() => _animator?.PlayReload();
+
         public void PlayCue(AudioClip? clip)
         {
             if (clip == null || _audio == null) return;
@@ -363,7 +375,11 @@ namespace CoD.Enemies
         public void SelfDestruct() => Retire(raiseDied: false, default);
 
         /// <summary>Wave cleanup and the sandbox "kill all" cheat.</summary>
-        public void DespawnNow() => Retire(raiseDied: false, default);
+        public void DespawnNow()
+        {
+            if (_awaitingDeathPresentation) FinishDeathPresentation();
+            else Retire(raiseDied: false, default);
+        }
 
         private void ResetReactions(EnemyReactionConfig? config)
         {
@@ -447,7 +463,9 @@ namespace CoD.Enemies
 
         private void OnHealthDamaged(Health health, DamageInfo info)
         {
-            if (!_active || _reactions == null) return;
+            if (!_active) return;
+            _human?.React(in info);
+            if (_reactions == null) return;
             float now = Time.time;
             if (info.Amount >= health.Max * _reactions.heavyDamageFraction)
                 TryReaction(EnemyReactionKind.HeavyDamage, now);
@@ -501,6 +519,12 @@ namespace CoD.Enemies
         private void OnHealthDied(Health health, DamageInfo info)
         {
             if (!_active) return;
+            if (_human != null && _human.BeginDeath(in info))
+            {
+                ReleaseCombat(raiseDied: true, in info);
+                _awaitingDeathPresentation = true;
+                return;
+            }
             _animator?.PlayDeath();
             if (_config != null && _config.deathVfx != null && _pool != null)
             {
@@ -515,6 +539,13 @@ namespace CoD.Enemies
         /// released exactly once.
         /// </summary>
         private void Retire(bool raiseDied, in DamageInfo info)
+        {
+            if (!_active) return;
+            ReleaseCombat(raiseDied, in info);
+            ReturnToPool();
+        }
+
+        private void ReleaseCombat(bool raiseDied, in DamageInfo info)
         {
             if (!_active) return;
             _active = false;
@@ -546,6 +577,17 @@ namespace CoD.Enemies
                 _agent.enabled = false;
             }
 
+        }
+
+        public void FinishDeathPresentation()
+        {
+            if (!_awaitingDeathPresentation) return;
+            _awaitingDeathPresentation = false;
+            ReturnToPool();
+        }
+
+        private void ReturnToPool()
+        {
             if (_pool != null && _pooled != null) _pool.Despawn(_pooled);
             else gameObject.SetActive(false);
         }

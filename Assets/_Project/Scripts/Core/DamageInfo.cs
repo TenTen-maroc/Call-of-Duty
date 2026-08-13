@@ -15,14 +15,25 @@ namespace CoD.Core
         public readonly Vector3 Normal;
         public readonly Vector3 Direction;
         public readonly bool IsWeakpoint;
+        public readonly HitRegion Region;
+        public readonly DamageKind Kind;
 
         public DamageInfo(float amount, Vector3 point, Vector3 normal, Vector3 direction, bool isWeakpoint)
+            : this(amount, point, normal, direction, isWeakpoint,
+                isWeakpoint ? HitRegion.Head : HitRegion.Torso, DamageKind.Direct)
+        {
+        }
+
+        public DamageInfo(float amount, Vector3 point, Vector3 normal, Vector3 direction, bool isWeakpoint,
+            HitRegion region, DamageKind kind)
         {
             Amount = amount;
             Point = point;
             Normal = normal;
             Direction = direction;
             IsWeakpoint = isWeakpoint;
+            Region = region;
+            Kind = kind;
         }
     }
 }

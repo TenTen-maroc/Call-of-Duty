@@ -47,6 +47,10 @@ namespace CoD.Core
         [Range(22, 52)] public int subtitleMediumFontSize = 34;
         [Range(22, 52)] public int subtitleLargeFontSize = 42;
 
+        [Header("Violence — the SHIPPED accessibility default")]
+        [Tooltip("Extreme is the authored presentation. Players can disable blood and dismemberment immediately.")]
+        public GoreLevel goreLevelDefault = GoreLevel.Extreme;
+
 #if UNITY_EDITOR
         private void OnValidate()
         {

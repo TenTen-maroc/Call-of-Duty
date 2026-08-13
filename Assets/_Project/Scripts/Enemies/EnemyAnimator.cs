@@ -1,4 +1,5 @@
 #nullable enable
+using CoD.Core;
 using UnityEngine;
 
 namespace CoD.Enemies
@@ -35,12 +36,7 @@ namespace CoD.Enemies
     public sealed class EnemyAnimator : MonoBehaviour
     {
         [SerializeField] private Animator? _animator = null;
-
-        [Tooltip("Planar speed that maps to 1.0 on the locomotion blend tree. Usually the archetype's sprint speed.")]
-        [Min(0.1f)] [SerializeField] private float _speedAtFullBlend = 8f;
-
-        [Tooltip("Seconds of damping on the locomotion blend. Zero makes a soldier snap between poses on every repath.")]
-        [Range(0f, 0.5f)] [SerializeField] private float _speedDamping = 0.12f;
+        [SerializeField] private HumanCombatConfig? _config = null;
 
         // Hashes, not strings. Animator.SetFloat(string) hashes on every call and
         // this runs per enemy per frame; `static readonly` is also the one form
@@ -50,6 +46,14 @@ namespace CoD.Enemies
         private static readonly int TelegraphId = Animator.StringToHash("Telegraph");
         private static readonly int AttackId = Animator.StringToHash("Attack");
         private static readonly int DeathId = Animator.StringToHash("Death");
+        private static readonly int MoveXId = Animator.StringToHash("MoveX");
+        private static readonly int MoveYId = Animator.StringToHash("MoveY");
+        private static readonly int AimingId = Animator.StringToHash("Aiming");
+        private static readonly int HitId = Animator.StringToHash("Hit");
+        private static readonly int HitRegionId = Animator.StringToHash("HitRegion");
+        private static readonly int HitDirectionId = Animator.StringToHash("HitDirection");
+        private static readonly int DeathDirectionId = Animator.StringToHash("DeathDirection");
+        private static readonly int ReloadId = Animator.StringToHash("Reload");
 
         private void Awake()
         {
@@ -66,8 +70,25 @@ namespace CoD.Enemies
         public void SetSpeed(float planarSpeed)
         {
             if (_animator == null) return;
-            float normalised = Mathf.Clamp01(planarSpeed / _speedAtFullBlend);
-            _animator.SetFloat(SpeedId, normalised, _speedDamping, Time.deltaTime);
+            if (_config == null) return;
+            float normalised = Mathf.Clamp01(planarSpeed / _config.speedAtFullBlend);
+            _animator.SetFloat(SpeedId, normalised, _config.speedDamping, Time.deltaTime);
+        }
+
+        public void SetMovement(Vector3 localVelocity)
+        {
+            if (_animator == null || _config == null) return;
+            float scale = Mathf.Max(0.1f, _config.speedAtFullBlend);
+            _animator.SetFloat(MoveXId, Mathf.Clamp(localVelocity.x / scale, -1f, 1f),
+                _config.speedDamping, Time.deltaTime);
+            _animator.SetFloat(MoveYId, Mathf.Clamp(localVelocity.z / scale, -1f, 1f),
+                _config.speedDamping, Time.deltaTime);
+            SetSpeed(new Vector2(localVelocity.x, localVelocity.z).magnitude);
+        }
+
+        public void SetAiming(bool aiming)
+        {
+            if (_animator != null) _animator.SetBool(AimingId, aiming);
         }
 
         /// <summary>
@@ -94,10 +115,32 @@ namespace CoD.Enemies
         /// animation is a consequence of that, never a gate on it.
         /// </summary>
         public void PlayDeath()
+            => PlayDeath(Vector3.back);
+
+        public void PlayDeath(Vector3 incomingDirection)
         {
             if (_animator == null) return;
             _animator.ResetTrigger(AttackId);
+            _animator.SetInteger(DeathDirectionId, DirectionIndex(incomingDirection));
             _animator.SetTrigger(DeathId);
+        }
+
+        public void PlayHit(HitRegion region, Vector3 incomingDirection)
+        {
+            if (_animator == null) return;
+            _animator.SetInteger(HitRegionId, (int)region);
+            _animator.SetInteger(HitDirectionId, DirectionIndex(incomingDirection));
+            _animator.SetTrigger(HitId);
+        }
+
+        public void PlayReload()
+        {
+            if (_animator != null) _animator.SetTrigger(ReloadId);
+        }
+
+        public void SetEnabled(bool enabled)
+        {
+            if (_animator != null) _animator.enabled = enabled;
         }
 
         /// <summary>
@@ -110,9 +153,31 @@ namespace CoD.Enemies
             if (_animator == null) return;
             _animator.ResetTrigger(DeathId);
             _animator.ResetTrigger(AttackId);
+            _animator.ResetTrigger(HitId);
+            _animator.ResetTrigger(ReloadId);
             _animator.SetFloat(SpeedId, 0f);
+            _animator.SetFloat(MoveXId, 0f);
+            _animator.SetFloat(MoveYId, 0f);
             _animator.SetFloat(TelegraphId, 0f);
+            _animator.SetBool(AimingId, false);
+            _animator.enabled = true;
             _animator.Rebind();
         }
+
+        private int DirectionIndex(Vector3 incomingDirection)
+        {
+            if (_animator == null) return 0;
+            Vector3 local = _animator.transform.InverseTransformDirection(incomingDirection);
+            if (Mathf.Abs(local.x) > Mathf.Abs(local.z)) return local.x >= 0f ? 1 : 3;
+            return local.z >= 0f ? 0 : 2;
+        }
+
+#if UNITY_EDITOR
+        public void Configure(Animator animator, HumanCombatConfig config)
+        {
+            _animator = animator;
+            _config = config;
+        }
+#endif
     }
 }

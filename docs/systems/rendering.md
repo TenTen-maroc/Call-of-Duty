@@ -1,7 +1,7 @@
 # Rendering
 
 > Last verified: 2026-08-13
-> **Verified in play: no.** Compiled, built, and covered by 5 PlayMode tests that
+> **Verified in built-player frames: yes.** Compiled, built, and covered by PlayMode tests that
 > assert both scenes render with post-processing on and that the profile kept its
 > overrides through the save. Whether the bloom intensity *looks* right is a
 > tuning-card question, and item 9 — frame time on the 3050 — is the one thing no
@@ -12,6 +12,13 @@
 > the only hand-authored item listed under [Gotchas](#gotchas).
 
 ## Overview
+
+The second generated environment is `11_AtlasOutpost`, a fixed 60x60 m
+Atlas-foothills outpost with three lanes, a centre comms hut, generator flank,
+rocky watch flank, north service gate, warm sun, cool fog, and Gamrig sky. Kenney
+Nature/Survival FBXs are collider-free Art children; generated primitive blocks
+alone own gameplay collision and the committed NavMesh. Bullet response now
+includes soil, rock, wood, foliage, metal, grate, flesh, and default surfaces.
 
 The image pipeline: the post-processing stack, the arena's light rig, surface
 response on the materials, the one generated texture, and what the world does

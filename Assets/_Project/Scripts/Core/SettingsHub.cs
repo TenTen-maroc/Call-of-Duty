@@ -91,9 +91,15 @@ namespace CoD.Core
                 save.accessibilityInitialised = true;
             }
 
+            if (!save.violenceInitialised)
+            {
+                save.goreLevel = _bounds.goreLevelDefault;
+                save.violenceInitialised = true;
+            }
+
             return new GameSettings(_bounds, save.mouseSensitivity, save.fovVertical,
                 save.masterVolume, save.invertLook, save.postProcessing, save.antiAliasing,
-                save.subtitlesEnabled, save.subtitleSize);
+                save.subtitlesEnabled, save.subtitleSize, save.goreLevel);
         }
 
         /// <summary>

@@ -843,12 +843,23 @@ namespace CoD.Weapons
             // (HealthConfig used to carry one) double-dipped every headshot, so
             // it was deleted rather than balanced around.
             bool isWeakpoint = false;
+            bool fleshImpact = false;
+            HitRegion region = HitRegion.Torso;
             IDamageable? target = null;
             if (hit.collider.TryGetComponent(out Weakpoint weakpoint) && weakpoint.Owner != null)
             {
                 target = weakpoint.Owner;
                 damage *= config.headshotMultiplier;
                 isWeakpoint = true;
+                fleshImpact = true;
+                region = HitRegion.Head;
+            }
+            else if (hit.collider.TryGetComponent(out HitZone hitZone) && hitZone.Owner != null)
+            {
+                target = hitZone.Owner;
+                damage *= hitZone.DamageFactor;
+                fleshImpact = hitZone.IsFlesh;
+                region = hitZone.Region;
             }
             else if (hit.collider.TryGetComponent(out IDamageable direct))
             {
@@ -872,7 +883,8 @@ namespace CoD.Weapons
             bool damaged = false;
             if (target != null && target.IsAlive)
             {
-                var info = new DamageInfo(damage, hit.point, hit.normal, direction, isWeakpoint);
+                var info = new DamageInfo(damage, hit.point, hit.normal, direction, isWeakpoint,
+                    region, DamageKind.Direct);
                 target.ApplyDamage(in info);
                 damaged = true;
                 killed = !target.IsAlive;
@@ -883,7 +895,7 @@ namespace CoD.Weapons
                 }
             }
 
-            SpawnImpact(hit, onBody: target != null);
+            SpawnImpact(hit, onBody: target != null, fleshImpact: fleshImpact);
             if (damaged) RegisterHit(target as Health, killed);
 
             RunEffectModules(new HitContext(this, config, hit.point, hit.normal, direction,
@@ -993,7 +1005,7 @@ namespace CoD.Weapons
             if (target == _ownerHealth) return;
 
             var info = new DamageInfo(followUp.Damage, followUp.Origin, -followUp.Direction,
-                followUp.Direction, false);
+                followUp.Direction, false, HitRegion.Torso, followUp.DamageKind);
             target.ApplyDamage(in info);
             MarkHit(target);
             RegisterHit(target, !target.IsAlive);
@@ -1012,16 +1024,31 @@ namespace CoD.Weapons
             RaycastHit hit = _hitBuffer[0];
 
             Health? target = null;
+            HitRegion region = HitRegion.Torso;
+            float zoneFactor = 1f;
+            bool isWeakpoint = false;
+            bool fleshImpact = false;
             if (hit.collider.TryGetComponent(out Weakpoint weakpoint) && weakpoint.Owner != null)
             {
                 target = weakpoint.Owner;
+                region = HitRegion.Head;
+                isWeakpoint = true;
+                fleshImpact = true;
+                zoneFactor = config.headshotMultiplier;
+            }
+            else if (hit.collider.TryGetComponent(out HitZone hitZone) && hitZone.Owner != null)
+            {
+                target = hitZone.Owner;
+                region = hitZone.Region;
+                fleshImpact = hitZone.IsFlesh;
+                zoneFactor = hitZone.DamageFactor;
             }
             else if (hit.collider.TryGetComponent(out Health direct))
             {
                 target = direct;
             }
 
-            SpawnImpact(hit, onBody: target != null);
+            SpawnImpact(hit, onBody: target != null, fleshImpact: fleshImpact);
             if (target == null || !target.IsAlive) return;
 
             // The shooter is never a valid follow-up target. Explosive and Chain
@@ -1037,13 +1064,15 @@ namespace CoD.Weapons
             // already-hit set exists to close.
             if (HasHit(target)) return;
 
-            var info = new DamageInfo(followUp.Damage, hit.point, hit.normal, followUp.Direction, false);
+            float damage = followUp.Damage * zoneFactor;
+            var info = new DamageInfo(damage, hit.point, hit.normal, followUp.Direction, isWeakpoint,
+                region, followUp.DamageKind);
             target.ApplyDamage(in info);
             MarkHit(target);
             RegisterHit(target, !target.IsAlive);
 
             RunEffectModules(new HitContext(this, config, hit.point, hit.normal, followUp.Direction,
-                target, followUp.Damage, followUp.Depth));
+                target, damage, followUp.Depth));
         }
 
         /// <summary>
@@ -1057,7 +1086,7 @@ namespace CoD.Weapons
         /// bullet holes hang in mid-air for the rest of the wave. Bodies get the
         /// spark, walls get the hole.
         /// </summary>
-        private void SpawnImpact(in RaycastHit hit, bool onBody)
+        private void SpawnImpact(in RaycastHit hit, bool onBody, bool fleshImpact = false)
         {
             if (_pool == null || _impact == null) return;
 
@@ -1074,7 +1103,9 @@ namespace CoD.Weapons
             // A null response means no row claimed this layer; the config's
             // fallback block answers, so an unmapped surface still sparks. A
             // silent impact is indistinguishable from a missed shot.
-            ImpactConfig.SurfaceResponse? surface = _impact.ResponseFor(hit.collider.gameObject.layer, onBody);
+            ImpactConfig.SurfaceResponse? surface = onBody && fleshImpact
+                ? _impact.Find(SurfaceType.Flesh)
+                : _impact.ResponseFor(hit.collider.gameObject.layer, onBody);
             GameObject? decal = surface != null ? surface.decalPrefab : _impact.decalPrefab;
             GameObject? particles = surface != null ? surface.particlePrefab : _impact.particlePrefab;
             AudioClip? sound = surface != null ? surface.impactSound : _impact.impactSound;

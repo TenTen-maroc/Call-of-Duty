@@ -1,0 +1,40 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 40855d174ca45324eb33b2ad4675964f, type: 3}
+  m_Name: Gore_Human
+  m_EditorClassIdentifier:
+  bloodSprayPrefab: {fileID: 4315446039687798742, guid: 7f815742577e9824a868191cbab32def, type: 3}
+  bloodDecalPrefab: {fileID: 4979438684019914022, guid: 06d9ef01b2bf4ce46951f630f12f3604, type: 3}
+  woundPrefab: {fileID: 1697420623580655297, guid: 119b0e23d0c8ca74ebbcc8cb3c709904, type: 3}
+  bloodPoolPrefab: {fileID: 3010902184047393150, guid: a18eb785a2f7b76498d6b0ecfc2ea97b, type: 3}
+  stumpPrefab: {fileID: 5337397346572458142, guid: 7a0d06b6ed10cee4f9be198c0caaa24e, type: 3}
+  severedPartPrefab: {fileID: 8263992450905345260, guid: 74a09ac105d8298458417af3f60b1b7f, type: 3}
+  sprayLifetime: 1.2
+  decalLifetime: 18
+  woundLifetime: 14
+  poolDelay: 1.2
+  poolLifetime: 20
+  severedPartLifetime: 10
+  headDismemberDamage: 55
+  limbDismemberDamage: 65
+  explosiveImpulse: 4.5
+  bloodDecalCap: 96
+  woundCap: 24
+  bloodPoolCap: 12
+  corpseCap: 8
+  ragdollCap: 4
+  severedPartCap: 24
+  worldMask:
+    serializedVersion: 2
+    m_Bits: 4294965243
+  surfaceProjectionDistance: 3
+  surfaceOffset: 0.01

@@ -29,16 +29,25 @@ namespace CoD.Core
         public AntiAliasingMode AntiAliasing { get; private set; }
         public bool SubtitlesEnabled { get; private set; }
         public SubtitleSize SubtitleScale { get; private set; }
+        public GoreLevel Gore { get; private set; }
 
         public GameSettings(SettingsConfig bounds, float sensitivity, float fov, float volume, bool invert,
             bool postProcessing, AntiAliasingMode antiAliasing)
             : this(bounds, sensitivity, fov, volume, invert, postProcessing, antiAliasing,
-                bounds.subtitlesEnabledDefault, bounds.subtitleSizeDefault)
+                bounds.subtitlesEnabledDefault, bounds.subtitleSizeDefault, bounds.goreLevelDefault)
         {
         }
 
         public GameSettings(SettingsConfig bounds, float sensitivity, float fov, float volume, bool invert,
             bool postProcessing, AntiAliasingMode antiAliasing, bool subtitlesEnabled, SubtitleSize subtitleSize)
+            : this(bounds, sensitivity, fov, volume, invert, postProcessing, antiAliasing,
+                subtitlesEnabled, subtitleSize, bounds.goreLevelDefault)
+        {
+        }
+
+        public GameSettings(SettingsConfig bounds, float sensitivity, float fov, float volume, bool invert,
+            bool postProcessing, AntiAliasingMode antiAliasing, bool subtitlesEnabled, SubtitleSize subtitleSize,
+            GoreLevel gore)
         {
             _bounds = bounds;
             MouseSensitivity = Mathf.Clamp(sensitivity, bounds.sensitivityMin, bounds.sensitivityMax);
@@ -52,6 +61,7 @@ namespace CoD.Core
             AntiAliasing = Clamp(antiAliasing);
             SubtitlesEnabled = subtitlesEnabled;
             SubtitleScale = Clamp(subtitleSize);
+            Gore = Clamp(gore);
         }
 
         public void SetMouseSensitivity(float value)
@@ -70,6 +80,13 @@ namespace CoD.Core
         public void SetAntiAliasing(AntiAliasingMode value) => AntiAliasing = Clamp(value);
 
         public void SetSubtitlesEnabled(bool value) => SubtitlesEnabled = value;
+
+        public void CycleGore(int direction)
+        {
+            const int count = (int)GoreLevel.Extreme + 1;
+            int step = direction >= 0 ? 1 : -1;
+            Gore = (GoreLevel)(((int)Gore + step + count) % count);
+        }
 
         public void CycleSubtitleSize(int direction)
         {
@@ -101,6 +118,9 @@ namespace CoD.Core
 
         private static SubtitleSize Clamp(SubtitleSize value) =>
             value < SubtitleSize.Small || value > SubtitleSize.Large ? SubtitleSize.Medium : value;
+
+        private static GoreLevel Clamp(GoreLevel value) =>
+            value < GoreLevel.Off || value > GoreLevel.Extreme ? GoreLevel.Extreme : value;
 
         /// <summary>
         /// Nudge by one step. Direction is -1 or +1; anything else is ignored.
@@ -144,6 +164,9 @@ namespace CoD.Core
             save.subtitlesEnabled = SubtitlesEnabled;
             save.subtitleSize = SubtitleScale;
             save.accessibilityInitialised = true;
+
+            save.goreLevel = Gore;
+            save.violenceInitialised = true;
         }
     }
 }

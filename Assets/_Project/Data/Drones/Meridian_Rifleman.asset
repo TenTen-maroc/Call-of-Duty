@@ -1,0 +1,35 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 82f11f54d76e67940bf4dbc4fcefe8b7, type: 3}
+  m_Name: Meridian_Rifleman
+  m_EditorClassIdentifier:
+  stableId: meridian_rifleman
+  displayName: Meridian Rifleman
+  maxHealth: 115
+  moveSpeed: 4.5
+  acceleration: 18
+  turnSpeed: 540
+  hoverHeight: 0
+  preferredRange: 18
+  stopDistance: 1.1
+  repathInterval: 0.18
+  scoreValue: 24
+  moneyReward: 20
+  prefab: {fileID: 5930334755326085079, guid: fa03b7f45e629a74f867fead32617550, type: 3}
+  attack: {fileID: 11400000, guid: 066968bda54490640ae701c4d086d7e6, type: 2}
+  reactions: {fileID: 11400000, guid: 37bbf8bc288d8bc41bee86d8bc7ac51b, type: 2}
+  idleCoreColor: {r: 0.65, g: 0.08, b: 0.06, a: 1}
+  telegraphCoreColor: {r: 1, g: 0.25, b: 0.12, a: 1}
+  idleEmission: 0.2
+  telegraphEmission: 4.2
+  deathVfx: {fileID: 0}
+  deathVfxLifetime: 0.9

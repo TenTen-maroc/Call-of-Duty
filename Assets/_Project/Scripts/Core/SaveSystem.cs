@@ -41,7 +41,7 @@ namespace CoD.Core
         /// player-facing defaults from SettingsConfig rather than freezing tuning
         /// values into migration code.
         /// </summary>
-        public const int CurrentSchemaVersion = 5;
+        public const int CurrentSchemaVersion = 6;
 
         private const string FileName = "cod_save.json";
         private const string BackupName = "cod_save.bak.json";
@@ -234,6 +234,12 @@ namespace CoD.Core
             {
                 // Deliberately empty. accessibilityInitialised=false makes
                 // SettingsHub seed the player-facing defaults from SettingsConfig.
+            }
+
+            if (data.schemaVersion < 6)
+            {
+                // Deliberately empty. violenceInitialised=false makes
+                // SettingsHub seed the authored default from SettingsConfig.
             }
 
             data.schemaVersion = CurrentSchemaVersion;

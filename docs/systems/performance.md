@@ -1,11 +1,24 @@
 # Performance — the two caps, and what a machine can prove
 
-> Last verified: 2026-08-12
+> Last verified: 2026-08-13
 > **Verified:** the caps hold and the arena allocates ~450 B/frame at 40 alive,
 > asserted by 4 PlayMode tests. **Frame time on the actual RTX 3050 is NOT
 > verified** and cannot be from a headless run — see below.
 
 ## Overview
+
+Mission 2 adds a separate hard cap of **12 living soldiers** while retaining the
+global three-token attack cap. Human LODs switch at approximately 12/22/32 m,
+LOD1+ disables skinned shadows, and the Animator uses `CullUpdateTransforms`.
+Outdoor presentation art is collider-free, statically batched where compatible,
+and uses only a restrained shadow-casting subset. These contracts are verified;
+their target-laptop frame cost is not.
+
+The built 1600x900 development route rendered 12 soldiers, outdoor vegetation,
+regional effects, and ragdoll/gore states without runtime errors. It is a visual
+gate, not a GPU benchmark. The required 1080p RTX 3050 measurement remains the
+sole manual gate: <=8 ms CPU main thread and <=10 ms GPU under representative
+12-soldier combat. No timing result is claimed here.
 
 Two numbers in [Difficulty.asset](../../Assets/_Project/Data/Game/Difficulty.asset)
 carry the whole performance story, and CLAUDE.md calls both "not tuning knobs":

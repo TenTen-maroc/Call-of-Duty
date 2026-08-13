@@ -86,6 +86,10 @@ namespace CoD.EditorTools
 
         /// <summary>Nothing wears it yet, and that is the point. See <see cref="MetalLayerName"/>.</summary>
         private const string FleshLayerName = "Surface_Flesh";
+        private const string SoilLayerName = "Surface_Soil";
+        private const string RockLayerName = "Surface_Rock";
+        private const string WoodLayerName = "Surface_Wood";
+        private const string FoliageLayerName = "Surface_Foliage";
 
         // Shipped defaults, re-asserted on every build the way ApplySurface is.
         //
@@ -94,7 +98,6 @@ namespace CoD.EditorTools
         // pass could not add fields to it. Three colours to move when somebody
         // next opens that file — dust, blood, and the grey of a smoke puff.
         private static readonly Color DustColor = new(0.42f, 0.41f, 0.39f);
-        private static readonly Color BloodColor = new(0.42f, 0.05f, 0.05f);
         private static readonly Color SmokeColor = new(0.32f, 0.32f, 0.33f);
 
         /// <summary>Placeholder clips this table wants. Missing ones are reported once, together.</summary>
@@ -130,9 +133,6 @@ namespace CoD.EditorTools
             Material dustFx = LoadOrCreateParticleMaterial(Materials + "/Fx_Dust.mat");
             ApplyAlphaBlend(dustFx, DustColor);
 
-            Material bloodFx = LoadOrCreateParticleMaterial(Materials + "/Fx_Blood.mat");
-            ApplyAlphaBlend(bloodFx, BloodColor);
-
             Material smokeFx = LoadOrCreateParticleMaterial(Materials + "/Fx_Smoke.mat");
             ApplyAlphaBlend(smokeFx, SmokeColor);
 
@@ -163,8 +163,20 @@ namespace CoD.EditorTools
 
             // Authored, and used by nothing. See SurfaceType.Flesh: the day a
             // human-shaped target exists, gore level is this reference, swapped.
-            GameObject fleshFx = BuildImpactPrefab("Fx_Impact_Flesh", bloodFx,
-                burst: 12, speed: 2.6f, size: 0.05f, lifetime: 0.45f, coneAngle: 42f, gravity: 1.4f);
+            // Neutral cloth response only. GoreManager owns every drop of blood
+            // so switching VIOLENCE to Off cannot leave a hidden unconditional
+            // blood path in the weapon controller.
+            GameObject fleshFx = BuildImpactPrefab("Fx_Impact_Flesh", smokeFx,
+                burst: 5, speed: 1.4f, size: 0.035f, lifetime: 0.25f, coneAngle: 42f, gravity: 0.6f);
+
+            GameObject soilFx = BuildImpactPrefab("Fx_Impact_Soil", dustFx,
+                burst: 14, speed: 2.2f, size: 0.07f, lifetime: 0.65f, coneAngle: 60f, gravity: 0.25f);
+            GameObject rockFx = BuildImpactPrefab("Fx_Impact_Rock", dustFx,
+                burst: 9, speed: 2.8f, size: 0.045f, lifetime: 0.45f, coneAngle: 45f, gravity: 0.6f);
+            GameObject woodFx = BuildImpactPrefab("Fx_Impact_Wood", dustFx,
+                burst: 8, speed: 3.2f, size: 0.04f, lifetime: 0.38f, coneAngle: 38f, gravity: 0.8f);
+            GameObject foliageFx = BuildImpactPrefab("Fx_Impact_Foliage", dustFx,
+                burst: 6, speed: 1.6f, size: 0.055f, lifetime: 0.5f, coneAngle: 70f, gravity: 0.2f);
 
             // ---- the surface table -----------------------------------------
             var impact = AssetDatabase.LoadAssetAtPath<ImpactConfig>(ImpactConfigPath);
@@ -199,6 +211,14 @@ namespace CoD.EditorTools
                 authoredAudio ? audioKit!.impactGrate : LoadClip(GrateClip, missingClips), volume: 0.55f);
             WriteSurface(impact, SurfaceType.Flesh, FleshLayerName, null, fleshFx,
                 authoredAudio ? audioKit!.impactFlesh : LoadClip(FleshClip, missingClips), volume: 0.65f);
+            WriteSurface(impact, SurfaceType.Soil, SoilLayerName, decal, soilFx,
+                authoredAudio ? audioKit!.impactConcrete : LoadClip(ConcreteClip, missingClips), volume: 0.5f);
+            WriteSurface(impact, SurfaceType.Rock, RockLayerName, decal, rockFx,
+                authoredAudio ? audioKit!.impactConcrete : LoadClip(ConcreteClip, missingClips), volume: 0.55f);
+            WriteSurface(impact, SurfaceType.Wood, WoodLayerName, decal, woodFx,
+                authoredAudio ? audioKit!.impactConcrete : LoadClip(ConcreteClip, missingClips), volume: 0.5f);
+            WriteSurface(impact, SurfaceType.Foliage, FoliageLayerName, null, foliageFx,
+                authoredAudio ? audioKit!.impactConcrete : LoadClip(ConcreteClip, missingClips), volume: 0.35f);
 
             EditorUtility.SetDirty(impact);
 
@@ -246,7 +266,7 @@ namespace CoD.EditorTools
             AssetDatabase.SaveAssets();
             AssetDatabase.Refresh();
 
-            Debug.Log($"VFX built: 4 surface rows on {impact.name}, tracer + wide flash + smoke on {wired} weapon(s), " +
+            Debug.Log($"VFX built: 8 surface rows on {impact.name}, tracer + wide flash + smoke on {wired} weapon(s), " +
                       $"and {rocket.name} on every projectile weapon. " +
                       "Two things this cannot do and a human must: add Fx_Tracer, Fx_Rocket, the three impact " +
                       "prefabs, the wide flash and the smoke puff to the arena ObjectPool prewarm list (Build Grey " +

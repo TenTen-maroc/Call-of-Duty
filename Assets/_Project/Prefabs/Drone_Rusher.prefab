@@ -235,8 +235,8 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 86a9e94a123115690a5e128c05629088, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
+  m_Name:
+  m_EditorClassIdentifier:
   _config: {fileID: 0}
   _playerConfig: {fileID: 0}
 --- !u!114 &3338602368937624374
@@ -249,8 +249,8 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 54c1f0ec04314a0bd3d2644c02710ff2, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
+  m_Name:
+  m_EditorClassIdentifier:
   _renderer: {fileID: 5821475729850363190}
   _flashColor: {r: 1, g: 0.28, b: 0.2, a: 1}
   _flashDuration: 0.08
@@ -361,8 +361,8 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 5beb61a25176a7fea495e9cd24cf667b, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
+  m_Name:
+  m_EditorClassIdentifier:
 --- !u!114 &3507519981955789371
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -373,14 +373,15 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: ebc8953baffa8e84e91d06548a13a3d7, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
+  m_Name:
+  m_EditorClassIdentifier:
   _agent: {fileID: 7795557722918980618}
   _animator: {fileID: 0}
   _health: {fileID: 4909949894413701253}
   _pooled: {fileID: 7399482943223191259}
   _audio: {fileID: 3431725808675911678}
   _coreRenderer: {fileID: 934326511311465372}
+  _human: {fileID: 0}
 --- !u!1 &6965951711023287660
 GameObject:
   m_ObjectHideFlags: 0
@@ -500,8 +501,8 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 72a85aa28e7864b905a84645e5926b81, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
+  m_Name:
+  m_EditorClassIdentifier:
   _owner: {fileID: 4909949894413701253}
 --- !u!1 &7767839127868309929
 GameObject:

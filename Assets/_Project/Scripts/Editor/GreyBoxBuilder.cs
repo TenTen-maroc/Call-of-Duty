@@ -3598,12 +3598,16 @@ namespace CoD.EditorTools
         private static void RegisterScenes()
         {
             // Order matters: index 0 is what a built player loads first.
-            EditorBuildSettings.scenes = new[]
+            var scenes = new List<EditorBuildSettingsScene>
             {
                 new EditorBuildSettingsScene(BootScenePath, true),
                 new EditorBuildSettingsScene(MainMenuScenePath, true),
                 new EditorBuildSettingsScene(GreyBoxScenePath, true),
             };
+            const string outdoorScenePath = "Assets/_Project/Scenes/11_AtlasOutpost.unity";
+            if (AssetDatabase.LoadAssetAtPath<SceneAsset>(outdoorScenePath) != null)
+                scenes.Add(new EditorBuildSettingsScene(outdoorScenePath, true));
+            EditorBuildSettings.scenes = scenes.ToArray();
         }
 
         // ---------- helpers ----------
@@ -4263,6 +4267,10 @@ namespace CoD.EditorTools
                 ("Fx_Impact_Metal", 32),
                 ("Fx_Impact_Grate", 16),
                 ("Fx_Impact_Flesh", 16),
+                ("Fx_Impact_Soil", 32),
+                ("Fx_Impact_Rock", 24),
+                ("Fx_Impact_Wood", 24),
+                ("Fx_Impact_Foliage", 16),
             };
 
             foreach ((string name, int count) in optional)

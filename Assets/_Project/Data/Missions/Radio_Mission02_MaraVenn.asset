@@ -1,0 +1,105 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 74b6a6f0b6aa4e28abffef58e56ef501, type: 3}
+  m_Name: Radio_Mission02_MaraVenn
+  m_EditorClassIdentifier:
+  lines:
+  - stableId: m02_entry
+    speakerId: operator_mara_venn
+    speakerName: MARA VENN
+    subtitle: Tazir Pass. The relay is in the centre hut. Meridian has the ridgelines.
+    trigger: 0
+    occurrence: 1
+    priority: 55
+    cooldownSeconds: 999
+    subtitleSeconds: 3.6
+    interruptionPolicy: 1
+    audioClip: {fileID: 0}
+  - stableId: m02_objective
+    speakerId: operator_mara_venn
+    speakerName: MARA VENN
+    subtitle: Use the trees on approach. The south lane keeps you below their watch
+      position.
+    trigger: 1
+    occurrence: 1
+    priority: 52
+    cooldownSeconds: 999
+    subtitleSeconds: 3.2
+    interruptionPolicy: 1
+    audioClip: {fileID: 0}
+  - stableId: m02_contact
+    speakerId: operator_mara_venn
+    speakerName: MARA VENN
+    subtitle: Human contact. Meridian rifle team. Their rounds are slow, but the
+      lanes are covered.
+    trigger: 2
+    occurrence: 1
+    priority: 80
+    cooldownSeconds: 999
+    subtitleSeconds: 3.4
+    interruptionPolicy: 1
+    audioClip: {fileID: 0}
+  - stableId: m02_wave_one
+    speakerId: operator_mara_venn
+    speakerName: MARA VENN
+    subtitle: First team is down. Cut the generator-side relay before they regroup.
+    trigger: 4
+    occurrence: 1
+    priority: 62
+    cooldownSeconds: 999
+    subtitleSeconds: 2.8
+    interruptionPolicy: 1
+    audioClip: {fileID: 0}
+  - stableId: m02_wave_two
+    speakerId: operator_mara_venn
+    speakerName: MARA VENN
+    subtitle: More movement behind the service gate. Hold the cross-lanes.
+    trigger: 4
+    occurrence: 2
+    priority: 60
+    cooldownSeconds: 999
+    subtitleSeconds: 2.7
+    interruptionPolicy: 1
+    audioClip: {fileID: 0}
+  - stableId: m02_badly_hurt
+    speakerId: operator_mara_venn
+    speakerName: MARA VENN
+    subtitle: Break line of sight. Their rifle team is walking rounds onto you.
+    trigger: 3
+    occurrence: 1
+    priority: 96
+    cooldownSeconds: 999
+    subtitleSeconds: 2.5
+    interruptionPolicy: 1
+    audioClip: {fileID: 0}
+  - stableId: m02_complete
+    speakerId: operator_mara_venn
+    speakerName: MARA VENN
+    subtitle: North route is open. Meridian lost the relay, not the story. Move.
+    trigger: 6
+    occurrence: 1
+    priority: 100
+    cooldownSeconds: 999
+    subtitleSeconds: 3
+    interruptionPolicy: 0
+    audioClip: {fileID: 0}
+  - stableId: m02_failed
+    speakerId: operator_mara_venn
+    speakerName: MARA VENN
+    subtitle: Signal lost at Tazir. Abort the route.
+    trigger: 7
+    occurrence: 1
+    priority: 100
+    cooldownSeconds: 999
+    subtitleSeconds: 2.7
+    interruptionPolicy: 0
+    audioClip: {fileID: 0}
