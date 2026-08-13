@@ -51,6 +51,12 @@ namespace CoD.Tests
                 Does.EndWith("/Kenney/Ambience/facility_room.ogg"));
             Assert.That(AssetDatabase.GetAssetPath(audio.confirm),
                 Does.EndWith("/Kenney/Interface/confirm.ogg"));
+            Assert.That(AssetDatabase.GetAssetPath(audio.rifleClose),
+                Does.EndWith("/Sonniss/Weapons/rifle_close.ogg"));
+            Assert.That(AssetDatabase.GetAssetPath(audio.rifleTail),
+                Does.EndWith("/Sonniss/Weapons/rifle_tail.ogg"));
+            Assert.That(AssetDatabase.GetAssetPath(audio.rifleReload),
+                Does.EndWith("/Sonniss/Weapons/rifle_reload.ogg"));
         }
 
         [Test]
@@ -133,11 +139,34 @@ namespace CoD.Tests
         }
 
         [Test]
+        public void AudioKit_AcceptsCompleteSourceSectionsIndependently()
+        {
+            AudioKitConfig kit = ScriptableObject.CreateInstance<AudioKitConfig>();
+            AudioClip clip = AudioClip.Create("test", 32, 1, 8000, false);
+            try
+            {
+                kit.rifleClose = clip;
+                kit.rifleTail = clip;
+                kit.rifleReload = clip;
+
+                Assert.That(kit.HasSonnissAssignments, Is.True);
+                Assert.That(kit.HasNoKenneyAssignments, Is.True);
+                Assert.That(kit.HasCompleteAssignments, Is.False);
+                Assert.That(kit.IsValid, Is.True);
+            }
+            finally
+            {
+                Object.DestroyImmediate(clip);
+                Object.DestroyImmediate(kit);
+            }
+        }
+
+        [Test]
         public void KenneyAudio_UsesLatencyAndLoopSpecificImportPolicies()
         {
             const string root = "Assets/_Project/Art/Imported/Kenney";
             string[] guids = AssetDatabase.FindAssets("t:AudioClip", new[] { root });
-            Assert.That(guids, Has.Length.EqualTo(AudioKitConfig.ExpectedAssignmentCount));
+            Assert.That(guids, Has.Length.EqualTo(AudioKitConfig.KenneyAssignmentCount));
             foreach (string guid in guids)
             {
                 string path = AssetDatabase.GUIDToAssetPath(guid);
@@ -191,6 +220,37 @@ namespace CoD.Tests
             InteractPoint? point = interact.GetComponent<InteractPoint>();
             Assert.That(point, Is.Not.Null);
             Assert.That(SerializedReference(point!, "_useClip"), Is.SameAs(kit.confirm));
+        }
+
+        [Test]
+        public void SonnissWeaponAudio_IsTrimmedAndWiredAcrossTheArsenal()
+        {
+            const string root = "Assets/_Project/Art/Imported/Sonniss/Weapons";
+            AudioKitConfig kit = Load<AudioKitConfig>(KitFolder + "/Kit_Audio_Default.asset");
+            string[] guids = AssetDatabase.FindAssets("t:AudioClip", new[] { root });
+            Assert.That(guids, Has.Length.EqualTo(3));
+            foreach (string guid in guids)
+            {
+                string path = AssetDatabase.GUIDToAssetPath(guid);
+                AudioClip clip = Load<AudioClip>(path);
+                var importer = AssetImporter.GetAtPath(path) as AudioImporter;
+                Assert.That(clip.length, Is.LessThan(1.9f), path);
+                Assert.That(importer, Is.Not.Null, path);
+                Assert.That(importer!.forceToMono, Is.True, path);
+                Assert.That(importer.defaultSampleSettings.loadType,
+                    Is.EqualTo(AudioClipLoadType.DecompressOnLoad), path);
+                Assert.That(importer.defaultSampleSettings.compressionFormat,
+                    Is.EqualTo(AudioCompressionFormat.Vorbis), path);
+            }
+
+            WeaponRegistry registry = Load<WeaponRegistry>("Assets/_Project/Data/Weapons/Weapons.asset");
+            Assert.That(registry.allWeapons, Has.Length.EqualTo(8));
+            foreach (WeaponConfig weapon in registry.allWeapons)
+            {
+                Assert.That(weapon.fireCloseLayer, Is.SameAs(kit.rifleClose), weapon.name);
+                Assert.That(weapon.fireTailLayer, Is.SameAs(kit.rifleTail), weapon.name);
+                Assert.That(weapon.reloadClip, Is.SameAs(kit.rifleReload), weapon.name);
+            }
         }
 
         [Test]

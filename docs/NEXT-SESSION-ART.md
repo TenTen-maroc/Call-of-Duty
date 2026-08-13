@@ -1,12 +1,14 @@
 # The art session — a self-contained prompt
 
 > Status 2026-08-13: G8 is complete, green, committed, and was visually neutral.
-> G9a sources 1–3 are integrated: ten 1K ambientCG CC0 surfaces plus Poly Haven
+> G9a sources 1–4 are integrated: ten 1K ambientCG CC0 surfaces plus Poly Haven
 > Autoshop 01 as a 128 px specular reflection cubemap. The complete arena kit
 > adds 19 collider-free `Art` children while keeping the original 19
 > BoxColliders. Measured texture-memory deltas are 19.9 MB and 0.2 MB; Kenney adds
-> 18 CC0 clips and 0.8 MB measured audio memory at zero VRAM. Weapon and enemy
-> kits remain null. Sonniss is the next free source.
+> 18 CC0 clips and 0.8 MB measured audio memory at zero VRAM. A 67 KB trimmed
+> Sonniss subset replaces close/tail/reload on all eight weapons for another 0.4
+> MB audio memory and zero VRAM. Weapon and enemy visual kits remain null. Unity
+> Particle Pack is the remaining free source.
 
 Paste the block at the bottom into a fresh Claude Code session opened at the repo
 root. Everything above it is the reasoning behind the block; the block itself is
@@ -41,7 +43,7 @@ WHERE IT STANDS
 Eight weapons, a two-mission campaign, a wave loop with a shop, three drone
 archetypes, a full HDR grade, a separate viewmodel camera, tracers, per-surface
 impacts, and a hand-authored AudioMixer with footsteps and ambience routed
-through it. 242 tests (182 EditMode + 60 PlayMode), 8 guards, 9 clean assemblies,
+through it. 244 tests (184 EditMode + 60 PlayMode), 8 guards, 9 clean assemblies,
 a release .exe that boots. Unity 6000.0.81f1.
 
 THE IMAGE TODAY: 30 materials, ONE texture (procedurally generated), ZERO

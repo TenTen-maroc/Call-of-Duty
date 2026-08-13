@@ -43,6 +43,7 @@ namespace CoD.EditorTools
             if (!IsManagedPath(assetPath) || assetImporter is not AudioImporter importer) return;
 
             bool ambience = assetPath.Contains("/Ambience/", System.StringComparison.OrdinalIgnoreCase);
+            bool weaponRecording = assetPath.Contains("/Sonniss/Weapons/", System.StringComparison.OrdinalIgnoreCase);
             importer.forceToMono = true;
             importer.loadInBackground = ambience;
 
@@ -50,10 +51,10 @@ namespace CoD.EditorTools
             settings.loadType = ambience
                 ? AudioClipLoadType.CompressedInMemory
                 : AudioClipLoadType.DecompressOnLoad;
-            settings.compressionFormat = ambience
+            settings.compressionFormat = ambience || weaponRecording
                 ? AudioCompressionFormat.Vorbis
                 : AudioCompressionFormat.PCM;
-            settings.quality = ambience ? 0.55f : 1f;
+            settings.quality = ambience ? 0.55f : weaponRecording ? 0.8f : 1f;
             settings.preloadAudioData = true;
             importer.defaultSampleSettings = settings;
         }

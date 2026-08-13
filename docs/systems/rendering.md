@@ -467,6 +467,11 @@ the report documents itself as an editor estimate, not a player VRAM reading.
 The retained OGG payload is 578,632 bytes; final LFS totals are recorded in the
 source commit message.
 
+**G9a / Sonniss measurement (2026-08-13):** audio-only source, therefore **0 MB
+texture-VRAM delta**. Three trimmed OGG files add **0.4 MB** to `ArtReport`'s
+runtime audio estimate (1.2 MB total across 36 clips) and 67,181 bytes on disk.
+The 8.4 GB archive stays outside the repo; only exact ZIP members were range-read.
+
 The before/after Development-player captures were inspected frame by frame.
 Both menu PNGs are byte-identical. Arena frames preserve the same composition,
 geometry, materials, lighting and viewmodel; pixel variance is the harness's

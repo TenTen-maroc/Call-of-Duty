@@ -40,14 +40,15 @@ namespace CoD.EditorTools
             kit.confirm = Load("Interface/confirm.ogg");
             kit.refused = Load("Interface/refused.ogg");
 
-            if (!kit.HasCompleteAssignments)
-                throw new System.InvalidOperationException("Kenney audio kit did not resolve all 18 retained clips.");
+            if (!kit.HasKenneyAssignments)
+                throw new System.InvalidOperationException(
+                    $"Kenney audio kit did not resolve all {AudioKitConfig.KenneyAssignmentCount} retained clips.");
 
             EditorUtility.SetDirty(kit);
             AssetDatabase.SaveAssets();
             AssetDatabase.Refresh();
             AudioBuilder.Build();
-            Debug.Log("Kenney audio: wired 18 retained CC0 clips into the optional audio kit.");
+            Debug.Log("Kenney audio: wired 18 retained CC0 clips into the optional audio kit; weapon fields preserved.");
         }
 
         public static void BuildHeadless()

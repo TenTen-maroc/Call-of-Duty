@@ -118,8 +118,8 @@ namespace CoD.EditorTools
             AssetDatabase.SaveAssets();
             AssetDatabase.Refresh();
 
-            string clipState = kit != null && kit.HasCompleteAssignments
-                ? $"{AudioKitConfig.ExpectedAssignmentCount}-clip optional kit applied"
+            string clipState = kit != null && kit.HasKenneyAssignments
+                ? $"{AudioKitConfig.KenneyAssignmentCount}-clip Kenney section applied"
                 : "silent fallback applied";
             Debug.Log(
                 $"Audio config built: {FootstepPath} and {AmbiencePath}, {routed} output group(s) routed, " +
@@ -364,7 +364,7 @@ namespace CoD.EditorTools
         private static void ApplyOptionalKit(FootstepConfig footsteps, AmbienceConfig ambience,
             AudioKitConfig? kit)
         {
-            bool complete = kit != null && kit.HasCompleteAssignments;
+            bool complete = kit != null && kit.HasKenneyAssignments;
             if (footsteps.surfaces.Length > 0)
             {
                 footsteps.surfaces[0].stepClips = complete

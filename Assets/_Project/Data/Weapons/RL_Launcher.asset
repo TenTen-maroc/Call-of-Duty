@@ -69,10 +69,10 @@ MonoBehaviour:
   casingEjectSpeed: 2.4
   casingEjectUpKick: 1.2
   casingSpinMax: 25
-  fireCloseLayer: {fileID: 8300000, guid: 55691346b1b8736ee497e6b55c7a4e6b, type: 3}
-  fireTailLayer: {fileID: 8300000, guid: 9c89ddc94eeb7bfff85cc289c4351320, type: 3}
+  fireCloseLayer: {fileID: 8300000, guid: e766c3e77e0b43d40918fd3958782fbc, type: 3}
+  fireTailLayer: {fileID: 8300000, guid: 580d5cef57fe40448996da8dc7a2ada5, type: 3}
   dryFireClip: {fileID: 8300000, guid: d4eb67c03035d1cf3a420a3329ffadc1, type: 3}
-  reloadClip: {fileID: 8300000, guid: 21c305d77a740d3a605152777a6a7c57, type: 3}
+  reloadClip: {fileID: 8300000, guid: 58c0ea2cd5be57547aac3aaa1da6b42f, type: 3}
   muzzleFlashLifetime: 0.08
   cameraShakeAmplitude: 1.4
   muzzleLightDuration: 0.03

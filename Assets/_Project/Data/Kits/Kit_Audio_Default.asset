@@ -30,3 +30,6 @@ MonoBehaviour:
   droneDeath: {fileID: 8300000, guid: 774f27fb564ad0744b4b20eeb46b7c67, type: 3}
   confirm: {fileID: 8300000, guid: 8ed9c0338d4800448a3c7c6afb24b6a7, type: 3}
   refused: {fileID: 8300000, guid: 28e3ed72a386136438686950557a65da, type: 3}
+  rifleClose: {fileID: 8300000, guid: e766c3e77e0b43d40918fd3958782fbc, type: 3}
+  rifleTail: {fileID: 8300000, guid: 580d5cef57fe40448996da8dc7a2ada5, type: 3}
+  rifleReload: {fileID: 8300000, guid: 58c0ea2cd5be57547aac3aaa1da6b42f, type: 3}

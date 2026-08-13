@@ -26,11 +26,11 @@ obvious, emphasise the non-obvious.
 | [build.md](build.md) | Producing the Windows .exe, and the smoke test that proves it runs | ✅ |
 | [campaign.md](campaign.md) | Missions, objectives, the director seam, and why campaign is a save AXIS rather than a third `GameMode` | ⚠️ under construction |
 | [performance.md](performance.md) | The two caps under load, the allocation budget, what headless cannot prove | ✅ |
-| [audio.md](audio.md) | The hand-authored mixer, its gate, and the optional Kenney CC0 audio kit for footsteps, ambience, impacts and cues | ⚠️ never heard by a human |
+| [audio.md](audio.md) | The hand-authored mixer and optional Kenney + Sonniss kit for footsteps, ambience, impacts, cues and firearm layers | ⚠️ never heard by a human |
 
 ## Automated verification
 
-Beyond `typecheck.mjs` and the guards, the project has 242 tests (182 EditMode,
+Beyond `typecheck.mjs` and the guards, the project has 244 tests (184 EditMode,
 60 PlayMode):
 
 ```

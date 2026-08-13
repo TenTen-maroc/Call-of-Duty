@@ -2,8 +2,9 @@
 
 >
 > **Verified by machine: yes. Auditioned by a human: no.** The mixer gate, 18
-> retained Kenney clips, their import policy, exact asset references, EditMode and
-> PlayMode suites, player build and screenshots all pass. A headless machine can
+> retained Kenney clips, three trimmed Sonniss firearm clips, their import
+> policies, exact asset references, EditMode and PlayMode suites, player build
+> and screenshots all pass. A headless machine can
 > prove the graph and data; it cannot judge whether the mix sounds good.
 
 ## READ THIS FIRST: the mixer exists now, and nothing can regenerate it
@@ -150,21 +151,28 @@ moment costs no editor work.
 
 The player has **footsteps**, the arena has **room tone and four placed loops**,
 and the mixer routes both. G9a adds an optional `AudioKitConfig` with 18 retained
-Kenney CC0 clips: four footsteps, four surface impacts, three facility beds, five
-enemy/explosion cues and two interface cues. There is still no music, authored
-weapon recording, reverb effect or occlusion.
+Kenney CC0 clips—four footsteps, four surface impacts, three facility beds, five
+enemy/explosion cues and two interface cues—plus three trimmed Sonniss firearm
+clips shared across the arsenal's close, tail and reload layers. There is still
+no music, reverb effect or occlusion.
 
-The kit follows the art seam's all-null-or-all-complete contract. Complete means
-builders apply every retained clip; all-null means they clear those references
-back to silence or an existing deterministic placeholder. Mixed assignment is a
-gate failure. That fallback matters for reversibility, and every runtime path
-still treats a null clip or empty array as silence without warning spam.
+The kit follows the art seam's all-null-or-all-complete contract **per source
+section**. Kenney's 18 fields and Sonniss's three fields are each independently
+all-null or complete, so either source builder can be reproduced first; a mixed
+section is a gate failure. Complete sections replace their owned references;
+null sections restore silence or an existing deterministic placeholder. That
+fallback matters for reversibility, and every runtime path still treats a null
+clip or empty array as silence without warning spam.
 
-The three complete source archives remain outside the repo: 7,510,490 bytes
-downloaded, 578,632 bytes retained. Unity reports **0.8 MB runtime audio memory**
-for the retained set and **0 MB texture VRAM**. Short cues are mono PCM and
-decompress-on-load; the three five-second ambience loops are mono Vorbis and
-compressed-in-memory.
+Kenney's three complete source archives remain outside the repo: 7,510,490 bytes
+downloaded, 578,632 bytes retained. The 8.4 GB Sonniss archive was never
+downloaded whole: ZIP64 metadata and three exact compressed members were fetched
+by byte range, producing 67,181 retained bytes. Unity reports **1.2 MB runtime
+audio memory** for both sources and **0 MB texture VRAM**. Kenney's short cues are
+mono PCM and decompress-on-load; its three five-second ambience loops are mono
+Vorbis and compressed-in-memory. The three mono Sonniss weapon clips are Vorbis
+and decompress-on-load. Exact provenance and edits are recorded in
+[`Sonniss/SOURCE.md`](../../Assets/_Project/Art/Imported/Sonniss/SOURCE.md).
 
 ## Data Assets
 
@@ -492,7 +500,7 @@ SceneWiring: added N component(s), rewired M reference(s), unresolved K  [Assets
   judge cadence, repetition, loudness and whether the facility beds loop cleanly.
 - **The Reverb bus has no effects.** Receive, Send and SFX Reverb still require
   the documented editor clicks followed by an audible tuning pass.
-- **Weapon close/tail, hitmarker, dry-fire and reload remain synthesized
-  placeholders.** Kenney deliberately does not pretend to be a recorded firearm
-  library; Sonniss is the next free-source candidate for that role.
+- **Hitmarker, dry-fire and player-hurt remain synthesized placeholders.** The
+  Sonniss close/tail/reload subset is wired across all eight weapons, but has not
+  been auditioned against gameplay or independently varied per weapon.
 - **There is no music or occlusion.** Neither belongs in this source commit.

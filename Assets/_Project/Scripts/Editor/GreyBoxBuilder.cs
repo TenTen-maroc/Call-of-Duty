@@ -292,18 +292,18 @@ namespace CoD.EditorTools
 
             SetRef(smg, "muzzleFlashPrefab", flash);
             SetRef(smg, "shellCasingPrefab", casing);
-            SetRef(smg, "fireCloseLayer", LoadClip("Fire_AR_Close"));
-            SetRef(smg, "fireTailLayer", LoadClip("Fire_AR_Tail"));
+            SetRef(smg, "fireCloseLayer", Prefer(audioKit.rifleClose, "Fire_AR_Close"));
+            SetRef(smg, "fireTailLayer", Prefer(audioKit.rifleTail, "Fire_AR_Tail"));
             SetRef(smg, "dryFireClip", LoadClip("DryFire"));
-            SetRef(smg, "reloadClip", LoadClip("Reload_AR"));
+            SetRef(smg, "reloadClip", Prefer(audioKit.rifleReload, "Reload_AR"));
             EditorUtility.SetDirty(smg);
 
             SetRef(rifle, "muzzleFlashPrefab", flash);
             SetRef(rifle, "shellCasingPrefab", casing);
-            SetRef(rifle, "fireCloseLayer", LoadClip("Fire_AR_Close"));
-            SetRef(rifle, "fireTailLayer", LoadClip("Fire_AR_Tail"));
+            SetRef(rifle, "fireCloseLayer", Prefer(audioKit.rifleClose, "Fire_AR_Close"));
+            SetRef(rifle, "fireTailLayer", Prefer(audioKit.rifleTail, "Fire_AR_Tail"));
             SetRef(rifle, "dryFireClip", LoadClip("DryFire"));
-            SetRef(rifle, "reloadClip", LoadClip("Reload_AR"));
+            SetRef(rifle, "reloadClip", Prefer(audioKit.rifleReload, "Reload_AR"));
             EditorUtility.SetDirty(rifle);
 
             BuildGreyBoxScene(game, settings, loadout, impact, grey, wall, targetMat, gunmetal, gunAccent,

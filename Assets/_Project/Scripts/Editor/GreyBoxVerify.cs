@@ -451,7 +451,7 @@ namespace CoD.EditorTools
             // A Shooter with no projectile prefab aims, fires, and produces
             // nothing — the drone looks like it is working and does no damage.
             CheckAssetRef(rangedBurst, "projectilePrefab", stillNull);
-            if (audioKit != null && audioKit.HasCompleteAssignments)
+            if (audioKit != null && audioKit.HasKenneyAssignments)
             {
                 CheckAssetRef(detonate, "alertClip", stillNull);
                 CheckAssetRef(rangedBurst, "fireClip", stillNull);
@@ -469,6 +469,15 @@ namespace CoD.EditorTools
             CheckAssetRef(rifle, "shellCasingPrefab", stillNull);
             CheckAssetRef(smg, "muzzleFlashPrefab", stillNull);
             CheckAssetRef(smg, "shellCasingPrefab", stillNull);
+            if (audioKit != null && audioKit.HasSonnissAssignments)
+            {
+                CheckAssetRef(rifle, "fireCloseLayer", stillNull);
+                CheckAssetRef(rifle, "fireTailLayer", stillNull);
+                CheckAssetRef(rifle, "reloadClip", stillNull);
+                CheckAssetRef(smg, "fireCloseLayer", stillNull);
+                CheckAssetRef(smg, "fireTailLayer", stillNull);
+                CheckAssetRef(smg, "reloadClip", stillNull);
+            }
 
             VerifyKits(stillNull);
             VerifyArenaArtSeam(scene, stillNull);

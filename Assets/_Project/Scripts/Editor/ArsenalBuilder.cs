@@ -47,6 +47,7 @@ namespace CoD.EditorTools
         private const string DataWeapons = "Assets/_Project/Data/Weapons";
         private const string Prefabs = "Assets/_Project/Prefabs";
         private const string Audio = "Assets/_Project/Audio";
+        private const string AudioKitPath = "Assets/_Project/Data/Kits/Kit_Audio_Default.asset";
 
         /// <summary>The registry WeaponDataTests cross-checks against the folder scan, in both directions.</summary>
         private const string RegistryPath = DataWeapons + "/Weapons.asset";
@@ -108,6 +109,9 @@ namespace CoD.EditorTools
             // route around.
             WeaponConfig rifle = LoadShipped(RiflePath);
             WeaponConfig smg = LoadShipped(SmgPath);
+            AudioKitConfig? audioKit = AssetDatabase.LoadAssetAtPath<AudioKitConfig>(AudioKitPath);
+            if (audioKit != null && !audioKit.IsValid)
+                throw new System.InvalidOperationException(AudioKitPath + " has mixed null/non-null references.");
 
             // ---- the four new weapons ------------------------------------
             // Ordered by how much of the "weapons are data" claim each one tests:
@@ -169,15 +173,15 @@ namespace CoD.EditorTools
             // pool entry and without the first shot of a new gun allocating.
             GameObject? flash = Load<GameObject>(Prefabs + "/Fx_MuzzleFlash.prefab");
             GameObject? casing = Load<GameObject>(Prefabs + "/Fx_ShellCasing.prefab");
-            AudioClip? fireClose = Load<AudioClip>(Audio + "/Fire_AR_Close.wav");
-            AudioClip? fireTail = Load<AudioClip>(Audio + "/Fire_AR_Tail.wav");
+            AudioClip? fireClose = audioKit?.rifleClose ?? Load<AudioClip>(Audio + "/Fire_AR_Close.wav");
+            AudioClip? fireTail = audioKit?.rifleTail ?? Load<AudioClip>(Audio + "/Fire_AR_Tail.wav");
             AudioClip? dryFire = Load<AudioClip>(Audio + "/DryFire.wav");
-            AudioClip? reload = Load<AudioClip>(Audio + "/Reload_AR.wav");
+            AudioClip? reload = audioKit?.rifleReload ?? Load<AudioClip>(Audio + "/Reload_AR.wav");
 
             WeaponConfig[] authored = { pistol, marksman, lmg, shotgun, launcher, sniper };
             foreach (WeaponConfig weapon in authored)
             {
-                AdoptHouseFeedback(weapon, flash, casing, fireClose, fireTail, dryFire, reload);
+                ApplyHouseFeedback(weapon, flash, casing, fireClose, fireTail, dryFire, reload);
             }
 
             // ---- the registry --------------------------------------------
@@ -1017,16 +1021,16 @@ namespace CoD.EditorTools
         /// where the slot is empty. See the call site for why the direction
         /// matters: an empty slot is a silent gun, a filled one is a decision.
         /// </summary>
-        private static void AdoptHouseFeedback(WeaponConfig weapon, GameObject? flash, GameObject? casing,
+        private static void ApplyHouseFeedback(WeaponConfig weapon, GameObject? flash, GameObject? casing,
             AudioClip? fireClose, AudioClip? fireTail, AudioClip? dryFire, AudioClip? reload)
         {
             bool changed = false;
             if (weapon.muzzleFlashPrefab == null && flash != null) { weapon.muzzleFlashPrefab = flash; changed = true; }
             if (weapon.shellCasingPrefab == null && casing != null) { weapon.shellCasingPrefab = casing; changed = true; }
-            if (weapon.fireCloseLayer == null && fireClose != null) { weapon.fireCloseLayer = fireClose; changed = true; }
-            if (weapon.fireTailLayer == null && fireTail != null) { weapon.fireTailLayer = fireTail; changed = true; }
+            if (weapon.fireCloseLayer != fireClose) { weapon.fireCloseLayer = fireClose; changed = true; }
+            if (weapon.fireTailLayer != fireTail) { weapon.fireTailLayer = fireTail; changed = true; }
             if (weapon.dryFireClip == null && dryFire != null) { weapon.dryFireClip = dryFire; changed = true; }
-            if (weapon.reloadClip == null && reload != null) { weapon.reloadClip = reload; changed = true; }
+            if (weapon.reloadClip != reload) { weapon.reloadClip = reload; changed = true; }
             if (changed) EditorUtility.SetDirty(weapon);
         }
 

@@ -21,7 +21,7 @@ the impression is made by five things, in this order:
 | 1 | **The gun on screen** — it is 30% of every frame, forever | ✅ own camera, no wall clipping, no FOV warp. Still 8 grey cubes. |
 | 2 | **Impact feedback** — what happens when you shoot a thing | ⚠️ sparks + a flat quad. No tracers, no decal projection, one surface type. |
 | 3 | **Light and grade** — contrast, colour separation, a coherent look | ✅ HDR grade, cool/warm split, SSAO, fog. ❌ no reflections, no cookies. |
-| 4 | **Audio** — arguably half the perceived production value | ⚠️ mixer + 18 retained CC0 clips now cover footsteps, ambience, impacts, enemies and UI; firearm recordings, reverb effects and music remain. |
+| 4 | **Audio** — arguably half the perceived production value | ⚠️ mixer + 18 retained CC0 clips cover footsteps, ambience, impacts, enemies and UI; three trimmed royalty-free clips cover firearm close/tail/reload. Reverb effects, music and an audible mix pass remain. |
 | 5 | **Geometry and texture** — the thing everyone thinks is #1 | ❌ 100% primitives. One generated texture. |
 
 **Items 1–4 are almost entirely code and discipline. Item 5 is the only one that
@@ -141,9 +141,10 @@ genuinely the biggest lighting upgrade available, at the cost of a bake step and
 
 ## G5 — Audio *(~3–4 sessions, and worth more than it looks)*
 
-The implementation now has a mixer, footsteps, ambience and an optional 18-clip
-CC0 kit. Music, recorded firearm layers, reverb effects and audible tuning remain;
-this is still plausibly the largest gap between this and a commercial shooter.
+The implementation now has a mixer, footsteps, ambience, an optional 18-clip CC0
+Kenney section and a three-clip royalty-free Sonniss firearm section. Music,
+reverb effects, per-weapon variation and audible tuning remain; this is still
+plausibly the largest gap between this and a commercial shooter.
 
 - **`Master.mixer` is the one asset the builder cannot generate** —
   `AudioMixerController` is internal and has no public creation API. Author it by
@@ -232,7 +233,7 @@ forty 4K textures.
 | **ambientCG** | CC0 | ✅ 2026-08-13 — ten 1K industrial surfaces integrated; Color + NormalGL only, 19.9 MB measured texture-memory delta. |
 | **Poly Haven** | CC0 | ✅ 2026-08-13 — Autoshop 01 imported as a 128 px linear specular cubemap; procedural sky remains visible, 0.2 MB measured texture-memory delta. |
 | **Kenney** | CC0 | ✅ 2026-08-13 — 18 retained clips for footsteps, impacts, ambience, enemies/explosions and interface feedback; 0 MB VRAM, 0.8 MB measured audio memory. |
-| **Sonniss GDC bundle** | royalty-free | Free annually, hundreds of GB of gun tails, impacts, room tone. **Keep it entirely outside the repo**; export trimmed clips only. |
+| **Sonniss GDC bundle** | royalty-free | ✅ 2026-08-13 — archive kept outside repo; exact ranged extraction produced three edited firearm clips (67 KB) for close/tail/reload, 0 MB VRAM and +0.4 MB audio memory. |
 | **Unity Particle Pack** | free | URP-compatible VFX. |
 
 **Then paid, one pack at a time, each its own commit with its own VRAM

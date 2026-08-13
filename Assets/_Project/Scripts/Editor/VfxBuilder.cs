@@ -186,7 +186,7 @@ namespace CoD.EditorTools
             AudioKitConfig? audioKit = AssetDatabase.LoadAssetAtPath<AudioKitConfig>(AudioKitPath);
             if (audioKit != null && !audioKit.IsValid)
                 throw new System.InvalidOperationException(AudioKitPath + " has mixed null/non-null references.");
-            bool authoredAudio = audioKit != null && audioKit.HasCompleteAssignments;
+            bool authoredAudio = audioKit != null && audioKit.HasKenneyAssignments;
 
             WriteSurface(impact, SurfaceType.Concrete, "Default", decal, concreteFx,
                 authoredAudio ? audioKit!.impactConcrete : LoadClip(ConcreteClip, missingClips), volume: 0.5f);

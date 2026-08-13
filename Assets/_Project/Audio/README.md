@@ -27,8 +27,9 @@ Inspector.
 Import settings are forced by the builder: mono, PCM, decompress-on-load — a
 gunshot decoded on the audio thread is a hitch where latency is most audible.
 
-The G9a Kenney source is separate from these placeholders. Its optional
-`AudioKitConfig` supplies footsteps, surface impacts, facility ambience,
-enemy/explosion cues and interface feedback. Weapon close/tail layers,
-hitmarkers, dry-fire and reload remain the deterministic placeholders listed
-above until a later source replaces them.
+The G9a optional `AudioKitConfig` supersedes selected placeholders by data. Kenney
+supplies footsteps, surface impacts, facility ambience, enemy/explosion cues and
+interface feedback. The trimmed Sonniss subset supplies firearm close, tail and
+reload layers across all eight weapons. Hitmarkers and dry-fire remain the
+deterministic placeholders listed above; nulling the kit restores all fallback
+references on the next builder pass.
