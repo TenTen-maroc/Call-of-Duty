@@ -23,13 +23,19 @@ namespace CoD.Core
         public GameObject? wallModule;
         public Material? wallMaterial;
 
+        [Header("Interior reflection — procedural sky remains the visible background")]
+        public Cubemap? reflectionCubemap;
+        [Range(0f, 1f)] public float reflectionIntensity = 0.35f;
+
         public bool HasNoAssignments =>
             floorModule == null && floorMaterial == null &&
-            wallModule == null && wallMaterial == null;
+            wallModule == null && wallMaterial == null &&
+            reflectionCubemap == null;
 
         public bool HasCompleteAssignments =>
             floorModule != null && floorMaterial != null &&
-            wallModule != null && wallMaterial != null;
+            wallModule != null && wallMaterial != null &&
+            reflectionCubemap != null;
 
         public bool IsValid => HasNoAssignments || HasCompleteAssignments;
     }

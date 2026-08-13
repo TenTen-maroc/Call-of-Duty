@@ -64,6 +64,21 @@ namespace CoD.EditorTools
             importer.crunchedCompression = false;
             importer.maxTextureSize = IsHighDetailTexture(path) ? 2048 : 1024;
 
+            if (IsReflectionCubemap(path))
+            {
+                importer.textureType = TextureImporterType.Default;
+                importer.textureShape = TextureImporterShape.TextureCube;
+                importer.generateCubemap = TextureImporterGenerateCubemap.AutoCubemap;
+                importer.sRGBTexture = false;
+                importer.maxTextureSize = 128;
+
+                var settings = new TextureImporterSettings();
+                importer.ReadTextureSettings(settings);
+                settings.cubemapConvolution = TextureImporterCubemapConvolution.Specular;
+                importer.SetTextureSettings(settings);
+                return;
+            }
+
             string lower = path.ToLowerInvariant();
             if (lower.Contains("_normal.") || lower.Contains("_normalgl.") ||
                 lower.Contains("_normaldx.") || lower.Contains("_n.") ||
@@ -72,6 +87,14 @@ namespace CoD.EditorTools
                 importer.textureType = TextureImporterType.NormalMap;
                 importer.sRGBTexture = false;
             }
+        }
+
+        private static bool IsReflectionCubemap(string path)
+        {
+            string lower = path.ToLowerInvariant();
+            return lower.Contains("/polyhaven/") &&
+                   (lower.EndsWith(".hdr", System.StringComparison.Ordinal) ||
+                    lower.EndsWith(".exr", System.StringComparison.Ordinal));
         }
 
         private static void ApplyModelPolicy(ModelImporter importer, string path)

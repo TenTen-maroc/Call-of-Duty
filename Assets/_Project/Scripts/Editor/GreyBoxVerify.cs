@@ -561,6 +561,16 @@ namespace CoD.EditorTools
                 stillNull.Add($"Room (empty arena kit retained {artCount} Art children)");
             if (kit.HasCompleteAssignments && artCount != gameplayBoxes.Length)
                 stillNull.Add($"Room (Art children {artCount}, gameplay BoxColliders {gameplayBoxes.Length})");
+
+            if (kit.HasCompleteAssignments)
+            {
+                if (RenderSettings.defaultReflectionMode != UnityEngine.Rendering.DefaultReflectionMode.Custom)
+                    stillNull.Add("Room (complete arena kit is not using custom reflections)");
+                if (RenderSettings.customReflectionTexture != kit.reflectionCubemap)
+                    stillNull.Add("Room (custom reflection does not match ArenaKitConfig)");
+                if (!Mathf.Approximately(RenderSettings.reflectionIntensity, kit.reflectionIntensity))
+                    stillNull.Add("Room (reflection intensity does not match ArenaKitConfig)");
+            }
         }
 
         /// <summary>

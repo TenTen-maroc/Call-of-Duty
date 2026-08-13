@@ -39,6 +39,9 @@ namespace CoD.Tests
                 Does.StartWith("Assets/_Project/Art/Imported/AmbientCG/"));
             Assert.That(AssetDatabase.GetAssetPath(arena.wallMaterial),
                 Does.EndWith("/Concrete031.mat"));
+            Assert.That(AssetDatabase.GetAssetPath(arena.reflectionCubemap),
+                Does.EndWith("/PolyHaven/autoshop_01_1k.hdr"));
+            Assert.That(arena.reflectionIntensity, Is.EqualTo(0.35f));
         }
 
         [Test]
@@ -47,6 +50,7 @@ namespace CoD.Tests
             ArenaKitConfig kit = ScriptableObject.CreateInstance<ArenaKitConfig>();
             GameObject module = GameObject.CreatePrimitive(PrimitiveType.Cube);
             Material material = NewMaterial();
+            var reflection = new Cubemap(4, TextureFormat.RGBA32, false);
             try
             {
                 kit.floorModule = module;
@@ -55,12 +59,16 @@ namespace CoD.Tests
                 kit.floorMaterial = material;
                 kit.wallModule = module;
                 kit.wallMaterial = material;
+                Assert.That(kit.IsValid, Is.False);
+
+                kit.reflectionCubemap = reflection;
                 Assert.That(kit.HasCompleteAssignments && kit.IsValid, Is.True);
             }
             finally
             {
                 Object.DestroyImmediate(module);
                 Object.DestroyImmediate(material);
+                Object.DestroyImmediate(reflection);
                 Object.DestroyImmediate(kit);
             }
         }
@@ -133,6 +141,27 @@ namespace CoD.Tests
             Assert.That(unitBlock, Is.Not.Null);
             Assert.That(unitBlock!.GetComponentsInChildren<Renderer>(true), Is.Not.Empty);
             Assert.That(unitBlock.GetComponentsInChildren<Collider>(true), Is.Empty);
+        }
+
+        [Test]
+        public void PolyHavenReflection_IsA128PixelLinearSpecularCubemap()
+        {
+            const string path = "Assets/_Project/Art/Imported/PolyHaven/autoshop_01_1k.hdr";
+            Cubemap? reflection = AssetDatabase.LoadAssetAtPath<Cubemap>(path);
+            var importer = AssetImporter.GetAtPath(path) as TextureImporter;
+
+            Assert.That(reflection, Is.Not.Null);
+            Assert.That(reflection!.width, Is.EqualTo(128));
+            Assert.That(importer, Is.Not.Null);
+            Assert.That(importer!.maxTextureSize, Is.EqualTo(128));
+            Assert.That(importer.textureShape, Is.EqualTo(TextureImporterShape.TextureCube));
+            Assert.That(importer.generateCubemap, Is.EqualTo(TextureImporterGenerateCubemap.AutoCubemap));
+            Assert.That(importer.sRGBTexture, Is.False);
+
+            var settings = new TextureImporterSettings();
+            importer.ReadTextureSettings(settings);
+            Assert.That(settings.cubemapConvolution,
+                Is.EqualTo(TextureImporterCubemapConvolution.Specular));
         }
 
         [Test]

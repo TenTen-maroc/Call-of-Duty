@@ -48,7 +48,10 @@ namespace CoD.EditorTools
         [MenuItem("CoD/Report Texture Budget", false, 40)]
         public static void ReportTextureBudget()
         {
-            string[] guids = AssetDatabase.FindAssets("t:Texture2D", new[] { ProjectRoot });
+            // `t:Texture2D` silently excludes imported HDR cubemaps. The first
+            // Poly Haven reflection exposed that blind spot: the report would
+            // have claimed zero delta for the one source it was meant to measure.
+            string[] guids = AssetDatabase.FindAssets("t:Texture", new[] { ProjectRoot });
 
             var byFolder = new Dictionary<string, FolderTotal>();
             var textures = new List<TextureEntry>(guids.Length);
@@ -64,7 +67,7 @@ namespace CoD.EditorTools
                 // local "maybe null" and every use below it warns under
                 // #nullable enable. A freshly loaded asset is never a destroyed
                 // object, so the two tests mean the same thing here.
-                Texture2D? texture = AssetDatabase.LoadAssetAtPath<Texture2D>(path);
+                Texture? texture = AssetDatabase.LoadAssetAtPath<Texture>(path);
                 if (texture is null) continue;
 
                 long bytes = UnityEngine.Profiling.Profiler.GetRuntimeMemorySizeLong(texture);
@@ -85,7 +88,7 @@ namespace CoD.EditorTools
                     Bytes = bytes,
                     Width = texture.width,
                     Height = texture.height,
-                    Format = texture.format.ToString(),
+                    Format = FormatOf(texture),
                 });
             }
 
@@ -214,6 +217,13 @@ namespace CoD.EditorTools
         }
 
         private static string Megabytes(long bytes) => (bytes / 1000000.0).ToString("F1");
+
+        private static string FormatOf(Texture texture) => texture switch
+        {
+            Texture2D texture2D => texture2D.format.ToString(),
+            Cubemap cubemap => cubemap.format.ToString(),
+            _ => texture.graphicsFormat.ToString(),
+        };
 
         private static string FolderOf(string assetPath)
         {

@@ -229,7 +229,7 @@ forty 4K textures.
 | Source | Licence | What it gives |
 | --- | --- | --- |
 | **ambientCG** | CC0 | ✅ 2026-08-13 — ten 1K industrial surfaces integrated; Color + NormalGL only, 19.9 MB measured texture-memory delta. |
-| **Poly Haven** | CC0 | HDRIs. One → a 128 cubemap fixes the reflection fallback for ~1 MB. |
+| **Poly Haven** | CC0 | ✅ 2026-08-13 — Autoshop 01 imported as a 128 px linear specular cubemap; procedural sky remains visible, 0.2 MB measured texture-memory delta. |
 | **Kenney** | CC0 | Impact, sci-fi and interface sounds. Genuinely shippable for a stylised game. |
 | **Sonniss GDC bundle** | royalty-free | Free annually, hundreds of GB of gun tails, impacts, room tone. **Keep it entirely outside the repo**; export trimmed clips only. |
 | **Unity Particle Pack** | free | URP-compatible VFX. |

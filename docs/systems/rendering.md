@@ -118,6 +118,14 @@ checks the regenerated room has one collider-free `Art` child for every gameplay
 `BoxCollider`; the source prefab being clean is not accepted as proof that a
 future imported hierarchy was stripped correctly.
 
+The second complete source is Poly Haven's CC0 **Autoshop 01** HDRI, documented
+in [`SOURCE.md`](../../Assets/_Project/Art/Imported/PolyHaven/SOURCE.md). Unity
+imports the official 1K HDR source as a linear, specular-convolved cubemap capped
+at 128 px per face. It is assigned through `ArenaKitConfig` as **reflection data
+only**: `RenderSettings.skybox` remains the dim procedural interior, while custom
+reflections give metal something plausible to read. This preserves the sealed
+facility silhouette instead of exposing a photographed garage above the walls.
+
 - **Palette_GreyBox.asset** (`Assets/_Project/Data/Game/`, a `PaletteConfig`) —
   every colour the arena is built from, and the fix for a whole bug CLASS.
   `LoadOrCreateMaterial` returns an existing `.mat` untouched — right for a value
@@ -423,8 +431,8 @@ on a 3 m crate. The same forty at 1024 is 56 MB, or 42 MB if the albedos go to
 BC1. Weapons and hands may sit at 2048 because the viewmodel fills a third of the
 screen for the entire run; nothing else earns it.
 
-Where the project stands right now: **21 textures** — the generated 1024 detail
-normal plus 20 ambientCG maps. There is enormous headroom. This is a discipline
+Where the project stands right now: **22 textures** — the generated 1024 detail
+normal, 20 ambientCG maps and one 128 px Poly Haven cubemap. There is enormous headroom. This is a discipline
 problem, not a capacity problem, and the guards exist so it stays controlled — including
 [guard-lfs-budget.mjs](../../Tools/guards/guard-lfs-budget.mjs), because the
 other price of a 4K import is an LFS object that is billed forever.
@@ -443,6 +451,13 @@ streaming mipmaps; normal maps are DXT5 and color maps are DXT1. This editor-sid
 figure deliberately overstates the built player because eight variation
 materials are not referenced by a scene yet.
 
+**G9a / Poly Haven measurement (2026-08-13):** `ArtReport` reports **21.5 MB
+across 22 textures**, a **0.2 MB texture-memory delta** from ambientCG's 21.3 MB
+state. The source HDR is 1.6 MB on disk but imports as a 128 px convolved
+cubemap; final LFS object/quota totals are recorded in the source commit message.
+`ArtReport` now scans the base `Texture` type because `Texture2D` silently omitted
+imported cubemaps and would have falsely reported zero delta for this source.
+
 The before/after Development-player captures were inspected frame by frame.
 Both menu PNGs are byte-identical. Arena frames preserve the same composition,
 geometry, materials, lighting and viewmodel; pixel variance is the harness's
@@ -453,7 +468,7 @@ delta is attributable to the null-kit seam.
 
 `CoD → Report Texture Budget`
 ([ArtReport.cs](../../Assets/_Project/Scripts/Editor/ArtReport.cs)) prints the
-running total by folder against these two numbers. Its figures are editor-side
+running total for Texture2D and Cubemap assets by folder against these two numbers. Its figures are editor-side
 and **overstate** a shipping player.
 
 ### Nothing here can measure frame time

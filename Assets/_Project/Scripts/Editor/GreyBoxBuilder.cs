@@ -1695,13 +1695,22 @@ namespace CoD.EditorTools
             Material interiorSky = LoadOrCreateSkybox(Materials + "/Sky_Interior.mat", palette);
             ApplyInteriorSky(interiorSky, palette);
             RenderSettings.skybox = interiorSky;
-            RenderSettings.defaultReflectionMode = UnityEngine.Rendering.DefaultReflectionMode.Skybox;
-            RenderSettings.customReflectionTexture = null;
+            if (arenaKit.reflectionCubemap == null)
+            {
+                RenderSettings.defaultReflectionMode = UnityEngine.Rendering.DefaultReflectionMode.Skybox;
+                RenderSettings.customReflectionTexture = null;
+                RenderSettings.reflectionIntensity = 0.45f;
+            }
+            else
+            {
+                // The cubemap is reflection DATA, not the visible sky. Showing a
+                // photographed garage above these walls would reopen the sealed-
+                // bunker bug the procedural sky exists to prevent.
+                RenderSettings.defaultReflectionMode = UnityEngine.Rendering.DefaultReflectionMode.Custom;
+                RenderSettings.customReflectionTexture = arenaKit.reflectionCubemap;
+                RenderSettings.reflectionIntensity = arenaKit.reflectionIntensity;
+            }
             RenderSettings.ambientIntensity = 1f;
-            // Well under 1: this is a dim room, not a chrome showroom. High
-            // enough that metal reads as metal, low enough that it never
-            // competes with the emissive drone cores for the eye.
-            RenderSettings.reflectionIntensity = 0.45f;
 
             BuildPostFx(postFx);
 

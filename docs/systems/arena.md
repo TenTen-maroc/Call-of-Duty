@@ -60,6 +60,12 @@ has a renderer and zero colliders. This matters because collision
 tests would remain green on a half-art, half-grey scene: mixed presentation is a
 visual failure, not a gameplay-reference failure.
 
+The arena kit also carries the optional reflection source. Poly Haven's CC0
+Autoshop 01 is imported as a 128 px linear specular cubemap at intensity 0.35.
+It never becomes the visible sky: the procedural interior material still closes
+the top of the arena, and the HDRI only changes what metallic surfaces reflect.
+The verifier checks the cubemap reference and intensity survive scene reload.
+
 ## Lighting, trim and the beacon (2026-08-11)
 
 **Not verified in play.**
