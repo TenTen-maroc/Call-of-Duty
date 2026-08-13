@@ -413,7 +413,9 @@ DO NEXT, in this order — each is free and worth more than the paid art that fo
       ALSO PICKS UP W5's two deferred pieces: the sniper's scope overlay and
       hold-breath, both of which need the sway config this milestone creates.
   G8  the art seam. THE GATE: nothing is bought until this lands, because it is
-      what makes an art swap reversible.
+      what makes an art swap reversible. IT HAS ITS OWN SELF-CONTAINED HANDOFF —
+      docs/NEXT-SESSION-ART.md — because art is the one track where a wrong move
+      costs money and VRAM rather than a git revert.
   E2-E5 human soldiers, C8 data-driven arenas, missions 3-12.
 
 THE GATES, every commit:
