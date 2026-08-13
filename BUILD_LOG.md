@@ -34,3 +34,10 @@
 [RESULT] Visual gate — 9/9 Mission 2 frames opened and reviewed; camera, unlock, rig height, projectile staging, gore material, and NavMesh-console defects fixed and recaptured
 [MANUAL] Mission feel, animation foot contact, outdoor/combat audio mix, and RTX 3050 1080p frame time remain human-only gates
 [DONE] Mission 2 Vertical Slice — Tazir Pass Outpost — 2026-08-13
+
+[START] Campaign Access Fix — 2026-08-13
+[STEP]  CAF.1 — remove sequential mission gate — done
+[STEP]  CAF.2 — add fresh-save menu regression coverage — done
+[STEP]  CAF.3 — rebuild and verify Windows players — done
+[RESULT] Fresh-save campaign menu exposes HARD CONTACT without a lock; EditMode 199/199, PlayMode 65/65, 13 built-player frames, and release smoke test passed
+[DONE] Campaign Access Fix — 2026-08-13

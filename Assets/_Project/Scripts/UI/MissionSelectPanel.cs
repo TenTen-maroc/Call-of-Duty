@@ -17,10 +17,10 @@ namespace CoD.UI
     /// MonoBehaviour execution order is undefined. Same contract as
     /// SettingsPanel, deliberately.
     ///
-    /// Missions unlock in order: the first unfinished one is playable and
-    /// everything past it is not. Ordered content wants an ordered gate, and it
-    /// also means a save with no records has exactly one legal choice, which is
-    /// the least confusing first screen a campaign can have.
+    /// Every authored mission is selectable from a fresh save. Completion
+    /// records remain visible as history, but they are not access gates: a
+    /// player reviewing a new slice should not have to clear older prototype
+    /// content before reaching it.
     /// </summary>
     [DisallowMultipleComponent]
     public sealed class MissionSelectPanel : MonoBehaviour
@@ -88,30 +88,11 @@ namespace CoD.UI
             if (MenuInput.ConfirmPressed()) Launch(_cursor.Index);
         }
 
-        /// <summary>
-        /// The highest mission index the player may start: the first one without
-        /// a completed record.
-        /// </summary>
-        private int HighestUnlocked()
-        {
-            if (_catalog == null || _settings == null) return 0;
-            for (int i = 0; i < _catalog.Count; i++)
-            {
-                MissionConfig? mission = _catalog.At(i);
-                if (mission == null) return i;
-                MissionRecord? record = _settings.FindRecord(mission.stableId);
-                if (record == null || !record.completed) return i;
-            }
-            // Everything is finished; the last one stays replayable.
-            return Mathf.Max(0, _catalog.Count - 1);
-        }
-
         private void Launch(int index)
         {
             if (_catalog == null || _settings == null) return;
             MissionConfig? mission = _catalog.At(index);
             if (mission == null) return;
-            if (index > HighestUnlocked()) return;
 
             // Both halves of the channel, in one write: campaign is a save AXIS,
             // and the mission id is what the director resolves on the other side.
@@ -144,10 +125,9 @@ namespace CoD.UI
                 }
                 else
                 {
-                    int unlocked = HighestUnlocked();
                     for (int i = 0; i < _catalog.Count; i++)
                     {
-                        AppendMission(i, unlocked);
+                        AppendMission(i);
                     }
                 }
 
@@ -157,21 +137,13 @@ namespace CoD.UI
             if (_footerLabel != null) _footerLabel.text = "W/S) move    ENTER) start    ESC) back";
         }
 
-        private void AppendMission(int index, int unlocked)
+        private void AppendMission(int index)
         {
             MissionConfig? mission = _catalog != null ? _catalog.At(index) : null;
             if (mission == null) return;
 
             _builder.Append(_cursor.Index == index ? ">  " : "   ");
             _builder.Append(index + 1).Append(". ");
-
-            if (index > unlocked)
-            {
-                // Named but not described: knowing a mission exists is part of
-                // the pull, and knowing what happens in it is not.
-                _builder.Append("[LOCKED]").Append('\n');
-                return;
-            }
 
             _builder.Append(mission.displayName);
 

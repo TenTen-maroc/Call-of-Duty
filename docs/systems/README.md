@@ -31,8 +31,8 @@ obvious, emphasise the non-obvious.
 
 ## Automated verification
 
-Beyond `typecheck.mjs` and the guards, the project has 263 tests (199 EditMode,
-64 PlayMode):
+Beyond `typecheck.mjs` and the guards, the project has 264 tests (199 EditMode,
+65 PlayMode):
 
 ```
 Unity.exe -batchmode -runTests -projectPath . -testPlatform EditMode -testResults Logs/tests-editmode.xml

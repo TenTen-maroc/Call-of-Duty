@@ -1,7 +1,7 @@
 # Menus — main menu, pause, settings page
 
-> Last verified: 2026-08-12
-> **Verified in play:** no. Compiled, gated, and covered by 7 PlayMode tests
+> Last verified: 2026-08-13
+> **Verified in play:** campaign routing reached by the user. Compiled, gated, and covered by 8 PlayMode tests
 > (scene loads, panels present, timeScale, input blocking, settings reaching the
 > camera). Whether the screens *read* well is a play question.
 
@@ -133,10 +133,10 @@ polls the keyboard from its own `Update`: two components reading the same key in
 one frame is a race, because MonoBehaviour execution order is undefined, and the
 menu already learned that once.
 
-**Missions unlock in order.** The first mission with no completed record is
-playable and everything past it is locked — a locked row shows its number and
-`[LOCKED]` but not its name, because knowing a mission exists is part of the
-pull and knowing what happens in it is not.
+**Every authored mission is available immediately.** Completion records still
+show `COMPLETE`, rating, and deaths, but they do not gate later slices. This is
+intentional while the campaign is being reviewed: `HARD CONTACT` must be
+reachable from a fresh save without forcing a `SHAKEDOWN` clear first.
 
 ### The one line in this file that is load-bearing
 

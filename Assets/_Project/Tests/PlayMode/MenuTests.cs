@@ -8,6 +8,7 @@ using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 using UnityEngine.TestTools;
+using UnityEngine.UI;
 
 namespace CoD.Tests
 {
@@ -49,6 +50,25 @@ namespace CoD.Tests
             Assert.IsNotNull(Object.FindFirstObjectByType<Camera>(), "no camera in the menu scene");
             Assert.IsNotNull(Object.FindFirstObjectByType<AudioListener>(), "no audio listener in the menu scene");
             yield return null;
+        }
+
+        [UnityTest]
+        public IEnumerator FreshSave_OffersHardContactImmediately()
+        {
+            var panel = Object.FindFirstObjectByType<MissionSelectPanel>(FindObjectsInactive.Include);
+            Assert.IsNotNull(panel, "no MissionSelectPanel");
+
+            panel!.Open();
+            yield return null;
+
+            Text[] labels = panel.GetComponentsInChildren<Text>(true);
+            string visibleText = string.Empty;
+            for (int i = 0; i < labels.Length; i++) visibleText += labels[i].text + "\n";
+
+            StringAssert.Contains("HARD CONTACT", visibleText,
+                "Mission 2 must be named and selectable without completing SHAKEDOWN first");
+            StringAssert.DoesNotContain("[LOCKED]", visibleText,
+                "authored missions are direct-select slices, not progression-gated content");
         }
 
         [UnityTest]

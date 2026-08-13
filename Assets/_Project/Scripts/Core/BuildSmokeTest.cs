@@ -338,7 +338,6 @@ namespace CoD.Core
         private bool _savedCampaign;
         private string _savedMissionId = string.Empty;
         private GameMode _savedMode;
-        private MissionRecord[] _savedMissionRecords = Array.Empty<MissionRecord>();
 
         private void PrepareScreenshotRun()
         {
@@ -429,7 +428,6 @@ namespace CoD.Core
             _savedCampaign = save.campaignSelected;
             _savedMissionId = save.selectedMissionId;
             _savedMode = save.lastMode;
-            _savedMissionRecords = CloneMissionRecords(save.missionRecords);
             _saveRewritten = true;
 
             bool campaign = missionId.Length > 0;
@@ -438,54 +436,10 @@ namespace CoD.Core
             // Run rules for both passes. A campaign mission plays by Run rules
             // too, so this is the correct value either way.
             save.lastMode = GameMode.Run;
-            if (string.Equals(missionId, MissionTwoId, StringComparison.OrdinalIgnoreCase))
-            {
-                // Mission 2 is normally unlocked by completing Mission 1. The
-                // visual harness temporarily supplies that one prerequisite so
-                // frame 1 can review the actual Mission 2 row rather than a
-                // locked placeholder. RestoreSave reloads and restores only the
-                // route axes, so preserve the record array explicitly here and
-                // remove this synthetic row in RestoreSave below.
-                EnsureMissionOneVisualUnlock(save);
-            }
             SaveSystem.Save(save);
             Debug.Log(campaign
                 ? "Screenshot run: campaign mission '" + missionId + "'."
                 : "Screenshot run: endless, campaign axis explicitly cleared.");
-        }
-
-        private static void EnsureMissionOneVisualUnlock(SaveData save)
-        {
-            const string missionOne = "mission_01_shakedown";
-            for (int i = 0; i < save.missionRecords.Length; i++)
-            {
-                if (save.missionRecords[i].missionId != missionOne) continue;
-                save.missionRecords[i].completed = true;
-                return;
-            }
-
-            var records = new MissionRecord[save.missionRecords.Length + 1];
-            Array.Copy(save.missionRecords, records, save.missionRecords.Length);
-            records[records.Length - 1] = new MissionRecord { missionId = missionOne, completed = true };
-            save.missionRecords = records;
-        }
-
-        private static MissionRecord[] CloneMissionRecords(MissionRecord[] source)
-        {
-            var clone = new MissionRecord[source.Length];
-            for (int i = 0; i < source.Length; i++)
-            {
-                MissionRecord record = source[i];
-                clone[i] = new MissionRecord
-                {
-                    missionId = record.missionId,
-                    completed = record.completed,
-                    bestRating = record.bestRating,
-                    bestTimeSeconds = record.bestTimeSeconds,
-                    deaths = record.deaths,
-                };
-            }
-            return clone;
         }
 
         /// <summary>
@@ -508,7 +462,6 @@ namespace CoD.Core
             save.campaignSelected = _savedCampaign;
             save.selectedMissionId = _savedMissionId;
             save.lastMode = _savedMode;
-            save.missionRecords = _savedMissionRecords;
             SaveSystem.Save(save);
         }
 
