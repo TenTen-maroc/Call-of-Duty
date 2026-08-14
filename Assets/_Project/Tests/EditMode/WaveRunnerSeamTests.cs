@@ -197,6 +197,51 @@ namespace CoD.Tests
             Assert.AreSame(mission, Runner.CurrentWave, "the swapped-in list is not what ConfigForWave reads");
         }
 
+        /// <summary>
+        /// The question WaveNumber cannot answer, and the off-by-one that came
+        /// of every caller answering it themselves.
+        ///
+        /// WaveNumber means "the last wave that STARTED". During a fight that is
+        /// also the wave being fought; in Countdown, Cleared and Shop it is the
+        /// one already behind you. So "which wave comes next" is sometimes the
+        /// same number and sometimes one more, and nothing said so out loud until
+        /// a campaign checkpoint had to write it down: MissionDirector recorded
+        /// WaveNumber and replayed it through StartFrom, whose contract is stated
+        /// in terms of the wave FOUGHT, so every checkpoint taken between waves
+        /// sent the player back one wave too far.
+        /// </summary>
+        [Test]
+        public void NextWaveNumber_AsksThePhase_BecauseWaveNumberMeansTheLastOneStarted()
+        {
+            // Nothing fought yet, and the countdown on screen is for wave 1.
+            Assert.AreEqual(0, Runner.WaveNumber);
+            Assert.AreEqual(RunPhase.Countdown, Runner.Phase);
+            Assert.AreEqual(1, Runner.NextWaveNumber,
+                "a runner that has fought nothing is about to fight wave 1");
+
+            Invoke("StartFrom", new object[] { 4 });
+            Assert.AreEqual(3, Runner.WaveNumber, "StartFrom backs the counter up one — see the test above");
+            Assert.AreEqual(4, Runner.NextWaveNumber,
+                "StartFrom(4) means the next wave fought is 4, so NextWaveNumber has to say 4. A checkpoint " +
+                "that records one of these and is replayed through the other loses a wave every time it is taken.");
+
+            // Mid-fight: the wave about to be fought is the one in progress.
+            // This is the half that a plain WaveNumber + 1 gets wrong, and it is
+            // why this property exists instead of an addition at each call site.
+            ForcePhase(RunPhase.Wave);
+            Assert.AreEqual(3, Runner.NextWaveNumber,
+                "mid-wave, the wave to come back to is the one being fought, not the one after it");
+
+            // And every phase that is not a wave is a gap between two of them.
+            ForcePhase(RunPhase.Cleared);
+            Assert.AreEqual(4, Runner.NextWaveNumber);
+            ForcePhase(RunPhase.Shop);
+            Assert.AreEqual(4, Runner.NextWaveNumber,
+                "a checkpoint taken during a shop break belongs to the wave after the break, not the one before it");
+            ForcePhase(RunPhase.Countdown);
+            Assert.AreEqual(4, Runner.NextWaveNumber);
+        }
+
         [Test]
         public void StartFrom_NeverAimsBelowWaveOne()
         {

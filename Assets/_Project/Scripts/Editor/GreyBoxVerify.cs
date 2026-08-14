@@ -435,6 +435,10 @@ namespace CoD.EditorTools
                     // The route every Interact objective counts through. Null
                     // here and interactions happen but nothing hears them.
                     Check(director, "_interactables", stillNull);
+                    // The places a mission can send the player. See CheckZones —
+                    // this is the one field on the director that Check and
+                    // CheckArray both look straight through.
+                    CheckZones(director, "_zones", stillNull);
                 }
                 foreach (PlayerInteractor playerInteractor in root.GetComponentsInChildren<PlayerInteractor>(true))
                 {
@@ -819,6 +823,63 @@ namespace CoD.EditorTools
                 if (property.GetArrayElementAtIndex(i).objectReferenceValue == null)
                 {
                     stillNull.Add($"{target.GetType().Name}.{field}[{i}]");
+                }
+            }
+        }
+
+        /// <summary>
+        /// The mission zones, which every other check in this file is blind to.
+        ///
+        /// WHY THIS NEEDS ITS OWN FUNCTION. A MissionZone is a STRUCT with three
+        /// fields, not an object reference, so the array elements have no
+        /// objectReferenceValue at all: CheckArray would report every element of
+        /// a fully-broken array as fine, and Check cannot be pointed at the
+        /// array in the first place. The marker lives one level down, inside the
+        /// element, which is the same reason GreyBoxBuilder.SetZones is written
+        /// by hand instead of going through SetArrayRef.
+        ///
+        /// WHAT IT COSTS TO MISS. MissionDirector.RegisterZones skips a zone
+        /// with a null marker in silence, and that zone then has no position for
+        /// the rest of the run. MissionProgress.IsInsideZone answers false for
+        /// an unregistered id — correctly, by its own design — so every
+        /// ReachZone, HoldZone and Extract objective pointing at it is
+        /// uncompletable. The mission sits on its first step with the arena
+        /// empty, which is the state MissionDirector's own comments call
+        /// indistinguishable from a hang. That is the fifth way a mission could
+        /// be uncompletable, after the four D14's review found.
+        /// </summary>
+        private static void CheckZones(Object target, string field, List<string> stillNull)
+        {
+            var serialized = new SerializedObject(target);
+            SerializedProperty property = serialized.FindProperty(field);
+            if (property == null || !property.isArray)
+            {
+                stillNull.Add($"{target.GetType().Name}.{field} (no such array)");
+                return;
+            }
+            if (property.arraySize == 0)
+            {
+                stillNull.Add(
+                    $"{target.GetType().Name}.{field} (empty — every zone objective answers \"not inside\" forever)");
+                return;
+            }
+            for (int i = 0; i < property.arraySize; i++)
+            {
+                SerializedProperty element = property.GetArrayElementAtIndex(i);
+                SerializedProperty marker = element.FindPropertyRelative("marker");
+                if (marker == null)
+                {
+                    // The rename case, and it is the nastiest one here: renaming
+                    // MissionZone.marker would leave this check silently passing
+                    // over an array of zones that no longer have positions.
+                    stillNull.Add($"{target.GetType().Name}.{field}[{i}].marker (no such field)");
+                    continue;
+                }
+                if (marker.objectReferenceValue == null)
+                {
+                    SerializedProperty id = element.FindPropertyRelative("id");
+                    int zoneId = id != null ? id.intValue : -1;
+                    stillNull.Add($"{target.GetType().Name}.{field}[{i}].marker (zone id {zoneId})");
                 }
             }
         }

@@ -329,6 +329,16 @@ happens when the phase *changes underneath a stationary player*, which no
 fixed-phase test can see. That is the case that was missing when the gate and the
 leave-reset were one condition.
 
+[CampaignTests.cs](../../Assets/_Project/Tests/PlayMode/CampaignTests.cs) — the
+mission layer in the real arena. Two of its cases are deliberately shaped against
+the rest of the file: `TheArenasOwnZones_ReachTheDirector_WithoutATestRegisteringOne`
+registers nothing itself, because every other case calls `StandOnZone` and would
+therefore pass with `RegisterZones` deleted; and
+`TheCheckpoint_RecordsTheWaveItsStepGroupStartsAt` asserts on
+`MissionDirector.CheckpointWave` directly, because in mission 1 the checkpoint
+wave is the only observable the off-by-one above moved — the rewind still landed
+correctly there, by clamping.
+
 ## Related Systems
 
 - [waves.md](waves.md) — the runner the director drives.
@@ -336,10 +346,53 @@ leave-reset were one condition.
 - [menus.md](menus.md) — the campaign row and mission select.
 - [drones.md](drones.md) — the enemy layer both families share.
 
-## Four ways a mission can be uncompletable, all of which happened
+## The checkpoint, and which wave it points at
+
+A checkpoint is two numbers: the step group to re-activate, and **the wave that
+group starts at**. `MissionDirector.OnPlayerDown` replays the second through
+`WaveRunner.StartFrom`, whose contract is stated in terms of the wave *fought* —
+`StartFrom(5)` means the next wave fought is 5.
+
+Both are captured in `ActivateFrom`, and the wave is captured **after
+`ApplyWaveGate` has run**. That ordering is the whole point. The gate is the only
+thing that decides which wave a new group fights, and it does not simply continue
+the count: resuming a suspended runner it calls `StartFrom(WaveNumber + 1)`,
+deliberately, so a group that opens on a briefing or a walk gets a fresh
+countdown instead of the remains of the wave that was running when the last group
+ended.
+
+It was captured *before* the gate until this pass, as `_runner.WaveNumber` at the
+two step-advance sites. That records the wave the group is about to skip past, so
+every checkpoint from the second wave group onward was one wave short: die, and
+you respawn into a wave you already cleared, fighting that wave's authored
+composition rather than the one your objective is standing in, and collecting its
+`moneyBonusOnClear` again on the way through.
+
+**Mission 1 never showed it.** It has a single wave group and that group starts
+at wave 1; one short of wave 1 is wave 0, which `StartFrom` clamps back to 1, so
+the rewind landed correctly by accident. **Mission 2 has two** — a kill quota,
+then a hold behind an interact — and its second group is where the wave goes
+backwards.
+
+The number comes from `WaveRunner.NextWaveNumber` rather than `WaveNumber + 1`,
+because a group can also begin in the middle of a live wave, where the gate does
+nothing at all and the wave to come back to is the one already being fought.
+`NextWaveNumber` is `WaveNumber` during `RunPhase.Wave` and `WaveNumber + 1`
+everywhere else — see [waves.md](waves.md).
+
+The rewind re-enters `ActivateFrom`, so it re-derives the same checkpoint on the
+way back in. That is what makes repeated deaths in one group land in the same
+place instead of marching the run backwards a wave at a time.
+
+Pinned by `WaveRunnerSeamTests.NextWaveNumber_AsksThePhase_…` (the arithmetic),
+`CampaignTests.TheCheckpoint_RecordsTheWaveItsStepGroupStartsAt` (the number, at
+both the opening walk and the live wave step) and the wave assertions in
+`ACampaignDeath_RewindsAndWritesNothing` (the rewind actually landing there).
+
+## Five ways a mission can be uncompletable, all of which happened
 
 Every one of these compiled, passed all eight guards, validated clean in
-`OnValidate`, and shipped in the catalog. None was caught by a test; all four
+`OnValidate`, and shipped in the catalog. None was caught by a test; all five
 were caught by reading. They are written down because each is a *class* of
 failure this layer invites, not a one-off.
 
@@ -378,6 +431,31 @@ past mission one.
 *Fixed:* `FinishMission` writes it — and deliberately **not** through
 `RecordRunEnded`, which writes `bestRound`. A campaign mission must never touch
 the permadeath record.
+
+**5. The same zone, wired — with nothing proving it stayed wired.** Defect 1's
+fix was real, and it was unguarded from three directions at once.
+`RegisterZones` skips a zone whose marker is null *in silence*
+(`if (zone.marker == null) continue;`), so a broken wire degrades to exactly the
+uncompletable mission of defect 1 rather than to an error. `GreyBoxVerify`
+checked seven `MissionDirector` fields and not `_zones` — a `MissionZone` is a
+**struct**, so `Check` cannot be pointed at the array and `CheckArray` reports
+every element of a fully-broken one as fine, because struct elements have no
+`objectReferenceValue`. And every `CampaignTests` case called
+`Progress.RegisterZone` itself, so **the PlayMode suite would have passed with
+`RegisterZones` deleted outright**.
+*Fixed:* `GreyBoxVerify.CheckZones` — a bespoke check, for the same reason
+`GreyBoxBuilder.SetZones` is hand-written: it descends into the element and
+tests `marker`, and reports the array being empty and the field being renamed as
+distinct failures. And
+`CampaignTests.TheArenasOwnZones_ReachTheDirector_WithoutATestRegisteringOne`
+asks `Progress.TryGetZone` what the *director* registered and then walks the
+player onto it, registering nothing itself. Delete `RegisterZones` and both
+halves go red.
+
+*The general lesson, which is the reason this one is written down at all:* a fix
+that replaces "nobody calls this" with "one thing calls this" has not finished
+until something fails when that one caller goes away. Defect 1 shipped with the
+call site and without the tripwire.
 
 ### And one that only shows up in a stopwatch
 

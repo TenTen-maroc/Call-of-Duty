@@ -142,6 +142,28 @@ namespace CoD.Waves
         /// </summary>
         private bool _directorOwned;
         public int WaveNumber => _wave;
+
+        /// <summary>
+        /// The wave the loop will fight NEXT, which is not always WaveNumber + 1.
+        ///
+        /// WaveNumber means "the last wave that started". Mid-fight that is the
+        /// wave in progress; in Countdown, Cleared and Shop it is the one already
+        /// behind you. So "which wave comes next" is the current one during a
+        /// wave and the following one in every other phase, and that distinction
+        /// is invisible until something tries to write it down.
+        ///
+        /// Something does. A campaign checkpoint records a wave number and
+        /// StartFrom replays it, and StartFrom's contract is stated in terms of
+        /// the wave FOUGHT — so a checkpoint taken with WaveNumber sends the
+        /// player back one wave every time it is taken between waves. Having the
+        /// runner answer the question itself is what stops each caller deriving
+        /// it, differently, from a phase it has to remember to check.
+        ///
+        /// GameOver answers WaveNumber + 1 like any other non-wave phase. There
+        /// is no next wave from a finished run, and no caller asks.
+        /// </summary>
+        public int NextWaveNumber => Phase == RunPhase.Wave ? _wave : _wave + 1;
+
         public ShopService? Shop => _shop;
         /// <summary>What the next clear will pay, as a multiplier. 1 unless the player skipped a break.</summary>
         public float PendingClearMultiplier => _pendingClearMultiplier;
