@@ -192,6 +192,7 @@ the loop was **opened**, not forked.
 | `Suspended` | public get | The loop is held. | — |
 | `Suspend()` / `Resume()` | internal | Hold and release. Non-destructive: queue, live drones and attack tokens all survive. | Both are idempotent |
 | `StartFrom(int wave)` | internal | Points the loop at a wave and enters countdown — a checkpoint restore. Sets `_wave = wave - 1`, because a countdown starts `_wave + 1`. | Clamps at 0, so no negative wave |
+| `NextWaveNumber` | public get | The wave that will be fought next: `WaveNumber` during `Wave`, `WaveNumber + 1` in every other phase. The number `StartFrom` takes. | — |
 | `AbortWave()` | internal | The destructive companion: `ClearTheArena()`. | Caller **must** pair it with `Suspend()` or `StartFrom()` |
 | `SetDeathEndsRun(bool)` | internal | False makes a death a checkpoint rewind instead of a game over. | — |
 | `PlayerDown` | public event | Raised **instead of** ending the run when `SetDeathEndsRun(false)` is in force. | Unreachable in endless |

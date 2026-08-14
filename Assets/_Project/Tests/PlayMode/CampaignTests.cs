@@ -36,11 +36,14 @@ namespace CoD.Tests
     /// omissions — and an omission is exactly the kind of thing a later change
     /// adds back without noticing.
     ///
-    /// WHAT IT CANNOT PROVE. Nothing in the arena registers a mission zone yet
-    /// (see the header on <see cref="StandOnZone"/>), so the zone objectives are
-    /// driven by registering the marker where the player already is. That proves
-    /// the director, the objective and the step machine; it does not prove an
-    /// arena that hands the director a real pad, because no such arena exists.
+    /// HOW THE ZONES GET DRIVEN, and why it is two ways. Most tests here are
+    /// about the step machine or the save file, so they register a zone under
+    /// the player with <see cref="StandOnZone"/> and skip the walking. That is
+    /// fast and it is blind: it would pass with MissionDirector.RegisterZones
+    /// deleted, because the test does the registering.
+    /// <see cref="TheArenasOwnZones_ReachTheDirector_WithoutATestRegisteringOne"/>
+    /// is the one that closes that gap — it walks to the marker the builder put
+    /// in the arena and never registers anything itself.
     /// </summary>
     public sealed class CampaignTests
     {
@@ -174,15 +177,22 @@ namespace CoD.Tests
         /// <summary>
         /// Puts a mission zone under the player's feet.
         ///
-        /// WHY A TEST HAS TO DO THIS. An objective holds a zone ID, never a
-        /// Transform — a ScriptableObject cannot reference a scene object, so
-        /// MissionProgress.RegisterZone is how a marker gets a position. Nothing
-        /// in the arena calls it today: 10_GreyBox has no mission markers, so
-        /// every zone objective in the game currently answers "not inside"
-        /// forever. Registering it here drives the director and the objective
-        /// honestly; it does NOT prove an arena that has pads in it, and until
-        /// something in the scene registers a zone, neither mission is
-        /// completable by a human.
+        /// WHY A TEST STILL DOES THIS, now that the arena has real markers. An
+        /// objective holds a zone ID, never a Transform — a ScriptableObject
+        /// cannot reference a scene object, so MissionProgress.RegisterZone is
+        /// how a marker gets a position. As of D13 the arena DOES call it:
+        /// GreyBoxBuilder.BuildMissionZones places a control point and an
+        /// extraction pad, and MissionDirector.RegisterZones hands both to the
+        /// progress on mission start. This helper overwrites zone `zoneId` with
+        /// a circle around wherever the player happens to be standing, which is
+        /// a convenience for the tests whose subject is the STEP MACHINE or the
+        /// save file: they advance the mission without walking it.
+        ///
+        /// It is therefore also a blindfold, and the reason this file needs
+        /// <see cref="TheArenasOwnZones_ReachTheDirector_WithoutATestRegisteringOne"/>:
+        /// a suite in which every zone is registered by the test would pass with
+        /// MissionDirector.RegisterZones deleted outright. That test walks to
+        /// the arena's own marker and never calls this.
         /// </summary>
         private static void StandOnZone(MissionDirector director, int zoneId, Transform player)
             => director.Progress.RegisterZone(zoneId, player.position, ZoneRadiusMeters);
@@ -350,6 +360,158 @@ namespace CoD.Tests
                 "the first wave of the mission");
         }
 
+        // ---------- the arena's own zones ----------
+
+        /// <summary>
+        /// THE ARENA HANDS THE DIRECTOR REAL PLACES, AND NOTHING PROVED IT DID.
+        ///
+        /// MissionDirector.RegisterZones is the only caller of
+        /// MissionProgress.RegisterZone in the shipping game, and it skips a zone
+        /// whose marker is unassigned in silence:
+        ///
+        ///     if (zone.marker == null) continue;
+        ///
+        /// A skipped zone has no position, IsInsideZone answers false for it
+        /// forever — correctly, by its own design — and every ReachZone,
+        /// HoldZone and Extract objective pointing at it becomes uncompletable.
+        /// The mission then sits on its first step with the arena empty, which
+        /// MissionDirector's own comments call indistinguishable from a hang.
+        ///
+        /// THREE THINGS HID IT. GreyBoxVerify checked seven MissionDirector
+        /// fields and not `_zones` — a MissionZone is a struct, so neither Check
+        /// nor CheckArray can see the marker inside it, and it took a bespoke
+        /// CheckZones to look. GreyBoxBuilder.SetZones wrote the markers and
+        /// nothing downstream asserted they survived. And every test in this
+        /// file called Progress.RegisterZone itself, so the whole suite would
+        /// have passed with RegisterZones deleted outright.
+        ///
+        /// WHICH IS WHY THIS TEST REGISTERS NOTHING. It asks the progress what
+        /// the DIRECTOR put there, then walks the player onto it. Delete
+        /// RegisterZones and both halves fail: TryGetZone returns false, and the
+        /// walk never completes the step.
+        /// </summary>
+        [UnityTest]
+        public IEnumerator TheArenasOwnZones_ReachTheDirector_WithoutATestRegisteringOne()
+        {
+            SelectMission(Mission01Id);
+            yield return LoadArena();
+
+            MissionDirector director = FindDirector();
+            yield return WaitForMissionStart(director);
+
+            // Asked of the progress, not of the scene: this is the far end of
+            // the wire, so it fails whether the markers were never placed, never
+            // serialized onto the director, or never handed over.
+            Assert.IsTrue(director.Progress.TryGetZone(ZoneControlPoint, out Vector3 control, out float controlRadius),
+                "the arena's control point never reached the mission layer. Either MissionDirector._zones is " +
+                "unwired (the scenes are GENERATED — run CoD -> Build Grey Box) or RegisterZones never ran, and " +
+                "every ReachZone and HoldZone objective in the game answers \"not inside\" forever.");
+            Assert.Greater(controlRadius, 0f,
+                "the control point registered with no radius, so it is a place the player can never be inside of");
+
+            Assert.IsTrue(director.Progress.TryGetZone(ZoneExtract, out Vector3 extract, out float extractRadius),
+                "the arena's extraction pad never reached the mission layer, so mission 1 can be played to its " +
+                "last step and never finished");
+            Assert.Greater(extractRadius, 0f, "the extraction pad registered with no radius");
+
+            Assert.AreNotEqual(control, extract,
+                "both zones registered at the same point. A control point the player is standing on when they " +
+                "extract is not two objectives, it is one.");
+
+            var motor = Find<PlayerMotor>("no player in the arena");
+            Transform player = motor.transform;
+
+            // The control, and it is load-bearing. Without it the walk below
+            // proves nothing: a zone registered at the origin, or at the player's
+            // own feet, would complete the step on frame one and this test would
+            // certify a broken arena green.
+            Assert.IsFalse(director.Progress.IsInsideZone(ZoneControlPoint, player.position),
+                "the player spawns already standing on the control point, so mission 1's first objective " +
+                "completes before they have moved and the walk below tests nothing");
+
+            // Walked to, rather than registered under. Height is left alone —
+            // the marker sits on the floor, the player's origin is at their feet
+            // and a zone is measured on the floor plane anyway.
+            player.position = new Vector3(control.x, player.position.y, control.z);
+
+            yield return WaitUntil(() => director.ActiveStep == 1, StepSeconds,
+                "the mission to advance when the player stands on the arena's OWN control point. The zone is " +
+                "registered (asserted above), so this timing out means the objective is not reading it.");
+
+            Assert.AreEqual(ObjectiveStatus.Complete, director.StateOf(0).Status,
+                "the step advanced without the zone objective being recorded complete");
+        }
+
+        // ---------- the checkpoint ----------
+
+        /// <summary>
+        /// A CHECKPOINT RECORDS THE WAVE ITS STEP GROUP STARTS AT.
+        ///
+        /// The director used to record `_runner.WaveNumber` at the moment a step
+        /// group was activated — captured BEFORE the wave gate ran. The gate is
+        /// what decides which wave the new group fights, and resuming a suspended
+        /// runner it deliberately calls StartFrom(WaveNumber + 1). So the number
+        /// filed away was the wave the group was about to skip PAST, and a death
+        /// replayed it through StartFrom, whose contract is "the next wave fought
+        /// is this one". The player respawned into a wave they had already
+        /// cleared, fighting that wave's authored composition rather than the one
+        /// their objective was standing in.
+        ///
+        /// WHY MISSION 1 CANNOT SHOW THE SYMPTOM, only the wrong number. It has
+        /// exactly one wave group and that group starts at wave 1; one short of
+        /// wave 1 is wave 0, and StartFrom clamps that back to 1. The rewind
+        /// therefore landed in the right place by accident. Mission 2 has two
+        /// wave groups — a kill quota, then a hold after an interact — and its
+        /// second group is where the wave actually goes backwards.
+        ///
+        /// So the number itself is what gets asserted, in the two places it has
+        /// to be right: before any wave has run, and once the wave step is live.
+        /// </summary>
+        [UnityTest]
+        public IEnumerator TheCheckpoint_RecordsTheWaveItsStepGroupStartsAt()
+        {
+            SelectMission(Mission01Id);
+            yield return LoadArena();
+
+            MissionDirector director = FindDirector();
+            yield return WaitForMissionStart(director);
+
+            var runner = Find<WaveRunner>("no WaveRunner");
+            var motor = Find<PlayerMotor>("no player in the arena");
+            var health = motor.GetComponent<Health>();
+            Assert.IsNotNull(health, "the player has no Health");
+
+            // Determinism, not the behaviour under test: a Rusher reaching the
+            // player is a rewind, which would move the very number being
+            // asserted on. The death path has its own test below.
+            health!.Invulnerable = true;
+
+            // Step 1 is a walk with the runner held, so no wave has started and
+            // none is in progress — but the next one to be fought is still 1,
+            // and that is what a death during the walk has to come back to.
+            Assert.AreEqual(0, director.ActiveStep, "mission 1 opens on its first step");
+            Assert.AreEqual(0, runner.WaveNumber, "no wave should have started during the opening walk");
+            Assert.AreEqual(1, director.CheckpointWave,
+                "the opening checkpoint does not point at wave 1. Recorded as WaveNumber it reads 0, which " +
+                "StartFrom clamps back to 1 — right by accident, and wrong for every later group.");
+
+            StandOnZone(director, ZoneControlPoint, motor.transform);
+            yield return WaitUntil(() => director.ActiveStep == 1, StepSeconds, "the wave step to activate");
+
+            // The gate has now opened for a step that wants enemies. Waited for
+            // the wave to actually START rather than asserting on the countdown,
+            // because WaveNumber only becomes the fought wave at that moment —
+            // which is the whole distinction NextWaveNumber exists to carry.
+            yield return WaitUntil(() => runner.Phase == RunPhase.Wave, MissionSeconds,
+                "the first wave of the mission");
+
+            Assert.AreEqual(runner.WaveNumber, director.CheckpointWave,
+                $"the checkpoint says wave {director.CheckpointWave} while the step it belongs to is fighting " +
+                $"wave {runner.WaveNumber}. A death here rewinds to a wave this group never fought.");
+
+            health.Invulnerable = false;
+        }
+
         // ---------- permadeath integrity ----------
 
         /// <summary>
@@ -461,6 +623,16 @@ namespace CoD.Tests
 
             int deathsBefore = director.Progress.Deaths;
 
+            // The wave they die in, and the checkpoint that claims to point at
+            // it. Read together, because "the rewind put me back where I was" is
+            // a statement about both: the checkpoint is the wave the current
+            // step group started at, and this death happens inside that group's
+            // first wave, so the two must already agree before anybody dies.
+            int fightingWave = runner.WaveNumber;
+            Assert.AreEqual(fightingWave, director.CheckpointWave,
+                $"the checkpoint says wave {director.CheckpointWave} while the player is fighting wave " +
+                $"{fightingWave}, so the rewind below cannot land where they were");
+
             // Watch for the death rather than looking for it afterwards.
             //
             // The whole rewind is SYNCHRONOUS: ApplyDamage raises Died, Health
@@ -518,6 +690,19 @@ namespace CoD.Tests
             // And the mission must actually resume, not merely be marked running.
             yield return WaitUntil(() => runner.Phase == RunPhase.Countdown || runner.Phase == RunPhase.Wave,
                 StepSeconds, "the wave loop to resume after the rewind");
+
+            // AND IT MUST RESUME AT THE SAME WAVE. The rewind re-derives the
+            // checkpoint through the wave gate on its way back in, so a second
+            // death in this group has to land in the same place as the first —
+            // without that, each death walks the player one wave further back
+            // and a mission gets easier every time you fail it.
+            Assert.AreEqual(fightingWave, director.CheckpointWave,
+                "the rewind moved the checkpoint. Dying repeatedly now marches the run backwards a wave at a time.");
+            yield return WaitUntil(() => runner.Phase == RunPhase.Wave, MissionSeconds,
+                "the wave loop to reach a wave again after the rewind");
+            Assert.AreEqual(fightingWave, runner.WaveNumber,
+                $"the rewind put the player into wave {runner.WaveNumber} after they died in wave " +
+                $"{fightingWave} — a wave their step group never fought, paying its clear bonus a second time");
 
             SaveData after = SaveSystem.Load();
             Assert.IsTrue(after.campaignSelected, "this is not the save the mission ran against");

@@ -73,6 +73,15 @@ namespace CoD.Waves
         public int ActiveStep => _activeStep;
         public bool IsRunning => _running;
 
+        /// <summary>
+        /// The wave a death rewinds to — the wave the checkpoint's step group
+        /// STARTS at, not the one before it. Exposed because it is the one piece
+        /// of checkpoint state with no other observable consequence until
+        /// somebody dies, which is exactly how it was wrong for two milestones.
+        /// See <see cref="ActivateFrom"/> for where it is captured and why there.
+        /// </summary>
+        public int CheckpointWave => _checkpointWave;
+
         /// <summary>Raised when a step resolves, so the HUD redraws on change instead of every frame.</summary>
         public event Action? ObjectivesChanged;
 
@@ -147,7 +156,9 @@ namespace CoD.Waves
             _states = new ObjectiveState[_mission.StepCount];
             _activeStep = 0;
             _checkpointStep = 0;
-            _checkpointWave = 0;
+            // _checkpointWave is deliberately not set here. ActivateFrom owns it
+            // and sets it below, from the runner, once the wave gate has decided
+            // what the first step group actually fights.
             _finished = false;
             _transitionPending = false;
 
@@ -191,6 +202,30 @@ namespace CoD.Waves
             }
 
             ApplyWaveGate();
+
+            // THE CHECKPOINT'S WAVE, CAPTURED HERE AND NOWHERE ELSE.
+            //
+            // AFTER the gate, because the gate is the only thing that decides
+            // which wave a step group fights, and it does not simply continue
+            // the count: resuming a suspended runner it calls
+            // StartFrom(WaveNumber + 1), deliberately, so a group that opens on
+            // a briefing or a walk gets a fresh countdown rather than the
+            // remains of the wave that was running when the last group ended.
+            //
+            // Captured BEFORE it — which is what the callers used to do — the
+            // number recorded is the wave the group is about to skip past, and
+            // every checkpoint from the second wave group onward is one wave
+            // short. The player dies, respawns into a wave they have already
+            // cleared, and fights that wave's authored composition instead of
+            // the one their objective is standing in. Mission 1 never showed it:
+            // it has a single wave group, which starts at wave 1, and one short
+            // of wave 1 clamps back to wave 1 in StartFrom. Mission 2 has two.
+            //
+            // NextWaveNumber rather than WaveNumber + 1 because a group can also
+            // begin in the middle of a live wave, where the gate does nothing at
+            // all and the wave to come back to is the one already being fought.
+            _checkpointWave = _runner != null ? _runner.NextWaveNumber : 0;
+
             ObjectivesChanged?.Invoke();
             if (index == 0) TriggerRadio(RadioTrigger.FirstObjective);
         }
@@ -288,7 +323,6 @@ namespace CoD.Waves
                 _transitionPending = false;
                 _activeStep = _pendingNextStep;
                 _checkpointStep = _pendingNextStep;
-                _checkpointWave = _runner != null ? _runner.WaveNumber : 0;
                 ActivateFrom(_pendingNextStep);
                 return;
             }
@@ -368,7 +402,6 @@ namespace CoD.Waves
 
             _activeStep = next;
             _checkpointStep = next;
-            _checkpointWave = _runner != null ? _runner.WaveNumber : 0;
             ActivateFrom(next);
         }
 
@@ -472,6 +505,13 @@ namespace CoD.Waves
             // Suspend first so ActivateFrom's gate sees a consistent state and
             // decides for itself whether this step wants waves back.
             _runner.Suspend();
+            // StartFrom's contract is stated in terms of the wave FOUGHT, and
+            // _checkpointWave is the wave the checkpoint's group starts at, so
+            // these two line up with no arithmetic in between. The gate inside
+            // the ActivateFrom below then re-derives the same number and rewrites
+            // _checkpointWave with it, which is why a second death in the same
+            // group rewinds to the same place rather than walking backwards a
+            // wave at a time.
             _runner.StartFrom(_checkpointWave);
             // NOT Progress.Reset(). It wipes Deaths, which is the one counter
             // that must survive a rewind -- it counts what the mission has cost

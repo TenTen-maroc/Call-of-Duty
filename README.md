@@ -1,10 +1,17 @@
 # Call of Duty
 
-A fixed-arena horde-survival FPS. Offline single-player, Windows PC.
+A mission-based military FPS with a horde-survival core. Offline single-player,
+Windows PC.
 
-Waves of malfunctioning military drones escalate every round; between waves a
-shop sells weapons, effect modules, and passive upgrades. Permadeath — the
-meta-goal is the highest round reached.
+**Campaign** is the headline mode: ordered objectives, checkpoints and
+comms-delivered story across fixed arenas. **Endless** is the original wave loop
+and still the tuning ground for every combat number in the game — waves escalate,
+a shop between them sells weapons, effect modules and passive upgrades, and
+permadeath ends the run with the highest round reached as the record. Sandbox
+crosses both: everything unlocked, cheat console on, nothing recorded.
+
+You fight autonomous drones and the Meridian PMC soldiers being paid to cover
+for them.
 
 | | |
 | --- | --- |
@@ -14,29 +21,55 @@ meta-goal is the highest round reached.
 | Namespace | `CoD.*` (`CoD.Core`, `CoD.Player`, `CoD.Weapons`, `CoD.Enemies`, `CoD.Waves`, `CoD.UI`) |
 | Target TTK | ~250 ms on a standard drone with the starter rifle |
 
-## Status — Phases 0–3 authored, one step from playable
+## Status — code-complete and shippable-shaped, and never played
 
-Unity 6000.0.81f1 + IL2CPP is installed, the URP project is at the repo root, and
-all of the grey-box code compiles clean. The repo foundation landed *before*
-Unity deliberately: Unity's first import generates a 5–20 GB `Library/`, and a
-`Library/` committed once is in history forever.
+Unity 6000.0.81f1 + URP, licence active. There is a main menu, a pause menu,
+working settings, both modes, two arenas, and a Windows `.exe` that has been
+built and run outside the editor. The whole loop is in: movement and an arsenal
+with attachments and optics, drone and human enemies, timed waves feeding a
+shop, permadeath with a saved best round, stacking effect modules, an
+audio mixer, a post-processed image on imported CC0 surfaces — and, on top of
+all of it, a mission director with objectives, zones and checkpoints driving two
+authored missions.
 
-**What is left is one thing only: sign in to Unity Hub with a Unity ID.** Unity
-will not start without an activated licence, and that is not something a script
-can do. Then:
+**What is verified.** Nine assemblies compile with zero errors *and* zero
+warnings, eight guards pass, 287 tests across both suites drive the real loop and
+the real menu scene, every scene reference is proven by a save/reload round trip,
+and a Windows player boots headlessly, reaches the menu, loads the arena and logs
+zero errors — with no cheat-console code in the release binary at all.
+
+**What is not.** Nobody has played it. The content gate — ship a slice, then play
+it before authoring more — has been suspended twice by explicit instruction, so
+the campaign, the wave identities and the shop consumables are covered by tests
+and have never been *felt*. Frame time on the target laptop is unmeasured for the
+same kind of reason: headless runs do no GPU work, so no automated gate can
+answer it.
+
+[CLAUDE.md](CLAUDE.md) carries the per-milestone table and marks which rows are
+still unplayed; that table is the authoritative state, not this paragraph.
+`Tools/screenshot.mjs` renders real frames from the real player and closes most
+of the remaining gap — most, not all. It cannot say whether the game is fun, how
+it holds up on a 3050, or whether a lighting scheme reads as atmospheric or as
+blotchy while you move through it. Those stay human questions, and the tuning
+card at the top of [docs/NEXT-SESSION-PROMPT.md](docs/NEXT-SESSION-PROMPT.md) is
+how they get asked.
+
+### Running it from a fresh clone
+
+The scenes, prefabs and tuning assets are **generated**, never hand-built — the
+builder is the source of truth, and a value that lives only in an `.asset`
+silently reverts the next time it runs. So:
 
 ```
-CoD → Build Grey Box
+CoD → Build Grey Box            # 00_Boot, 20_MainMenu, 10_GreyBox, every prefab and
+                                # tuning asset, Build Settings — and verifies itself
+CoD → Build Missions            # the objective assets and the mission catalog
+CoD → Build Tazir Pass Outpost  # 11_AtlasOutpost, mission 2's arena
 ```
 
-which generates every prefab, both scenes (`00_Boot`, `10_GreyBox`) and the
-tuning assets, and adds the scenes to Build Settings. Open `10_GreyBox`, press
-Play, and shoot the red blocks.
-
-The scripts compile but have never *run*. Expect to fix runtime wiring, then
-spend real time in the grey room tuning recoil, ADS and the hitmarker — working
-and feeling good are different milestones, and only the second one matters.
-After that: the Rusher drone, then waves, then the shop.
+`Build Grey Box` picks the outpost scene up into Build Settings if it already
+exists, so on a first run do it once more after the outpost. Then open
+`20_MainMenu` and press Play.
 
 ## Continuing the work
 
