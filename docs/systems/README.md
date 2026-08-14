@@ -12,7 +12,7 @@ obvious, emphasise the non-obvious.
 | Doc | Covers | Status |
 | --- | --- | --- |
 | [weapons.md](weapons.md) | `WeaponConfig`, `WeaponRuntime`, firing, recoil, spread, damage + falloff, effect modules | ✅ |
-| [player.md](player.md) | Input, movement, look, camera shake, the rig layout | ✅ |
+| [player.md](player.md) | Input, movement, look, camera shake, hitstop, the rig layout | ✅ |
 | [pooling.md](pooling.md) | The object pool every spawn goes through | ✅ |
 | [ui.md](ui.md) | Crosshair, hitmarker, HUD, damage feedback, wave/shop/game-over panels, cheat console | ✅ |
 | [drones.md](drones.md) | `DroneConfig`, `AttackModule`, NavMesh pathing, attack tokens, pooled reactions | ✅ all three archetypes |

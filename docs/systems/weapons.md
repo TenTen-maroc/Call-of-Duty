@@ -459,11 +459,33 @@ gunshots are the top reason a shooter sounds cheap. See the folder README.
 - **Auto-reload on empty** only when reserve remains; otherwise a dry-fire click
   with a 0.25 s re-trigger delay. All reloads enter through one
   `TryBeginReload`, which is also where `reloadClip` plays.
-- **Headshots: the weapon owns the number.** A `Weakpoint` component on a child
-  collider relays hits to its owner's `Health`; the controller multiplies by
-  `WeaponConfig.headshotMultiplier` and flags `DamageInfo.IsWeakpoint`. There is
-  deliberately no second multiplier on the target side — two owners of the same
-  bonus double-dipped every headshot.
+- **Headshots: the weapon owns one number and the body owns the other.** A
+  `Weakpoint` component on a child collider relays hits to its owner's `Health`;
+  the controller multiplies by `WeaponConfig.headshotMultiplier` **and** by
+  `Weakpoint.Multiplier`, then flags `DamageInfo.IsWeakpoint`.
+
+  **This reverses an earlier decision, and the reversal is narrower than it
+  looks.** This entry used to read "there is deliberately no second multiplier on
+  the target side — two owners of the same bonus double-dipped every headshot",
+  and that was correct about the bug it described: two fields both meaning *how
+  much is a headshot worth* will always drift into multiplying each other by
+  accident. The two factors now answer **different questions** — the weapon's is
+  how good this gun is at exploiting a weak point, the body's is how soft this
+  particular target is there — and `DroneConfig.weakpointMultiplier` defaults to
+  **1**, so every archetype that does not opt in behaves exactly as before.
+
+  Only the Tank sets it (2.5), and it exists because 600 HP was 24 rounds of a
+  30-round magazine on a target that walks in a straight line. See
+  [drones.md](drones.md).
+
+  **The old warning still applies to the new field.** If a future enemy sets
+  `weakpointMultiplier` as a general difficulty knob rather than as a statement
+  about that body's weak point, the two owners collapse back into one concept and
+  the double-dip returns. The value is a property of the anatomy, not a dial.
+  `Weakpoint.SetMultiplier` clamps to a floor of 1 so it can only ever be a
+  bonus, and `DroneController.Initialize` rewrites it on **every** spawn — the
+  pool reuses instances, and a Tank reissued as a Rusher inheriting a 2.5x core
+  would be a one-shot Rusher for reasons nothing in the scene explains.
 - **Casing ejection overwrites the rigidbody's velocity, never adds to it.** A
   pooled rigidbody keeps whatever velocity it despawned with; eject speed, up
   kick and spin are `WeaponConfig` numbers. Casings live on the Ignore Raycast

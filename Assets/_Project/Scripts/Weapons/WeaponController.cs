@@ -849,7 +849,13 @@ namespace CoD.Weapons
             if (hit.collider.TryGetComponent(out Weakpoint weakpoint) && weakpoint.Owner != null)
             {
                 target = weakpoint.Owner;
-                damage *= config.headshotMultiplier;
+                // Two multipliers, and they answer different questions. The
+                // weapon's says how good this GUN is at exploiting a weak point;
+                // the weakpoint's says how soft THIS BODY is there. A Tank's
+                // exposed reactor is worth more than a Rusher's sensor cluster
+                // whatever you shoot it with, and before the second factor
+                // existed the Tank was twenty-four rounds of holding the trigger.
+                damage *= config.headshotMultiplier * weakpoint.Multiplier;
                 isWeakpoint = true;
                 fleshImpact = true;
                 region = HitRegion.Head;
@@ -1034,7 +1040,11 @@ namespace CoD.Weapons
                 region = HitRegion.Head;
                 isWeakpoint = true;
                 fleshImpact = true;
-                zoneFactor = config.headshotMultiplier;
+                // Same pair as the direct-hit path above. Kept in step
+                // deliberately: a follow-up (pierce, ricochet, chain) that
+                // ignored the body's own weakpoint factor would make the Tank's
+                // core worth less to a chaining weapon than to a plain one.
+                zoneFactor = config.headshotMultiplier * weakpoint.Multiplier;
             }
             else if (hit.collider.TryGetComponent(out HitZone hitZone) && hitZone.Owner != null)
             {

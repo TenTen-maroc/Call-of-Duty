@@ -102,6 +102,72 @@ namespace CoD.Tests
             yield return null;
         }
 
+        /// <summary>
+        /// The catwalks are contested ground, not a safe perch.
+        ///
+        /// THE FAILURE THIS CATCHES, which no other test in the project can see.
+        /// The decks sit 3.5 m up and are reached by five steps, each rising
+        /// 0.7 m against a baked step height of 0.75. That margin is five
+        /// centimetres. Widen a step, deepen the deck, change the agent settings,
+        /// or let the arena kit swap a module for one with a different pivot, and
+        /// the bake stops joining the stairs — the deck becomes an island.
+        ///
+        /// The island is SILENT and it is fatal in a specific, humiliating way:
+        /// the player walks up, no drone can follow, the wave never clears, and
+        /// the run hangs with a full health bar. NavMesh_CoversTheArena above
+        /// cannot catch it, because every spawn point and the player's start are
+        /// on the floor — the path it checks never goes near the stairs.
+        ///
+        /// So this one paths TO the deck rather than across the floor.
+        /// </summary>
+        [UnityTest]
+        public IEnumerator TheCatwalks_CanBeReachedByDrones()
+        {
+            var spawner = Object.FindFirstObjectByType<DroneSpawner>();
+            Assert.IsNotNull(spawner, "no spawner to path from");
+
+            // Both decks, sampled a little above the walking surface so a sample
+            // that lands on the FLOOR underneath fails loudly instead of quietly
+            // passing. The vertical tolerance is deliberately tight for the same
+            // reason: 1.5 m cannot reach the floor 3.5 m below.
+            var decks = new[]
+            {
+                new Vector3(-13.5f, 3.6f, 4f),
+                new Vector3(13.5f, 3.6f, 4f),
+            };
+
+            var path = new NavMeshPath();
+            foreach (Vector3 deck in decks)
+            {
+                Assert.IsTrue(NavMesh.SamplePosition(deck, out NavMeshHit deckHit, 1.5f, NavMesh.AllAreas),
+                    $"no navmesh on the catwalk deck at {deck} — the deck did not bake as walkable at all, " +
+                    "so the player can stand somewhere the drones do not know exists");
+
+                Assert.Greater(deckHit.position.y, 2f,
+                    $"the sample at {deck} landed at y={deckHit.position.y:F2}, which is the floor rather " +
+                    "than the deck — the deck itself is not on the navmesh");
+
+                bool anySpawnReaches = false;
+                foreach (Transform point in spawner!.GetComponentsInChildren<Transform>())
+                {
+                    if (!point.name.StartsWith("Spawn_")) continue;
+                    if (!NavMesh.SamplePosition(point.position, out NavMeshHit hit, 4f, NavMesh.AllAreas)) continue;
+                    if (NavMesh.CalculatePath(hit.position, deckHit.position, NavMesh.AllAreas, path)
+                        && path.status == NavMeshPathStatus.PathComplete)
+                    {
+                        anySpawnReaches = true;
+                        break;
+                    }
+                }
+
+                Assert.IsTrue(anySpawnReaches,
+                    $"no spawn point can path onto the catwalk at {deck}. The stairs did not connect to the " +
+                    "deck, so a player standing up there cannot be reached by anything — the wave never " +
+                    "clears and the run hangs.");
+            }
+            yield return null;
+        }
+
         [UnityTest]
         public IEnumerator Wave_Starts_SpawnsDrones_AndTheyPathTowardThePlayer()
         {

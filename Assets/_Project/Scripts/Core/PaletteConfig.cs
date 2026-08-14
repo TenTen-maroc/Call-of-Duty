@@ -37,7 +37,11 @@ namespace CoD.Core
         public Color wall = new(0.28f, 0.29f, 0.32f);
         [Tooltip("Edge trim. Cool marks places; warm means something is trying to kill you.")]
         public Color trim = new(0.30f, 0.62f, 0.92f);
-        [Range(0f, 4f)] public float trimEmission = 1.2f;
+        // Raised with the light rig drop below. Under a dim sun the trim line is
+        // no longer a highlight on a block you can already see — it IS the
+        // silhouette, and "can I shoot over that" has to be answerable across the
+        // arena or the half-height cover stops being cover worth using.
+        [Range(0f, 4f)] public float trimEmission = 1.6f;
 
         [Header("Targets and weapons")]
         public Color practiceTarget = new(0.62f, 0.13f, 0.11f);
@@ -63,10 +67,53 @@ namespace CoD.Core
         [Tooltip("Explosions, slams, drone deaths.")]
         public Color fire = new(1f, 0.55f, 0.20f);
 
+        [Header("The light rig — dim on purpose, because the enemies are the light")]
+        // WHY THESE MOVED HERE, and why they are lower than they were.
+        //
+        // They were literals in GreyBoxBuilder.BuildArenaLights and BuildLighting,
+        // which is the exact shape of the bug at the top of this file: a number in
+        // an editor script that no gate can compare against the thing it claims to
+        // describe. Now they are tunable in the Inspector, which matters more for
+        // these than for any other value in the project, because lighting is the
+        // one thing nobody can verify without looking at it.
+        //
+        // The levels themselves were BACKWARDS. Every enemy carries an emissive
+        // core that ramps from ~0.4 idle to ~4.0 when it telegraphs an attack —
+        // a 10x jump that CLAUDE.md calls a fairness contract rather than
+        // decoration. The arena was lit at a sun of 0.85 with lane lights at 1.6
+        // and a key at 2.2, so the room was brighter than the threat in it: the
+        // telegraph washed out to a slightly lighter dot, and the one channel the
+        // player is supposed to read danger from was the dimmest thing on screen.
+        //
+        // Dropping the rig to roughly 40% does three things at once and costs no
+        // VRAM, which is the binding constraint on everything else in this
+        // project: the arena reads as a place instead of a flat field, the
+        // telegraph becomes genuinely alarming, and bloom finally has something
+        // to bite on. The trim emission goes UP for the same reason — in a darker
+        // room the lit edge along each block is what tells the player whether
+        // they can shoot over it.
+        [Tooltip("The only shadow caster in the arena. Low: it is here for shape, not for illumination.")]
+        [Range(0f, 3f)] public float sunIntensity = 0.35f;
+        public Color sunColor = new(0.82f, 0.86f, 1f);
+
+        [Tooltip("The three warm lane lights. Warm marks a route; saturated warm is reserved for drone cores.")]
+        public Color laneLight = new(1f, 0.72f, 0.45f);
+        [Range(0f, 4f)] public float laneLightIntensity = 0.8f;
+        [Min(1f)] public float laneLightRange = 15f;
+
+        [Tooltip("The one cool key on the centre mass. It is what makes the bunker read as the thing to orbit.")]
+        public Color keyLight = new(0.70f, 0.82f, 1f);
+        [Range(0f, 4f)] public float keyLightIntensity = 1.1f;
+        [Min(1f)] public float keyLightRange = 14f;
+
         [Header("Atmosphere")]
-        public Color ambientSky = new(0.22f, 0.25f, 0.31f);
-        public Color ambientEquator = new(0.15f, 0.16f, 0.18f);
-        public Color ambientGround = new(0.07f, 0.07f, 0.08f);
+        // Ambient is halved alongside the rig. It is the single biggest enemy of
+        // contrast in a URP scene: lights can be dropped to nothing and a bright
+        // ambient term will still flood every surface evenly, which is exactly
+        // the flat look this change exists to remove.
+        public Color ambientSky = new(0.11f, 0.13f, 0.17f);
+        public Color ambientEquator = new(0.07f, 0.075f, 0.09f);
+        public Color ambientGround = new(0.035f, 0.035f, 0.04f);
         public Color fogColor = new(0.12f, 0.13f, 0.16f);
         [Min(0f)] public float fogStart = 14f;
         [Min(1f)] public float fogEnd = 55f;

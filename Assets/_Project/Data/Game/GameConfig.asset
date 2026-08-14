@@ -36,4 +36,10 @@ MonoBehaviour:
   lowHealthThreshold: 0.35
   lowHealthPulseSpeed: 2.2
   lowHealthMaxAlpha: 0.4
+  hitstopMinSeconds: 0.03
+  hitstopMaxSeconds: 0.09
+  hitstopHealthForMax: 600
+  hitstopWeakpointBonus: 1.35
+  hitstopTimeScale: 0.06
+  hitstopCooldownSeconds: 0.22
   slowMoTimeScale: 0.35

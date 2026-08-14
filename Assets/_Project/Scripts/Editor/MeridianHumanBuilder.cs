@@ -399,7 +399,22 @@ namespace CoD.EditorTools
         {
             config.stableId = "meridian_rifleman";
             config.displayName = "Meridian Rifleman";
-            config.maxHealth = 115f;
+            // 110, NOT 115, and the five HP are the whole point.
+            //
+            // The starter rifle does 25 body and 1.5x on a weakpoint = 37.5. At
+            // 115 the Rifleman sat FIVE HP above three headshots (112.5), so a
+            // player who landed three consecutive head hits — the hardest thing
+            // this game asks of them — was charged a fourth bullet for 2.5 HP of
+            // actual work. The Shooter (75 = 2 x 37.5) and the Tank (600 = 16 x
+            // 37.5) both land exactly on the breakpoint, which is what gives this
+            // away as an oversight rather than a choice: the drone cast was tuned
+            // against the multiplier and the human was not.
+            //
+            // At 110 three headshots kill and body shots stay at five, so aiming
+            // for the head saves two rounds instead of one. EnemyBreakpointTests
+            // now holds the whole cast to that law so the next enemy cannot land
+            // a sliver above a breakpoint in silence.
+            config.maxHealth = 110f;
             config.moveSpeed = 4.5f;
             config.acceleration = 18f;
             config.turnSpeed = 540f;
