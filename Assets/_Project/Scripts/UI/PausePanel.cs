@@ -37,6 +37,8 @@ namespace CoD.UI
         [SerializeField] private WaveRunner? _runner = null;
         [Tooltip("Abandoning a run still records the round it reached. See Activate().")]
         [SerializeField] private RunContext? _run = null;
+        [Tooltip("Optional. Released before the clock is captured — see Pause().")]
+        [SerializeField] private Hitstop? _hitstop = null;
         [SerializeField] private string _menuSceneName = "20_MainMenu";
 
         private readonly StringBuilder _builder = new(256);
@@ -154,6 +156,15 @@ namespace CoD.UI
         {
             if (_paused) return;
             _paused = true;
+
+            // Let go of a hitstop BEFORE capturing, and the order is the whole
+            // point. A kill freezes the clock for a few dozen milliseconds; pause
+            // during that window and the capture below records the FROZEN scale
+            // as the thing to go back to, so the player resumes into permanent
+            // near-stopped time with no way to fix it short of dying. Hitstop
+            // declines to stomp a clock somebody else took, but it cannot stop
+            // this line from reading the wrong number — only releasing first can.
+            _hitstop?.Cancel();
 
             // Capture rather than assume 1: the sandbox console's slow-mo may
             // already own the clock, and resuming to 1 would silently cancel it.

@@ -20,7 +20,9 @@ had line of sight from anywhere to anywhere.
 | `Divider_*` ×4 | 1 × 3 × 8-10 at x = ±9 | Three lanes. A 7 m crossing gap between each pair — wide enough for a Tank, narrow enough to be a decision |
 | `Cover_S/W/E/NW/NE` | 1.2 m tall | **Shoot-over cover.** Below eye level, so you fire across it while a pathing drone goes around |
 | `Pillar_*` ×4 | 2 × 4 × 2 at the corners | Stops the perimeter being a free racetrack, and gives a kiting Shooter somewhere to be forced out of |
-| Spawn ring | 8 points, r = 16 | Outside the lanes, inside the walls |
+| `Catwalk_W/E_Deck` | 3 × 0.4 × 16 at x = ±13.5, top at 3.5 | **The only high ground.** Bridges the outer lane; 3.1 m of clearance underneath, so it is a route over *and* a route through |
+| `Catwalk_*_Step1-5` | 3 × h × 1.4, rising 0.7 each | The way up, and the way drones follow you up |
+| `Spawn ring` | 8 points, r = 16 | Outside the lanes, inside the walls |
 
 Player start is (0, 0.1, −12), directly behind `Cover_S` — the first thing the
 arena teaches is that backing up puts something between you and the room.
@@ -42,6 +44,35 @@ arena teaches is that backing up puts something between you and the room.
   player's actual position. A navmesh island is invisible in the editor and fatal
   at runtime: the wave spawns and nothing ever arrives. That test is why the
   arena can be rearranged confidently.
+
+### Verticality, and the five centimetres it rests on
+
+The arena had none. Forty by forty metres with every piece rooted to the floor
+and nothing on top a player could reach, which cost three things at once: the
+Shooter's `preferredRange` of 14 could always be satisfied so it never had to be
+flushed out of anywhere, the player had no high-ground decision, and a room with
+one silhouette height photographs as a flat grey field however well it is lit.
+
+**Stairs rather than a ramp**, and the reason is what can be verified rather than
+what looks better. A 26° ramp is a rotated box whose ends have to meet the floor
+and the deck cleanly or the bake quietly declines to join them. Five axis-aligned
+boxes each rising `STEP_RISE` = **0.7 m** against a baked step height of **0.75**
+cannot fail that way — but that margin is five centimetres, and it is the number
+the whole feature stands on.
+
+**The decks are walkable by everyone, deliberately.** Stripping their colliders so
+the navmesh ignored them would hand the player a perch no drone can reach, which
+does not make the arena more interesting — it ends the game. High ground is worth
+having because it is worth contesting.
+
+- **`TheCatwalks_CanBeReachedByDrones`** is the gate on that margin, and it exists
+  because the island above cannot see it: every spawn point and the player's start
+  are on the floor, so the path that test checks never goes near the stairs. The
+  new one samples the deck itself (asserting the hit is above y = 2, so a sample
+  that fell through to the floor fails loudly) and then paths a spawn point onto
+  it. Without it, widening a step or swapping an arena-kit module for one with a
+  different pivot produces a silent island: the player walks up, nothing can
+  follow, no wave ever clears, and the run hangs at full health.
 
 ### Mission 1 story corner
 

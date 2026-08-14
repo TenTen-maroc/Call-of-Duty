@@ -32,7 +32,8 @@ how a crowd stays fair.
   20 score / 20 money.
 - **[Drone_Tank.asset](../../Assets/_Project/Data/Drones/Drone_Tank.asset)** —
   600 HP (24 AR body shots, most of a magazine), moveSpeed 2.6, stopDistance 1.6,
-  60 score / 65 money.
+  **`weakpointMultiplier` 2.5** — the archetype's second defining number, and the
+  one that makes the first survivable. 60 score / 65 money.
 - **[ContactDetonate_Std.asset](../../Assets/_Project/Data/Attacks/ContactDetonate_Std.asset)** —
   triggerRadius 2.2, fuse 0.55 s, lunge ×1.35, 24 damage at the centre falling to
   ×0.33 at blastRadius 3.5.

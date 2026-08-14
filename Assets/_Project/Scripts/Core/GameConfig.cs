@@ -67,6 +67,35 @@ namespace CoD.Core
         [Range(0.5f, 6f)] public float lowHealthPulseSpeed = 2.2f;
         [Range(0f, 1f)] public float lowHealthMaxAlpha = 0.4f;
 
+        [Header("Hitstop — the weight a kill has")]
+        // These live on GameConfig rather than in an asset of their own because
+        // they are exactly what this file is for: global feel constants, the
+        // same class as gravity and base FOV. A per-enemy hitstop field would be
+        // four assets to keep in sync for a value that is derived from something
+        // the enemy already declares — how much health it had.
+        //
+        // Tuned so the spread is FELT rather than measured. A Rusher at 100 HP
+        // gets ~40 ms, which reads as a tap; a Tank at 600 gets the full ~90 ms,
+        // which reads as a thud. Anything past ~120 ms stops being impact and
+        // starts being input lag.
+        [Tooltip("Freeze for the smallest enemy in the game.")]
+        [Range(0f, 0.2f)] public float hitstopMinSeconds = 0.03f;
+
+        [Tooltip("Freeze for an enemy at hitstopHealthForMax or above.")]
+        [Range(0f, 0.3f)] public float hitstopMaxSeconds = 0.09f;
+
+        [Tooltip("The health that earns the full freeze. The Tank's 600 is the intended top of this scale.")]
+        [Range(1f, 5000f)] public float hitstopHealthForMax = 600f;
+
+        [Tooltip("Multiplier when the killing blow hit a weakpoint. Landing the core should feel different from chipping the hull.")]
+        [Range(1f, 2f)] public float hitstopWeakpointBonus = 1.35f;
+
+        [Tooltip("How much of the clock survives the freeze. Relative to whatever owns it, so slow-mo composes. Not 0 — a true stop reads as a dropped frame rather than as impact.")]
+        [Range(0.01f, 0.5f)] public float hitstopTimeScale = 0.06f;
+
+        [Tooltip("Minimum unscaled gap between freezes. Wave 8 sends twenty Rushers in ten seconds; without this the best moment in the game becomes a strobe.")]
+        [Range(0f, 1f)] public float hitstopCooldownSeconds = 0.22f;
+
         [Header("Sandbox")]
         [Range(0.05f, 1f)] public float slowMoTimeScale = 0.35f;
 

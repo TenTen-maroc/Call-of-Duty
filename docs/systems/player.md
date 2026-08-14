@@ -240,6 +240,58 @@ than decided here:
 - **Bob is scaled by a literal 6 m/s**, which sits between the shipped `walkSpeed`
   5.2 and `sprintSpeed` 8.0, so walking already reads at 0.87 of full bob.
 
+## Hitstop — the weight a kill has
+
+Everything else about firing a gun was already here: recoil patterns, spread,
+muzzle flash with a real world light, tracers, casings, camera shake, per-surface
+impacts. The missing piece was the oldest trick in the genre — stop the world for
+a few dozen milliseconds when something dies.
+
+Two components, and the split follows the assembly graph rather than taste:
+
+| | Assembly | Job |
+| --- | --- | --- |
+| [`Hitstop`](../../Assets/_Project/Scripts/Core/Hitstop.cs) | `CoD.Core` | Owns the clock. Knows nothing about drones — Core has no references, so it *cannot*. |
+| [`KillImpact`](../../Assets/_Project/Scripts/Enemies/KillImpact.cs) | `CoD.Enemies` | Subscribes to `DroneRegistry.Killed` once, weighs the corpse, calls `Punch`. |
+
+That split is what lets an explosion, a player death or a boss stagger punch the
+same clock later without any of them having to know a drone exists.
+
+**Weight is derived from the dead enemy's `maxHealth`, never authored per enemy.**
+The health *is* the size in every sense the player can feel. A Rusher (100)
+gets ~40 ms; a Tank (600) gets the full ~90 ms. A new enemy gets a correctly
+weighted kill for free. A weakpoint kill multiplies by `hitstopWeakpointBonus`.
+
+### Three systems write `Time.timeScale` and they must not fight
+
+Pause (0), the sandbox slow-mo cheat (0.35), and this. The rules, in order of how
+much damage each prevents:
+
+1. **Relative, not absolute.** Slow-mo 0.35 × factor 0.06 = 0.021, so a kill in
+   slow-mo is the same punch rather than a speed-*up*.
+2. **Refuses a stopped clock.** A kill landing on the frame the pause menu opens
+   must not resume the game.
+3. **`Cancel` only undoes its own write.** If anything took the clock mid-hold,
+   that thing owns it now. The sandbox console toggling slow-mo during an 80 ms
+   freeze is the real case, and rule 3 means nobody has to think about it.
+
+**`PausePanel.Pause` still calls `Cancel()` before it captures**, and the order is
+the whole point. Rule 3 makes `Hitstop` yield gracefully but cannot make the pause
+menu read the right number: it would otherwise record the *frozen* scale as "what
+to go back to" and the player would resume into permanent near-stopped time with
+no way out. `GreyBoxVerify` checks that reference for exactly this reason.
+
+### The cooldown is not timidity
+
+`hitstopCooldownSeconds` (0.22) is the horde guard. Wave 8 sends **twenty Rushers
+in ten seconds**; with no floor between freezes the best moment in the game
+becomes a strobe — the clock stutters continuously, aim goes rubbery, and the
+effect that exists to make one kill feel heavy makes forty kills feel broken.
+
+All six numbers live on `GameConfig` (global feel constants, the same class as
+gravity and base FOV) and are re-asserted in `GreyBoxBuilder.ConfigureGame`, so a
+rebuild cannot silently revert them.
+
 ## Related Systems
 
 - [weapons.md](weapons.md) — consumes input, aim ray and motion state; pushes recoil.

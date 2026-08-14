@@ -15,6 +15,7 @@ MonoBehaviour:
   stableId: drone_tank
   displayName: Tank
   maxHealth: 600
+  weakpointMultiplier: 2.5
   moveSpeed: 2.6
   acceleration: 10
   turnSpeed: 240

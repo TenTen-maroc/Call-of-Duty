@@ -61,7 +61,7 @@ suggestion. The headline rules:
 ## Guards and type-checking
 
 ```bash
-node Tools/check.mjs        # six guards
+node Tools/check.mjs        # eight guards
 node Tools/typecheck.mjs    # compiles every assembly, no editor, no licence
 ```
 
@@ -72,11 +72,11 @@ ugui from the editor's source and fetches the pinned Input System from the Unity
 registry, caching both under `Library/`. Warnings count as failure: first-party
 code stays at zero. Both run automatically on every commit.
 
-Six guards, plain Node, no dependencies. They cover: build artifacts tracked in
+Eight guards, plain Node, no dependencies. They cover: build artifacts tracked in
 git, `.meta` file integrity (on disk *and* in git), binaries outside LFS, LFS
-hooks surviving the `core.hooksPath` redirect, per-frame lookups, and mutable
-statics. Each script's header documents the disaster it prevents — read it
-before deleting one.
+hooks surviving the `core.hooksPath` redirect, per-frame lookups, mutable
+statics, the 1024 texture budget, and the LFS quota. Each script's header
+documents the disaster it prevents — read it before deleting one.
 
 The hook is active (`core.hooksPath Tools/hooks`) and has been verified to block
 a deliberate `Library/` commit. See [Tools/guards/README.md](Tools/guards/README.md).
@@ -90,7 +90,7 @@ Assets/            ← URP project, merged at the repo root
 Tools/
   check.mjs        ← runs every guard
   typecheck.mjs    ← compiles all assemblies without the editor
-  guards/          ← the six guards + their README
+  guards/          ← the eight guards + their README
   hooks/           ← committed hooks, enabled via core.hooksPath
                      pre-commit (guards) + LFS's four (pre-push, post-*)
 docs/

@@ -26,6 +26,31 @@ namespace CoD.Enemies
         [Tooltip("100 = four AR body shots, the same ~257 ms TTK the whole game is tuned around.")]
         [Range(1f, 5000f)] public float maxHealth = 100f;
 
+        /// <summary>
+        /// Extra damage on this archetype's weakpoint, ON TOP of the weapon's own
+        /// weakpoint bonus.
+        ///
+        /// THE PROBLEM THIS SOLVES. The weakpoint multiplier used to live only on
+        /// WeaponConfig, so every enemy's core was worth exactly 1.5x and the
+        /// Tank's 600 HP came to twenty-four rounds of a thirty-round magazine —
+        /// two full seconds of holding the trigger on a target that walks in a
+        /// straight line, followed by a reload. That is not a fight, it is an
+        /// endurance test, and it is the least interesting encounter in the game.
+        ///
+        /// Sixteen core hits was the alternative and it is barely better. What
+        /// makes a big enemy interesting is that it has ONE answer and the answer
+        /// is hard: circle it, find the core, land the shots. That only works if
+        /// the core pays enough to be worth the circling, which is a property of
+        /// the ENEMY rather than of the gun — a Tank's exposed reactor and a
+        /// Rusher's sensor cluster are not the same kind of target and should not
+        /// share a number.
+        ///
+        /// 1 keeps the old behaviour exactly, which is what every archetype
+        /// except the Tank still wants.
+        /// </summary>
+        [Tooltip("Multiplies the weapon's weakpoint bonus for THIS archetype. 1 = the weapon's number alone.")]
+        [Range(1f, 5f)] public float weakpointMultiplier = 1f;
+
         [Header("Movement (metres, metres/second)")]
         [Tooltip("Player walks 5.2 and sprints 8.0. Between the two means backpedalling loses and sprinting wins.")]
         public float moveSpeed = 6f;

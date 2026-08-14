@@ -43,6 +43,8 @@ namespace CoD.Enemies
         [SerializeField] private AudioSource? _audio = null;
         [Tooltip("Tinted through the attack windup. The telegraph is what makes a contact detonation fair instead of a coin flip.")]
         [SerializeField] private Renderer? _coreRenderer = null;
+        [Tooltip("Optional. The core collider, so this archetype's weakpointMultiplier reaches the instance at spawn.")]
+        [SerializeField] private Weakpoint? _weakpoint = null;
         [SerializeField] private HumanEnemyPresentation? _human = null;
 
         private DroneConfig? _config;
@@ -195,6 +197,12 @@ namespace CoD.Enemies
             // HP comes from the drone's own config, not a shared HealthConfig —
             // one source of truth per archetype.
             if (_health != null) _health.ConfigureMax(config.maxHealth * scaling.HealthMultiplier);
+
+            // Written on EVERY spawn, not once in the prefab, because the pool
+            // reuses instances: a Tank retired into the pool and reissued as a
+            // Rusher would otherwise keep the Tank's core bonus and a Rusher
+            // would die to one shot for reasons nothing in the scene explains.
+            _weakpoint?.SetMultiplier(config.weakpointMultiplier);
             _waveSpeedMultiplier = scaling.SpeedMultiplier;
 
             if (_agent != null)

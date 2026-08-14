@@ -206,6 +206,41 @@ This is a design constraint, not decoration, and it is why the trim is blue:
 Lane lights are deliberately dim and desaturated for the same reason: if a wall
 can be warm and bright, the player learns to check walls for danger.
 
+### The rig was brighter than the threat, and that broke the rule above
+
+The colour rule only works if the threat is the brightest thing on screen. It
+was not. Every drone core ramps from ~0.4 idle to ~4.0 on a telegraph — a 10x
+jump that CLAUDE.md calls a fairness contract — while the arena was lit with a
+sun at **0.85**, lane lights at **1.6** and a bunker key at **2.2**. The room
+out-shone the thing trying to kill you, so the telegraph resolved as a slightly
+lighter dot and the channel the player is supposed to read danger from was the
+dimmest signal in the frame.
+
+Nothing could catch it. The lights existed, the references were non-null, the
+emission ramp fired, every test was green. This is the class of defect that only
+a human looking at the screen can find, which is precisely why the numbers now
+have a law even though the look cannot.
+
+| | was | now | why |
+| --- | --- | --- | --- |
+| `sunIntensity` | 0.85 | **0.35** | the only shadow caster; here for shape, not illumination |
+| `laneLightIntensity` | 1.6 | **0.8** | was brighter than an idle core |
+| `keyLightIntensity` | 2.2 | **1.1** | was the brightest thing in the room |
+| `ambientSky` | 0.22, 0.25, 0.31 | **0.11, 0.13, 0.17** | ambient is the biggest enemy of contrast; it floods every surface at once |
+| `trimEmission` | 1.2 | **1.6** | under a dim rig the trim IS the silhouette |
+
+All of them moved out of `GreyBoxBuilder`'s literals and into
+[PaletteConfig](../../Assets/_Project/Scripts/Core/PaletteConfig.cs), which
+matters more for these than for any other value in the project: lighting is the
+one system no gate can verify, so it has to be tunable in the Inspector without
+a rebuild. Light POSITIONS stay in the builder — where a light hangs is level
+layout, the same as where a block sits.
+
+[ArenaLightingTests](../../Assets/_Project/Tests/EditMode/ArenaLightingTests.cs)
+holds the ceiling (sun ≤ 0.6, lane ≤ 1.2, key ≤ 1.5) and separately asserts every
+enemy still ramps at least 4x. The authored values sit well under those, so there
+is room to tune by eye without tripping the gate.
+
 ## Shot feedback
 
 Half of whether a gun feels good is what the world does back, and this was the

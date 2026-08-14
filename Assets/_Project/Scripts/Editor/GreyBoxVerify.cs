@@ -242,6 +242,19 @@ namespace CoD.EditorTools
                     Check(crosshair, "_weapon", stillNull);
                     Check(crosshair, "_group", stillNull);
                 }
+                // Hitstop and its driver. Both are null-safe by design — a missing
+                // reference makes them do nothing rather than throw — which is
+                // exactly why they need checking here: an unwired hitstop is a
+                // feature that silently is not in the game, and no test that
+                // drives the loop would notice the clock never froze.
+                foreach (Hitstop hitstop in root.GetComponentsInChildren<Hitstop>(true))
+                    Check(hitstop, "_config", stillNull);
+                foreach (KillImpact impact in root.GetComponentsInChildren<KillImpact>(true))
+                {
+                    Check(impact, "_registry", stillNull);
+                    Check(impact, "_hitstop", stillNull);
+                    Check(impact, "_config", stillNull);
+                }
                 foreach (DroneSpawner spawner in root.GetComponentsInChildren<DroneSpawner>(true))
                 {
                     Check(spawner, "_pool", stillNull);
@@ -354,6 +367,13 @@ namespace CoD.EditorTools
                     Check(pausePanel, "_input", stillNull);
                     Check(pausePanel, "_runner", stillNull);
                     Check(pausePanel, "_run", stillNull);
+                    // Nastier than it looks, and it fails in the OPPOSITE
+                    // direction to the input reference above. A null here does
+                    // not break pausing — it breaks UNpausing, and only if the
+                    // player happened to pause during the few dozen milliseconds
+                    // after a kill. They resume into permanent slow motion with
+                    // no way back, which reads as the game having broken itself.
+                    Check(pausePanel, "_hitstop", stillNull);
                 }
                 foreach (SettingsPanel settingsPanel in root.GetComponentsInChildren<SettingsPanel>(true))
                 {

@@ -421,6 +421,17 @@ namespace CoD.EditorTools
             config.baseFovVertical = 62f;   // ~95 horizontal at 16:9
             config.mouseSensitivity = 0.12f;
             config.slowMoTimeScale = 0.35f;
+
+            // Hitstop. Re-asserted here for the same reason every other number in
+            // this method is: ConfigureGame is what a rebuild trusts, so a value
+            // that exists only in the .asset silently reverts the first time
+            // somebody runs the builder.
+            config.hitstopMinSeconds = 0.03f;
+            config.hitstopMaxSeconds = 0.09f;
+            config.hitstopHealthForMax = 600f;
+            config.hitstopWeakpointBonus = 1.35f;
+            config.hitstopTimeScale = 0.06f;
+            config.hitstopCooldownSeconds = 0.22f;
         }
 
         /// <summary>
@@ -632,6 +643,23 @@ namespace CoD.EditorTools
             // 600 HP is 24 AR body shots — most of a magazine, and long enough
             // that standing still to finish one is the wrong answer.
             config.maxHealth = 600f;
+
+            // AND THE CORE IS THE ANSWER, which it was not until this line.
+            //
+            // 24 rounds of a 30-round magazine on a target that walks at 2.6 m/s
+            // in a straight line is not a fight — it is two seconds of holding
+            // the trigger followed by a reload, and it was the least interesting
+            // encounter in the game. Aiming for the core only ever saved eight
+            // rounds, which is not enough to be worth the risk of circling a
+            // thing that slams for 34 in a 4.5 m radius.
+            //
+            // At 2.5 the core is worth 93.75 a shot and the Tank dies to SEVEN
+            // of them instead of twenty-four body hits. That is a real decision:
+            // stay wide and grind it down, or close the angle to find the core
+            // and take the slam risk. The number is the Tank's, not the gun's —
+            // see DroneConfig.weakpointMultiplier for why those are different
+            // questions.
+            config.weakpointMultiplier = 2.5f;
             config.moveSpeed = 2.6f;
             config.acceleration = 10f;
             config.turnSpeed = 240f;
@@ -1476,6 +1504,12 @@ namespace CoD.EditorTools
             SetRef(controller, "_pooled", root.GetComponent<PooledObject>());
             SetRef(controller, "_audio", audio);
             SetRef(controller, "_coreRenderer", coreRenderer);
+            // The same Core object is both the thing that glows and the thing
+            // that takes the bonus damage. Wiring the Weakpoint here is what
+            // lets DroneConfig.weakpointMultiplier reach the instance at spawn;
+            // without it every archetype silently falls back to the weapon's
+            // number and the Tank goes back to being a bullet sponge.
+            SetRef(controller, "_weakpoint", weakpoint);
 
             return SavePrefab(root, Prefabs + "/" + name + ".prefab");
         }
@@ -1692,8 +1726,8 @@ namespace CoD.EditorTools
             GameObject sun = new("Directional Light");
             Light light = sun.AddComponent<Light>();
             light.type = LightType.Directional;
-            light.intensity = 0.85f;
-            light.color = new Color(0.95f, 0.96f, 1f);
+            light.intensity = palette.sunIntensity;
+            light.color = palette.sunColor;
             light.shadows = LightShadows.Soft;
             sun.transform.rotation = Quaternion.Euler(48f, 32f, 0f);
 
@@ -1756,7 +1790,7 @@ namespace CoD.EditorTools
 
             GameObject room = BuildRoom(floorMat, wallMat, trimMat, arenaKit);
             BakeNavMesh(room);
-            BuildArenaLights();
+            BuildArenaLights(palette);
 
             ObjectPool pool = new GameObject("ObjectPool").AddComponent<ObjectPool>();
             // Counts are sized for a full wave, not for the demo: the pool exists
@@ -1886,8 +1920,10 @@ namespace CoD.EditorTools
 
             BuildObjective(runAssets, runner, playerTransform, playerHealth);
 
+            Hitstop hitstop = BuildGameFeel(game, registry);
+
             BuildHud(weapon, playerHealth, game, pool, dummyPrefab, muzzle, spawner, registry, cameraTransform,
-                run, runner, settingsHub, playerInput, director, interactor, radio, audioKit);
+                run, runner, settingsHub, playerInput, director, interactor, radio, audioKit, hitstop);
 
             EditorSceneManager.MarkSceneDirty(scene);
             EditorSceneManager.SaveScene(scene, GreyBoxScenePath);
@@ -2000,8 +2036,79 @@ namespace CoD.EditorTools
             // Half-height cover gets it too: this is the row the player has to
             // judge "can I shoot over that" against, from across the arena.
             AddTrim(room, "Trim_Cover_S", new Vector3(0f, 1.22f, -10f), new Vector3(6.1f, 0.05f, 1.1f), trimMat);
+            BuildCatwalk(room, "W", -13.5f, wallMat, trimMat, kit);
+            BuildCatwalk(room, "E", 13.5f, wallMat, trimMat, kit);
             BuildMissionOneStoryCorner(room, wallMat, trimMat);
             return room;
+        }
+
+        /// <summary>How high the catwalk decks sit. Five steps of <see cref="STEP_RISE"/>.</summary>
+        private const float CATWALK_HEIGHT = 3.5f;
+
+        /// <summary>
+        /// Deliberately UNDER the 0.75 m step height the navmesh bakes for.
+        ///
+        /// This is the number the whole feature stands on. Get it wrong by five
+        /// centimetres and the bake stops connecting the steps to each other,
+        /// the deck becomes an island, and the failure is the worst kind this
+        /// arena can produce: the player walks up, the drones cannot follow, no
+        /// wave ever clears, and nothing anywhere reports an error.
+        /// </summary>
+        private const float STEP_RISE = 0.7f;
+
+        /// <summary>
+        /// Verticality, which the arena had none of.
+        ///
+        /// THE PROBLEM. Forty by forty metres and every single piece of it stood
+        /// on one plane — bunker, dividers, cover, pillars, all rooted to the
+        /// floor with nothing on top a player could reach. Three things followed
+        /// from that and all three were invisible because nothing else had ever
+        /// been different. The Shooter holds a preferredRange of 14 in a 40 m
+        /// room, so it could always find its distance and never had to be flushed
+        /// out of a bad position. The player had no high-ground decision, which
+        /// is the richest recurring choice an arena shooter has. And a room with
+        /// one silhouette height photographs as a flat grey field however well it
+        /// is lit.
+        ///
+        /// STAIRS RATHER THAN A RAMP, and the reason is honesty about what can be
+        /// verified. A 26° ramp is a rotated box whose ends have to meet the
+        /// floor and the deck cleanly or the navmesh quietly refuses to connect
+        /// them; getting that wrong produces exactly the island described above.
+        /// Five axis-aligned boxes each rising less than the baked step height
+        /// cannot fail that way — there is no trigonometry to be wrong about, and
+        /// the connection is a property the bake settings already guarantee.
+        ///
+        /// THE DECK IS WALKABLE BY EVERYONE, on purpose. The obvious alternative
+        /// — strip the colliders so the navmesh ignores it — hands the player a
+        /// perch that no drone can ever reach, which does not make the arena more
+        /// interesting, it ends the game. High ground is worth having because it
+        /// is worth CONTESTING.
+        /// </summary>
+        private static void BuildCatwalk(GameObject room, string side, float x,
+            Material wallMat, Material trimMat, ArenaKitConfig kit)
+        {
+            // The deck runs up the outer edge of a side lane, clear of the
+            // dividers at x = +-9 and inboard of the corner pillars at +-16.
+            AddArenaBlock(room, $"Catwalk_{side}_Deck",
+                new Vector3(x, CATWALK_HEIGHT - 0.2f, 4f), new Vector3(3f, 0.4f, 16f), wallMat, kit);
+
+            // Five steps climbing out of the south end. Each is a solid block
+            // from the floor to its own tread rather than a floating slab: a
+            // hollow staircase bakes walkable underneath as well, and a drone
+            // that paths INTO the stairwell reads as one that got stuck.
+            for (int i = 0; i < 5; i++)
+            {
+                float top = STEP_RISE * (i + 1);
+                AddArenaBlock(room, $"Catwalk_{side}_Step{i + 1}",
+                    new Vector3(x, top * 0.5f, -9.8f + i * 1.4f), new Vector3(3f, top, 1.4f), wallMat, kit);
+            }
+
+            // The deck edge gets the same lit line as every other full-height
+            // mass. It matters more here than anywhere else in the arena: this is
+            // the one piece of geometry a player can walk OFF, and an unlit edge
+            // three and a half metres up under a dimmed rig is a fall nobody saw.
+            AddTrim(room, $"Trim_Catwalk_{side}",
+                new Vector3(x, CATWALK_HEIGHT + 0.02f, 4f), new Vector3(3.1f, 0.06f, 16.1f), trimMat);
         }
 
         /// <summary>
@@ -2134,6 +2241,34 @@ namespace CoD.EditorTools
             return (spawner, registry);
         }
 
+        /// <summary>
+        /// The clock freeze that gives a kill weight, and the thing that decides
+        /// how heavy each kill was.
+        ///
+        /// Two components on one object because they are two halves of one
+        /// effect and splitting them across the scene would only make the wiring
+        /// harder to find. They stay two TYPES because Hitstop is in CoD.Core and
+        /// cannot know a drone exists — see KillImpact for the long version.
+        ///
+        /// PausePanel takes a reference to the Hitstop as well, which is why this
+        /// runs before BuildHud rather than alongside the drone rig: the pause
+        /// menu has to be able to release the clock before it captures it.
+        /// </summary>
+        private static Hitstop BuildGameFeel(GameConfig game, DroneRegistry registry)
+        {
+            GameObject root = new("GameFeel");
+
+            Hitstop hitstop = root.AddComponent<Hitstop>();
+            SetRef(hitstop, "_config", game);
+
+            KillImpact impact = root.AddComponent<KillImpact>();
+            SetRef(impact, "_registry", registry);
+            SetRef(impact, "_hitstop", hitstop);
+            SetRef(impact, "_config", game);
+
+            return hitstop;
+        }
+
         private static void AddArenaBlock(GameObject parent, string name, Vector3 position, Vector3 scale,
             Material fallbackMaterial, ArenaKitConfig kit)
             => AddBlock(parent, name, position, scale, fallbackMaterial, kit.wallModule, kit.wallMaterial);
@@ -2244,18 +2379,29 @@ namespace CoD.EditorTools
         ///
         /// They are also warm and DIM. Bright saturated colour is reserved for
         /// drone cores, so that red always means something is trying to kill you.
+        ///
+        /// Colour, intensity and range now come from PaletteConfig rather than
+        /// from literals here. Positions stay — where a light hangs is level
+        /// layout, the same as where a block sits, and moving one is a rebuild
+        /// either way. How BRIGHT it is, is a tunable, and lighting is the one
+        /// system in this project that cannot be verified by any gate: it has to
+        /// be looked at, which means it has to be adjustable without a rebuild.
         /// </summary>
-        private static void BuildArenaLights()
+        private static void BuildArenaLights(PaletteConfig palette)
         {
             GameObject root = new("Lights");
 
-            AddLight(root, "Lane_W", new Vector3(-14.5f, 4.2f, 4f), new Color(1f, 0.72f, 0.45f), 1.6f, 15f);
-            AddLight(root, "Lane_E", new Vector3(14.5f, 4.2f, 4f), new Color(1f, 0.72f, 0.45f), 1.6f, 15f);
-            AddLight(root, "Lane_N", new Vector3(0f, 4.2f, 14f), new Color(1f, 0.72f, 0.45f), 1.6f, 15f);
+            AddLight(root, "Lane_W", new Vector3(-14.5f, 4.2f, 4f),
+                palette.laneLight, palette.laneLightIntensity, palette.laneLightRange);
+            AddLight(root, "Lane_E", new Vector3(14.5f, 4.2f, 4f),
+                palette.laneLight, palette.laneLightIntensity, palette.laneLightRange);
+            AddLight(root, "Lane_N", new Vector3(0f, 4.2f, 14f),
+                palette.laneLight, palette.laneLightIntensity, palette.laneLightRange);
 
             // The centre mass reads as the thing to orbit, so it gets the one cool
             // key. It also lights the face of the bunker the player backs against.
-            AddLight(root, "Key_Core", new Vector3(0f, 4.6f, 2f), new Color(0.70f, 0.82f, 1f), 2.2f, 14f);
+            AddLight(root, "Key_Core", new Vector3(0f, 4.6f, 2f),
+                palette.keyLight, palette.keyLightIntensity, palette.keyLightRange);
         }
 
         private static void AddLight(GameObject parent, string name, Vector3 position, Color color,
@@ -2757,7 +2903,7 @@ namespace CoD.EditorTools
             DroneSpawner spawner, DroneRegistry registry, Transform cameraTransform,
             RunContext run, WaveRunner runner, SettingsHub settingsHub, PlayerInput input,
             MissionDirector director, PlayerInteractor interactor, RadioDialogueScheduler radio,
-            AudioKitConfig audioKit)
+            AudioKitConfig audioKit, Hitstop hitstop)
         {
             GameObject canvasObject = new("HUD");
             Canvas canvas = canvasObject.AddComponent<Canvas>();
@@ -2901,7 +3047,7 @@ namespace CoD.EditorTools
 
             BuildDamageFeedback(canvasObject, game, playerHealth, cameraTransform, hudAudio);
             BuildRunUi(canvasObject, run, runner, weapon, hudAudio, audioKit);
-            BuildPauseUi(canvasObject, settingsHub, input, run, runner);
+            BuildPauseUi(canvasObject, settingsHub, input, run, runner, hitstop);
             BuildObjectiveHud(canvasObject, director, objectiveLabel);
 
             CheatConsole console = canvasObject.AddComponent<CheatConsole>();
@@ -3448,7 +3594,7 @@ namespace CoD.EditorTools
         /// is created last for the same reason.
         /// </summary>
         private static void BuildPauseUi(GameObject canvasObject, SettingsHub settingsHub,
-            PlayerInput input, RunContext run, WaveRunner runner)
+            PlayerInput input, RunContext run, WaveRunner runner, Hitstop hitstop)
         {
             MenuScreen pause = BuildMenuScreen(canvasObject, "PausePanel",
                 new Color(0.03f, 0.035f, 0.04f, 0.9f), 64, 34);
@@ -3471,6 +3617,7 @@ namespace CoD.EditorTools
             SetRef(pausePanel, "_input", input);
             SetRef(pausePanel, "_runner", runner);
             SetRef(pausePanel, "_run", run);
+            SetRef(pausePanel, "_hitstop", hitstop);
 
             // Every other keyboard-driven panel has to know about pause, because
             // they share keys: SPACE is "next wave" in the shop and "confirm"
