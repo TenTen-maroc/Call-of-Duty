@@ -373,6 +373,39 @@ Once past ~3 subsystems, [docs/systems/](docs/systems/) holds one code-verified
 markdown map per subsystem (weapons, drones, waves, shop, save), updated **in
 the same task** that changes the subsystem.
 
+<!-- BEGIN operator-conventions: managed block, regenerated from digitronics2025/claude-config -->
+## Reply contract — every task-closing reply
+
+Close every task-closing reply with these three, in this order, and nothing after them:
+
+1. A plain recap, **3 sentences max** — no paths, hashes or jargon ("saved" not
+   "commit", "sent live" not "deploy"). Shipped work may instead use the five-part
+   form (what changed / what was wrong / before → after / what it gets you /
+   what's next), ~180 words.
+2. A **Grandma summary** — 2-4 plain sentences, no tool, file, product or model
+   names, saying what it means for the shop rather than what was done. Unverified
+   stays unverified: "it should be sorted, I'm waiting to see it with my own eyes".
+3. A **What you need to do** block — numbered steps (1-5), each naming the exact
+   button to tap and what they should see, or exactly `Nothing — you're all set.`
+   Never empty, never "just" or "simply". Anything the user must do goes ONLY here.
+
+"skip recap" silences 1 and 2; 3 still appears whenever it has content. "details"
+drops the cap on 1 and never removes 2 or 3. None of it applies to answers to
+technical questions, code, plans, commit messages or PR bodies.
+
+On any open design choice prefer, in order: **maintainable > scalable > secure >
+production-ready > sustainable**, and record the trade-off in the commit message,
+not a code comment.
+
+Only git-tracked files in THIS repo, plus account-level skills, reach a session
+that is not on the operator's own PC. Never write an instruction pointing at a
+path outside this repo — `~/.claude/...`, `C:\Users\...` — without marking it
+machine-local, or it reads as mandatory and silently cannot be followed.
+
+Canonical source, and the rules that are conditional rather than always-on:
+[digitronics2025/claude-config](https://github.com/digitronics2025/claude-config)
+<!-- END operator-conventions -->
+
 ## Debug / cheat console
 
 The in-game console (godmode, infinite ammo, spawn weapon, spawn N drones,
