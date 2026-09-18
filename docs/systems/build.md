@@ -1,6 +1,6 @@
 # Build — producing a Windows player, proving it runs, and looking at it
 
-> Last verified: 2026-08-12
+> Last verified: 2026-09-18
 > **Verified — the gate:** yes, in the strongest sense available. Both a release
 > and a development `.exe` have been produced and executed outside the editor;
 > each booted, reached the menu, loaded the arena and logged zero errors.

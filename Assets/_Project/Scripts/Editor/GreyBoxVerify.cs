@@ -249,11 +249,11 @@ namespace CoD.EditorTools
                 // drives the loop would notice the clock never froze.
                 foreach (Hitstop hitstop in root.GetComponentsInChildren<Hitstop>(true))
                     Check(hitstop, "_config", stillNull);
-                foreach (KillImpact impact in root.GetComponentsInChildren<KillImpact>(true))
+                foreach (KillImpact killImpact in root.GetComponentsInChildren<KillImpact>(true))
                 {
-                    Check(impact, "_registry", stillNull);
-                    Check(impact, "_hitstop", stillNull);
-                    Check(impact, "_config", stillNull);
+                    Check(killImpact, "_registry", stillNull);
+                    Check(killImpact, "_hitstop", stillNull);
+                    Check(killImpact, "_config", stillNull);
                 }
                 foreach (DroneSpawner spawner in root.GetComponentsInChildren<DroneSpawner>(true))
                 {
